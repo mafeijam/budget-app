@@ -42,7 +42,7 @@
                 flat
                 icon="undo"
                 label="reset"
-                @click="form.reset(), form.clearErrors()"
+                @click="(form.reset(), form.clearErrors())"
               />
               <q-btn
                 type="submit"
