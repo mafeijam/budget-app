@@ -12,6 +12,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Placeholder accounts and categories so a fresh install is usable.
+        // See BudgetSeeder for why these values are invented and should be
+        // corrected through the UI.
+        $this->call(BudgetSeeder::class);
+
         // \App\Models\User::factory(10)->create();
 
         // \App\Models\User::factory()->create([
