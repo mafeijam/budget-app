@@ -100,6 +100,37 @@ class AccountControllerTest extends TestCase
         $this->assertDatabaseCount('accounts', 1);
     }
 
+    public function test_store_rejects_an_unknown_account_type(): void
+    {
+        // Previously "banana" was accepted and written straight to the column,
+        // because only `name` had validation rules.
+        $response = $this->post('/accounts', $this->payload(['type' => 'banana']));
+
+        $response->assertSessionHasErrors('type');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_store_rejects_a_currency_longer_than_three_characters(): void
+    {
+        $response = $this->post('/accounts', $this->payload(['ccy' => 'HK Dollar']));
+
+        $response->assertSessionHasErrors('ccy');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_update_rejects_an_unknown_account_status(): void
+    {
+        $account = Account::create(['name' => 'Old', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+
+        $response = $this->put("/accounts/{$account->id}", $this->payload([
+            'id' => $account->id,
+            'status' => 'purple',
+        ]));
+
+        $response->assertSessionHasErrors('status');
+        $this->assertSame('active', $account->fresh()->status);
+    }
+
     public function test_store_requires_due_date_when_type_is_card(): void
     {
         $response = $this->post('/accounts', $this->payload([
