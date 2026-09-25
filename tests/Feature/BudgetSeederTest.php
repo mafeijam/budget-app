@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Category;
+use App\Support\CardStatementCycle;
 use Database\Seeders\BudgetSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -42,12 +43,30 @@ class BudgetSeederTest extends TestCase
         $card = Account::where('type', 'card')->firstOrFail();
         $cash = Account::where('type', 'cash')->firstOrFail();
 
-        // AccountMetaData applies `required_if:type,card` to `due`, so a card
-        // seeded without one cannot be saved when it is later edited.
+        // AccountMetaData applies `required_if:type,card` to both `due` and
+        // `statement_day`, so a card seeded without them cannot be saved when it
+        // is later edited.
         $this->assertNotNull($card->meta);
         $this->assertNotEmpty($card->meta->meta['due']);
+        $this->assertNotEmpty($card->meta->meta['statement_day']);
 
         $this->assertNull($cash->fresh()->meta);
+    }
+
+    public function test_the_seeded_card_days_form_a_usable_statement_cycle(): void
+    {
+        // The end-to-end reason both days are seeded rather than just `due`:
+        // CardStatementCycle::fromMeta refuses to build a cycle unless both are
+        // numeric, so a card carrying only a due day would silently derive no
+        // due date for any charge made against it.
+        $this->seed(BudgetSeeder::class);
+
+        $card = Account::where('type', 'card')->firstOrFail();
+        $cycle = CardStatementCycle::fromMeta($card->meta->meta);
+
+        $this->assertNotNull($cycle, 'The seeded card must yield a statement cycle.');
+        $this->assertSame(25, $cycle->statementDay());
+        $this->assertSame(15, $cycle->dueDay());
     }
 
     public function test_the_due_day_is_truthy(): void
@@ -103,7 +122,7 @@ class BudgetSeederTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '20'],
+            'meta_data' => ['due' => '20', 'statement_day' => 25],
         ]);
 
         $response->assertSessionHasNoErrors();

@@ -58,10 +58,13 @@ class BudgetSeeder extends Seeder
                 'ccy' => 'HKD',
                 // AccountController::store/update build the meta payload with
                 // collect(...)->filter(), which drops falsy values, and
-                // AccountMetaData requires `due` whenever type is card. A card
-                // seeded without a due day would therefore fail validation the
-                // moment it is opened in the edit form.
-                'meta' => ['due' => '15'],
+                // AccountMetaData requires both `due` and `statement_day`
+                // whenever type is card. A card seeded without them would
+                // therefore fail validation the moment it is opened in the edit
+                // form. A due day on its own is not enough: it cannot say which
+                // statement a charge belongs to, so no charge on this account
+                // would get a due date.
+                'meta' => ['due' => '15', 'statement_day' => 25],
             ],
         ] as $attributes) {
             $meta = $attributes['meta'];

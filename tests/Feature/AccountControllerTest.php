@@ -19,7 +19,7 @@ class AccountControllerTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '2026-10-01'],
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 25],
         ], $overrides);
     }
 
@@ -83,10 +83,16 @@ class AccountControllerTest extends TestCase
 
     public function test_store_omits_the_meta_row_when_meta_data_is_blank(): void
     {
+        // type=cash so nothing in meta is required, which is what makes this
+        // test meaningful: the account is actually created, and the meta row is
+        // absent because the payload was blank rather than because validation
+        // rejected the whole request.
         $this->post('/accounts', $this->payload([
-            'meta_data' => ['due' => ''],
+            'type' => 'cash',
+            'meta_data' => ['due' => '', 'statement_day' => null],
         ]));
 
+        $this->assertDatabaseCount('accounts', 1);
         $this->assertDatabaseCount('meta', 0);
     }
 
@@ -135,10 +141,36 @@ class AccountControllerTest extends TestCase
     {
         $response = $this->post('/accounts', $this->payload([
             'type' => 'card',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => '', 'statement_day' => 25],
         ]));
 
         $response->assertSessionHasErrors('meta_data.due');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_store_requires_a_statement_day_when_type_is_card(): void
+    {
+        // A card with a due day but no statement day cannot be settled against:
+        // nothing says which statement the charge belongs to. Rejecting it at
+        // the door is the point -- the alternative is an account that saves
+        // cleanly and then silently derives no due date for any charge on it.
+        $response = $this->post('/accounts', $this->payload([
+            'type' => 'card',
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => null],
+        ]));
+
+        $response->assertSessionHasErrors('meta_data.statement_day');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_store_rejects_a_statement_day_outside_the_calendar(): void
+    {
+        $response = $this->post('/accounts', $this->payload([
+            'type' => 'card',
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 45],
+        ]));
+
+        $response->assertSessionHasErrors('meta_data.statement_day');
         $this->assertDatabaseCount('accounts', 0);
     }
 
@@ -203,7 +235,7 @@ class AccountControllerTest extends TestCase
             'id' => $account->id,
             'name' => 'HasMeta',
             'type' => 'cash',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => '', 'statement_day' => null],
         ]));
 
         $this->assertDatabaseCount('meta', 0);
@@ -213,18 +245,37 @@ class AccountControllerTest extends TestCase
     {
         // The counterpart to the test above: for type=card the due date is
         // required, so blanking it fails validation and nothing is written.
+        // statement_day is supplied so the only error under test is the due day.
         $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01']]);
+        $account->meta()->create(['meta' => ['due' => '2026-10-01', 'statement_day' => 25]]);
 
         $response = $this->put("/accounts/{$account->id}", $this->payload([
             'id' => $account->id,
             'name' => 'Card',
             'type' => 'card',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => '', 'statement_day' => 25],
         ]));
 
         $response->assertSessionHasErrors('meta_data.due');
         $this->assertDatabaseCount('meta', 1);
+    }
+
+    public function test_update_cannot_blank_statement_day_on_a_card_account(): void
+    {
+        $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+        $account->meta()->create(['meta' => ['due' => '2026-10-01', 'statement_day' => 25]]);
+
+        $response = $this->put("/accounts/{$account->id}", $this->payload([
+            'id' => $account->id,
+            'name' => 'Card',
+            'type' => 'card',
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => null],
+        ]));
+
+        $response->assertSessionHasErrors('meta_data.statement_day');
+
+        // The original terms must survive the rejected request, not be blanked.
+        $this->assertSame(25, $account->fresh()->meta->meta['statement_day']);
     }
 
     public function test_update_requires_id_in_the_payload(): void

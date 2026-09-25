@@ -46,7 +46,7 @@ class AccountMetaTypeTransitionTest extends TestCase
         ]);
 
         if ($withMeta) {
-            $account->meta()->create(['meta' => ['due' => '5']]);
+            $account->meta()->create(['meta' => ['due' => '5', 'statement_day' => 5]]);
         }
 
         return $account;
@@ -62,7 +62,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => '20'],
+            'meta_data' => ['due' => '20', 'statement_day' => 20],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -113,7 +113,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => '25'],
+            'meta_data' => ['due' => '25', 'statement_day' => 25],
         ]);
 
         $response->assertSessionHasNoErrors();

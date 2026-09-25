@@ -20,7 +20,7 @@ class AccountDataTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '2026-10-01'],
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 25],
         ], $overrides));
     }
 
@@ -35,7 +35,7 @@ class AccountDataTest extends TestCase
         $this->assertNull($empty['name']);
         $this->assertNull($empty['id']);
         $this->assertNull($empty['created_at']);
-        $this->assertSame(['due' => null], $empty['meta_data']);
+        $this->assertSame(['due' => null, 'statement_day' => null], $empty['meta_data']);
     }
 
     public function test_from_request_populates_every_property(): void
@@ -50,6 +50,7 @@ class AccountDataTest extends TestCase
         $this->assertNotNull($data->created_at);
         $this->assertInstanceOf(AccountMetaData::class, $data->meta_data);
         $this->assertSame('2026-10-01', $data->meta_data->due);
+        $this->assertSame(25, $data->meta_data->statement_day);
     }
 
     public function test_to_array_serializes_nested_meta_data(): void
@@ -57,7 +58,10 @@ class AccountDataTest extends TestCase
         $array = AccountData::from($this->postRequest())->toArray();
 
         $this->assertSame('Test Account', $array['name']);
-        $this->assertSame(['due' => '2026-10-01'], $array['meta_data']);
+        $this->assertSame(
+            ['due' => '2026-10-01', 'statement_day' => 25],
+            $array['meta_data']
+        );
     }
 
     public function test_except_returns_a_data_object_without_the_named_property(): void
@@ -89,7 +93,39 @@ class AccountDataTest extends TestCase
 
     public function test_meta_data_attributes_rename_due_for_display(): void
     {
-        $this->assertSame(['due' => 'due date'], AccountMetaData::attributes());
+        // Without this the validation error reads "statement day" already via
+        // Laravel's snake->sentence casing, but being explicit keeps it aligned
+        // with the `due` entry and avoids depending on that casing.
+        $this->assertSame(
+            ['due' => 'due date', 'statement_day' => 'statement day'],
+            AccountMetaData::attributes()
+        );
+    }
+
+    public function test_meta_data_requires_both_card_days_not_just_the_due_day(): void
+    {
+        // A due day alone cannot place a charge in a statement period: many
+        // different statement days produce the same due day, so "when is it due"
+        // does not answer "which statement is this in". Both are required, and
+        // `due` alone is now insufficient rather than merely incomplete.
+        $rules = AccountMetaData::rules();
+
+        $this->assertContains('required_if:type,card', $rules['statement_day']);
+        $this->assertContains('integer', $rules['statement_day']);
+        $this->assertContains('between:1,31', $rules['statement_day']);
+    }
+
+    public function test_a_null_statement_day_is_not_an_integer_error(): void
+    {
+        // A blank number field, and AccountData::empty() both produce null, and
+        // the validator treats a null value as present -- so without `nullable`
+        // both `integer` and `between` would fire and reject a perfectly good
+        // cash account whose form was never touched. `required_if` is implicit
+        // and survives, which is what still rejects a card with no statement
+        // day.
+        $rules = AccountMetaData::rules();
+
+        $this->assertContains('nullable', $rules['statement_day']);
     }
 
     /**
