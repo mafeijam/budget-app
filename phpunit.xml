@@ -35,11 +35,9 @@
         <env name="DB_DATABASE" value="budget_v2_testing"/>
 
         <!--
-            Both names are set deliberately: Laravel 10 and below reads
-            CACHE_DRIVER, Laravel 11 and above reads CACHE_STORE. Remove
-            CACHE_DRIVER after the Laravel 11 upgrade lands.
+            CACHE_STORE is the Laravel 11+ name. The pre-L11 CACHE_DRIVER alias
+            was removed from this file when the framework was upgraded.
         -->
-        <env name="CACHE_DRIVER" value="array"/>
         <env name="CACHE_STORE" value="array"/>
 
         <env name="MAIL_MAILER" value="array"/>

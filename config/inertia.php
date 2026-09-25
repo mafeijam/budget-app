@@ -7,67 +7,80 @@ return [
     | Server Side Rendering
     |--------------------------------------------------------------------------
     |
-    | These options configures if and how Inertia uses Server Side Rendering
-    | to pre-render the initial visits made to your application's pages.
-    |
-    | You can specify a custom SSR bundle path, or omit it to let Inertia
-    | try and automatically detect it for you.
-    |
-    | Do note that enabling these options will NOT automatically make SSR work,
-    | as a separate rendering service needs to be available. To learn more,
-    | please visit https://inertiajs.com/server-side-rendering
+    | This application is a pure client-side SPA: resources/js/app.js calls
+    | createInertiaApp() with no SSR bundle and there is no bootstrap/ssr
+    | directory. SSR therefore defaults to disabled. Set INERTIA_SSR_ENABLED
+    | only if an SSR bundle is actually introduced.
     |
     */
 
     'ssr' => [
-
-        // This application is a pure client-side SPA: resources/js/app.js calls
-        // createInertiaApp() with no SSR bundle, and there is no
-        // bootstrap/ssr directory. Kept explicit so the intent is unambiguous.
-        'enabled' => false,
-
-        'url' => 'http://127.0.0.1:13714',
+        'enabled' => (bool) env('INERTIA_SSR_ENABLED', false),
+        'url' => env('INERTIA_SSR_URL', 'http://127.0.0.1:13714'),
+        'ensure_bundle_exists' => (bool) env('INERTIA_SSR_ENSURE_BUNDLE_EXISTS', true),
 
         // 'bundle' => base_path('bootstrap/ssr/ssr.mjs'),
-
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Page Resolution
+    |--------------------------------------------------------------------------
+    |
+    | Inertia 2 resolves page components from these paths. This app keeps its
+    | pages in resources/js/pages (lowercase "pages"), which is why the default
+    | resources/js/Pages does not match -- see the import.meta.glob() call in
+    | resources/js/app.js.
+    |
+    | ensure_pages_exist is left off so a missing page surfaces as a normal
+    | 500 in development rather than a hard failure in production.
+    |
+    */
+
+    'ensure_pages_exist' => false,
+
+    'page_paths' => [
+        resource_path('js/pages'),
+    ],
+
+    'page_extensions' => [
+        'js',
+        'jsx',
+        'svelte',
+        'ts',
+        'tsx',
+        'vue',
+    ],
+
+    'use_script_element_for_initial_page' => (bool) env('INERTIA_USE_SCRIPT_ELEMENT_FOR_INITIAL_PAGE', false),
 
     /*
     |--------------------------------------------------------------------------
     | Testing
     |--------------------------------------------------------------------------
     |
-    | The values described here are used to locate Inertia components on the
-    | filesystem. For instance, when using `assertInertia`, the assertion
-    | attempts to locate the component as a file relative to any of the
-    | paths AND with any of the extensions specified here.
+    | Used by assertInertia() to locate the component on disk. Unlike the
+    | runtime keys above, this one defaults to on: a test that renders
+    | Inertia::render('category') should fail loudly if
+    | resources/js/pages/category.vue has been renamed or moved.
     |
     */
 
     'testing' => [
-
         'ensure_pages_exist' => true,
 
         'page_paths' => [
-
-            // NOTE: lowercase "pages". This app's page components live in
-            // resources/js/pages (see the import.meta.glob in app.js), not
-            // Inertia's default resources/js/Pages.
             resource_path('js/pages'),
-
         ],
 
         'page_extensions' => [
-
             'js',
             'jsx',
             'svelte',
             'ts',
             'tsx',
             'vue',
-
         ],
-
     ],
 
 ];
