@@ -54,6 +54,14 @@ class AccountController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
+            // Rolling back is right -- these are multi-write operations and a
+            // half-applied account is worse than none. Discarding the exception
+            // is not: every failure below looked identical from the outside, a
+            // 302 reading "error db...", with no record of what actually went
+            // wrong. report() sends it to the exception handler, which logs it
+            // like any other error. The user-facing response is unchanged.
+            report($e);
+
             return back()->with('message', 'error db...');
         }
 
@@ -83,6 +91,10 @@ class AccountController extends Controller
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
+
+            // See store() above. report() logs the cause; the generic flash is
+            // kept so the existing frontend behaviour is untouched.
+            report($e);
 
             return back()->with('message', 'error db...');
         }
