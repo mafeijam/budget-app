@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -43,7 +44,7 @@ class DatabaseSafetyTest extends TestCase
         // A cheap round trip proves the guard is not merely pattern-matching a
         // name that happens to be unreachable.
         $this->assertNotNull(
-            \Illuminate\Support\Facades\DB::connection()->getPdo()
+            DB::connection()->getPdo()
         );
     }
 }

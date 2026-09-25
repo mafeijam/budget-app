@@ -4,7 +4,6 @@ namespace Tests;
 
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 trait CreatesApplication
@@ -71,11 +70,11 @@ trait CreatesApplication
         throw new RuntimeException(sprintf(
             "Refusing to run the test suite: the '%s' connection points at '%s', "
             ."which does not look like a test database.\n\n"
-            ."A cached config (bootstrap/cache/config.php) overrides the DB_DATABASE "
-            ."value in phpunit.xml, which would make RefreshDatabase run "
+            .'A cached config (bootstrap/cache/config.php) overrides the DB_DATABASE '
+            .'value in phpunit.xml, which would make RefreshDatabase run '
             ."`migrate:fresh` against your real data.\n\n"
             ."Fix it with:  php artisan optimize:clear\n"
-            ."Or set DB_DATABASE to a dedicated throwaway database in phpunit.xml "
+            .'Or set DB_DATABASE to a dedicated throwaway database in phpunit.xml '
             ."and .env.testing.\n",
             $database,
             $name

@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Exceptions\Handler;
 use App\Http\Middleware\PreventRequestForgery;
+use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Exceptions\OriginMismatchException;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
@@ -169,7 +172,7 @@ class CsrfExpiryTest extends TestCase
     {
         // Guards the L13 rename: the web group must still have exactly one
         // forgery-protection middleware in it, and it must be the renamed class.
-        $kernel = app(\Illuminate\Contracts\Http\Kernel::class);
+        $kernel = app(Kernel::class);
 
         $middleware = method_exists($kernel, 'getMiddlewareGroups')
             ? $kernel->getMiddlewareGroups()['web']
@@ -183,7 +186,7 @@ class CsrfExpiryTest extends TestCase
             1,
             $forgery,
             'Expected exactly one request-forgery middleware in the web group, got: '
-                . implode(', ', $forgery)
+                .implode(', ', $forgery)
         );
 
         $this->assertSame(
@@ -209,7 +212,7 @@ class CsrfExpiryTest extends TestCase
     {
         return $class === PreventRequestForgery::class
             || is_a($class, \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class, true)
-            || is_a($class, \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class, true)
-            || is_a($class, \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, true);
+            || is_a($class, ValidateCsrfToken::class, true)
+            || is_a($class, VerifyCsrfToken::class, true);
     }
 }

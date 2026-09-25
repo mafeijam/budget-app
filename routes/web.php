@@ -10,5 +10,3 @@ Route::inertia('/', 'index');
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');
-
-Route::get('php', fn () => throw new Error('yo'));
