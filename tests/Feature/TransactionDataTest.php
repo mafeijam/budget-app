@@ -3,24 +3,44 @@
 namespace Tests\Feature;
 
 use App\DTO\TransactionData;
+use App\DTO\TransactionMetaData;
+use App\Enums\AccountType;
+use App\Enums\TransactionStatus;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
+/**
+ * Covers the transaction payload for all three account types.
+ *
+ * The transactions table is shared by cash, card and securities rows, so most
+ * of what makes a payload valid is a property of a *pair* -- a transaction type
+ * and the account it belongs to -- rather than of either alone. That is why
+ * there is a card account and a securities account here as well as the cash one:
+ * the interesting rejections are all "that does not go on that kind of
+ * account", and they cannot be expressed without both sides existing.
+ */
 class TransactionDataTest extends TestCase
 {
-    // Both foreign keys are validated with `exists:`, so the referenced rows
-    // have to be real. They are created per test and rolled back by the
+    // The foreign keys are validated with `exists:`, and the account type is
+    // read from the database to check it against the transaction type, so real
+    // rows are needed. They are created per test and rolled back by the
     // transaction RefreshDatabase wraps each test in.
     use RefreshDatabase;
 
     private int $accountId;
 
     private int $categoryId;
+
+    private int $cardId;
+
+    private int $securityId;
 
     protected function setUp(): void
     {
@@ -34,6 +54,22 @@ class TransactionDataTest extends TestCase
         ])->id;
 
         $this->categoryId = Category::create(['name' => 'Food'])->id;
+
+        $card = Account::create([
+            'name' => 'Card A',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'HKD',
+        ]);
+        $card->meta()->create(['meta' => ['due' => '15', 'statement_day' => 25]]);
+        $this->cardId = $card->id;
+
+        $this->securityId = Account::create([
+            'name' => 'Broker A',
+            'status' => 'active',
+            'type' => 'security',
+            'ccy' => 'HKD',
+        ])->id;
     }
 
     private function postRequest(array $overrides = []): Request
@@ -42,11 +78,49 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->accountId,
             'category_id' => $this->categoryId,
             'date' => '2026-01-01',
-            'type' => 'debit',
+            'type' => 'expense',
             'description' => 'Coffee',
             'amount' => '4.5000',
             'ccy' => 'USD',
         ], $overrides));
+    }
+
+    /**
+     * A trade payload: no amount, because the server derives it, and the
+     * quantity and price it derives from.
+     */
+    private function tradeRequest(string $type, array $overrides = []): Request
+    {
+        return $this->postRequest(array_merge([
+            'account_id' => $this->securityId,
+            'type' => $type,
+            'amount' => null,
+            'category_id' => null,
+            'meta_data' => [
+                'symbol' => '0700.HK',
+                'quantity' => '100',
+                'unit_price' => '150.50',
+            ],
+        ], $overrides));
+    }
+
+    /**
+     * Asserts that a payload override is rejected on a specific field.
+     *
+     * The error bag is inspected rather than the exception type so that an
+     * unrelated rule firing first cannot mask the field under test.
+     */
+    private function assertFieldRejected(array $overrides, string $field): void
+    {
+        try {
+            TransactionData::from($this->postRequest($overrides));
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey($field, $e->errors());
+
+            return;
+        }
+
+        $this->fail("Expected [{$field}] to be rejected, but the payload validated.");
     }
 
     public function test_empty_returns_a_plain_array_keyed_by_property(): void
@@ -65,7 +139,7 @@ class TransactionDataTest extends TestCase
         $this->assertSame($this->accountId, $data->account_id);
         $this->assertSame($this->categoryId, $data->category_id);
         $this->assertSame('2026-01-01', $data->date);
-        $this->assertSame('debit', $data->type);
+        $this->assertSame(TransactionType::Expense, $data->type);
         $this->assertSame('Coffee', $data->description);
         $this->assertSame('4.5000', $data->amount);
         $this->assertSame('USD', $data->ccy);
@@ -90,23 +164,14 @@ class TransactionDataTest extends TestCase
         $this->assertNotNull($array['created_at']);
     }
 
-    /**
-     * Asserts that a payload override is rejected on a specific field.
-     *
-     * The error bag is inspected rather than the exception type so that an
-     * unrelated rule firing first cannot mask the field under test.
-     */
-    private function assertFieldRejected(array $overrides, string $field): void
+    public function test_enums_serialize_as_their_plain_values(): void
     {
-        try {
-            TransactionData::from($this->postRequest($overrides));
-        } catch (ValidationException $e) {
-            $this->assertArrayHasKey($field, $e->errors());
+        // Guards the wire format. toArray() must emit the scalar, not the enum
+        // name, or every Inertia prop carrying a transaction changes shape.
+        $array = TransactionData::from($this->postRequest())->toArray();
 
-            return;
-        }
-
-        $this->fail("Expected [{$field}] to be rejected, but the payload validated.");
+        $this->assertSame('expense', $array['type']);
+        $this->assertSame('posted', $array['status']);
     }
 
     public function test_amount_must_be_numeric(): void
@@ -129,6 +194,13 @@ class TransactionDataTest extends TestCase
         $this->assertFieldRejected(['amount' => '999999999.9999'], 'amount');
     }
 
+    public function test_amount_may_not_be_negative(): void
+    {
+        // amount is a positive magnitude; direction comes from the account type
+        // and the transaction type. A negative here is a sign error at best.
+        $this->assertFieldRejected(['amount' => '-4.5000'], 'amount');
+    }
+
     public function test_date_must_be_iso_formatted(): void
     {
         $this->assertFieldRejected(['date' => '01/01/2026'], 'date');
@@ -136,8 +208,8 @@ class TransactionDataTest extends TestCase
 
     public function test_account_id_must_reference_an_existing_account(): void
     {
-        // Without `exists:` a bad id reached the foreign key and came back as
-        // a database error instead of a validation error.
+        // Without `exists:` a bad id reached the foreign key and came back as a
+        // database error instead of a validation error.
         $this->assertFieldRejected(['account_id' => 999999], 'account_id');
     }
 
@@ -156,20 +228,557 @@ class TransactionDataTest extends TestCase
         $this->assertFieldRejected(['ccy' => 'HK Dollar'], 'ccy');
     }
 
+    public function test_an_unknown_transaction_type_is_rejected(): void
+    {
+        // Previously "banana" reached the string column, where it looked like a
+        // perfectly good row until something asked what it meant.
+        $this->assertFieldRejected(['type' => 'banana'], 'type');
+    }
+
+    public function test_status_defaults_to_posted(): void
+    {
+        // Posted is the only state a plain cash expense is ever in, so a client
+        // that does not care about status should not have to say so.
+        $this->assertSame(TransactionStatus::Posted, TransactionData::from($this->postRequest())->status);
+    }
+
+    public function test_a_client_supplied_status_is_kept(): void
+    {
+        $data = TransactionData::from($this->postRequest(['status' => 'pending']));
+
+        $this->assertSame(TransactionStatus::Pending, $data->status);
+    }
+
+    public function test_an_unknown_status_is_rejected(): void
+    {
+        $this->assertFieldRejected(['status' => 'banana'], 'status');
+    }
+
+    public function test_fx_rate_is_optional(): void
+    {
+        // NULL means "already in the account's currency", which is the common
+        // case and must not be forced to a literal 1.
+        $this->assertNull(TransactionData::from($this->postRequest())->fx_rate);
+    }
+
+    public function test_fx_rate_may_not_be_zero_or_negative(): void
+    {
+        // A rate of zero would divide an account's balance to nothing; a
+        // negative rate is meaningless. NULL is how you say "no conversion".
+        $this->assertFieldRejected(['fx_rate' => '0'], 'fx_rate');
+        $this->assertFieldRejected(['fx_rate' => '-7.8'], 'fx_rate');
+    }
+
+    public function test_fx_rate_may_not_carry_more_than_eight_decimal_places(): void
+    {
+        $this->assertFieldRejected(['fx_rate' => '7.849512345'], 'fx_rate');
+    }
+
+    // ---------------------------------------------------------------------
+    // The account type / transaction type pairing
+    // ---------------------------------------------------------------------
+
+    public function test_a_charge_is_accepted_on_a_card(): void
+    {
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+        ]));
+
+        $this->assertSame(TransactionType::Charge, $data->type);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function mismatchedPairProvider(): array
+    {
+        return [
+            'a payment settles a card statement, not a cash account' => ['cash', 'payment'],
+            'a payment settles a card statement, not a broker account' => ['security', 'payment'],
+            'a charge spends a card, not a cash account' => ['cash', 'charge'],
+            'a charge spends a card, not a broker account' => ['security', 'charge'],
+            'a trade belongs on a broker account, not a cash account' => ['cash', 'buy'],
+            'an expense is not spending a card' => ['card', 'expense'],
+            'income into a cash account is not income on a card' => ['card', 'income'],
+            'a dividend belongs on a broker account, not a card' => ['card', 'dividend'],
+        ];
+    }
+
+    #[DataProvider('mismatchedPairProvider')]
+    public function test_a_transaction_type_is_rejected_on_the_wrong_account_type(
+        string $accountType,
+        string $transactionType
+    ): void {
+        $account = Account::create([
+            'name' => "Probe {$accountType}",
+            'status' => 'active',
+            'type' => $accountType,
+            'ccy' => 'HKD',
+        ]);
+
+        // The payload has to be otherwise valid for the transaction type, and
+        // that is not incidental: spatie validates the payload *before* it
+        // constructs the DTO, so any independent error -- a prohibited amount on
+        // a trade, say -- is reported in place of the pairing. Building a clean
+        // payload is the only way to be sure the guard is what rejected it.
+        $type = TransactionType::from($transactionType);
+
+        $overrides = ['account_id' => $account->id, 'type' => $transactionType];
+
+        if ($type->requiresCategory()) {
+            $overrides['category_id'] = $this->categoryId;
+        } else {
+            $overrides['category_id'] = null;
+        }
+
+        $overrides['amount'] = $type->derivesAmount() ? null : '10.0000';
+
+        if ($type->derivesAmount()) {
+            $overrides['meta_data'] = [
+                'symbol' => '0700.HK',
+                'quantity' => '1',
+                'unit_price' => '1.0000',
+            ];
+        }
+
+        try {
+            TransactionData::from($this->postRequest($overrides));
+            $this->fail("A {$transactionType} was accepted on a {$accountType} account.");
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('type', $e->errors());
+            $this->assertStringContainsString($accountType, $e->errors()['type'][0]);
+        }
+    }
+
+    public function test_the_pairing_is_checked_even_without_validating(): void
+    {
+        // The pairing needs the account's type, which only the database knows, so
+        // it cannot be a rule on the payload alone. It is enforced in the
+        // constructor instead, which means it holds whether or not the caller
+        // remembered to call validate() -- the alternative is a client that
+        // skips validation writing a payment onto a cash account.
+        $this->expectException(ValidationException::class);
+
+        TransactionData::from($this->postRequest(['type' => 'payment']));
+    }
+
+    public function test_an_unknown_account_id_is_left_to_the_exists_rule(): void
+    {
+        // There is no account to compare against, so the constructor must not
+        // throw its own error and mask the one the exists rule produces.
+        $this->assertFieldRejected(['account_id' => 999999], 'account_id');
+    }
+
+    // ---------------------------------------------------------------------
+    // Category
+    // ---------------------------------------------------------------------
+
+    public function test_an_expense_must_be_categorised(): void
+    {
+        $this->assertFieldRejected(['category_id' => null], 'category_id');
+    }
+
+    public function test_a_charge_must_be_categorised(): void
+    {
+        $this->assertFieldRejected([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'category_id' => null,
+        ], 'category_id');
+    }
+
+    public function test_a_payment_needs_no_category(): void
+    {
+        // A payment settles a statement rather than buying anything, so it has
+        // nothing to categorise. This is why category_id became nullable.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'payment',
+            'category_id' => null,
+        ]));
+
+        $this->assertNull($data->category_id);
+    }
+
+    public function test_a_trade_needs_no_category(): void
+    {
+        $data = TransactionData::from($this->tradeRequest('buy'));
+
+        $this->assertNull($data->category_id);
+    }
+
+    public function test_income_may_be_uncategorised(): void
+    {
+        // `categories` has no income/expense discriminator, so requiring one
+        // here would mean picking from a list of spending categories. Optional
+        // until that gap is closed.
+        $data = TransactionData::from($this->postRequest([
+            'type' => 'income',
+            'category_id' => null,
+        ]));
+
+        $this->assertNull($data->category_id);
+    }
+
+    // ---------------------------------------------------------------------
+    // Derived trade amount
+    // ---------------------------------------------------------------------
+
+    public function test_a_buy_derives_its_amount_from_the_quantity_and_price(): void
+    {
+        $data = TransactionData::from($this->tradeRequest('buy'));
+
+        $this->assertSame('15050.0000', $data->amount);
+    }
+
+    public function test_a_sell_subtracts_the_fee_from_its_proceeds(): void
+    {
+        $data = TransactionData::from($this->tradeRequest('sell', [
+            'meta_data' => [
+                'symbol' => '0700.HK',
+                'quantity' => '100',
+                'unit_price' => '150.50',
+                'fees' => '25.00',
+            ],
+        ]));
+
+        $this->assertSame('15025.0000', $data->amount);
+    }
+
+    public function test_a_supplied_amount_on_a_trade_is_rejected(): void
+    {
+        // The amount is a product of two numbers the client already sent, so
+        // accepting a stated amount as well would mean two sources of truth and
+        // no way to tell which one the balance used.
+        try {
+            TransactionData::from($this->tradeRequest('buy', ['amount' => '1.00']));
+            $this->fail('A trade accepted a client-supplied amount.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('amount', $e->errors());
+        }
+    }
+
+    public function test_a_supplied_amount_on_a_trade_is_overwritten_rather_than_kept(): void
+    {
+        // Belt to the rule's braces. Data::from() validates, so the test above
+        // already covers the normal path; this constructs the DTO directly to
+        // reach the path where nobody validated at all. A trade whose amount can
+        // be whatever the client said is a trade that can be wrong, so the
+        // constructor does not take the client's word for it.
+        $data = new TransactionData(
+            id: null,
+            account_id: $this->securityId,
+            category_id: null,
+            date: '2026-01-01',
+            type: TransactionType::Buy,
+            description: 'Buy 0700.HK',
+            amount: '1.00',
+            ccy: 'HKD',
+            status: null,
+            fx_rate: null,
+            due_date: null,
+            meta_data: new TransactionMetaData(null, '0700.HK', '100', '150.50', null),
+            created_at: null,
+        );
+
+        $this->assertSame('15050.0000', $data->amount);
+    }
+
+    public function test_a_non_trade_keeps_its_supplied_amount(): void
+    {
+        // The mirror of the test above, so the overwrite is not unconditional.
+        $data = new TransactionData(
+            id: null,
+            account_id: $this->accountId,
+            category_id: $this->categoryId,
+            date: '2026-01-01',
+            type: TransactionType::Expense,
+            description: 'Coffee',
+            amount: '4.5000',
+            ccy: 'HKD',
+            status: null,
+            fx_rate: null,
+            due_date: null,
+            meta_data: null,
+            created_at: null,
+        );
+
+        $this->assertSame('4.5000', $data->amount);
+    }
+
+    public function test_a_trade_with_no_meta_is_rejected(): void
+    {
+        // Without a quantity and a price there is nothing to derive the amount
+        // from, and a null amount would fail the NOT NULL column at insert with
+        // a database error rather than a validation error.
+        //
+        // This is why the meta is required outright rather than relying on the
+        // nested rules: when meta_data is missing from the payload entirely,
+        // those rules never run, so a buy with no meta at all would otherwise
+        // pass and reach the column with a null amount.
+        try {
+            TransactionData::from($this->tradeRequest('buy', ['meta_data' => null]));
+            $this->fail('A trade with no meta was accepted.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('meta_data', $e->errors());
+        }
+    }
+
+    public function test_a_trade_with_partial_meta_is_rejected(): void
+    {
+        // The other half of the same hole: meta present but the price missing.
+        $this->assertFieldRejected([
+            'account_id' => $this->securityId,
+            'type' => 'buy',
+            'category_id' => null,
+            'amount' => null,
+            'meta_data' => ['symbol' => '0700.HK', 'quantity' => '100'],
+        ], 'meta_data.unit_price');
+    }
+
+    public function test_a_dividend_keeps_its_supplied_amount(): void
+    {
+        // A dividend is recorded on a securities account but is not a trade: it
+        // arrives as a fixed sum with no quantity or price, so deriving one
+        // would be nonsense.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->securityId,
+            'type' => 'dividend',
+            'category_id' => null,
+            'amount' => '312.4400',
+        ]));
+
+        $this->assertSame('312.4400', $data->amount);
+    }
+
+    public function test_a_non_trade_requires_an_amount(): void
+    {
+        $this->assertFieldRejected(['amount' => null], 'amount');
+    }
+
+    // ---------------------------------------------------------------------
+    // Derived due date
+    // ---------------------------------------------------------------------
+
+    public function test_a_charge_derives_its_due_date_from_the_account_terms(): void
+    {
+        // Closing on the 25th, due on the 15th: a charge on 1 Jan falls in the
+        // statement that closes on 25 Jan, so it is due 15 Feb.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => '2026-01-01',
+        ]));
+
+        $this->assertSame('2026-02-15', $data->due_date);
+    }
+
+    public function test_a_charge_after_the_closing_day_moves_to_the_next_period(): void
+    {
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => '2026-01-26',
+        ]));
+
+        $this->assertSame('2026-03-15', $data->due_date);
+    }
+
+    public function test_a_charge_on_the_closing_day_belongs_to_that_statement(): void
+    {
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => '2026-01-25',
+        ]));
+
+        $this->assertSame('2026-02-15', $data->due_date);
+    }
+
+    public function test_a_charge_on_a_card_with_no_statement_day_has_no_due_date(): void
+    {
+        // Possible for a card row that predates statement_day, or one written
+        // straight to the database. No cycle means no due date -- better a null
+        // the user can see than a date invented from the due day alone.
+        $card = Account::create([
+            'name' => 'Card B',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'HKD',
+        ]);
+        $card->meta()->create(['meta' => ['due' => '15']]);
+
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $card->id,
+            'type' => 'charge',
+        ]));
+
+        $this->assertNull($data->due_date);
+    }
+
+    public function test_a_charge_keeps_a_due_date_the_client_supplied(): void
+    {
+        // A backdated or corrected charge may need to land in a period other
+        // than the one its date implies.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'due_date' => '2026-04-15',
+        ]));
+
+        $this->assertSame('2026-04-15', $data->due_date);
+    }
+
+    public function test_only_a_charge_derives_a_due_date(): void
+    {
+        foreach (['expense', 'income'] as $type) {
+            $data = TransactionData::from($this->postRequest(['type' => $type]));
+
+            $this->assertNull($data->due_date, "A {$type} should have no due date.");
+        }
+    }
+
+    public function test_a_payment_may_carry_a_due_date_to_target_a_period(): void
+    {
+        // A payment settles a specific statement, so which one has to be
+        // recorded or settlement cannot be a single grouped subtraction. It is
+        // supplied rather than derived: the statement a payment lands on is
+        // normally the earliest unpaid, and working that out means querying
+        // outstanding balances -- deliberately left to the controller.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'payment',
+            'category_id' => null,
+            'due_date' => '2026-02-15',
+        ]));
+
+        $this->assertSame('2026-02-15', $data->due_date);
+    }
+
+    public function test_a_due_date_must_be_iso_formatted(): void
+    {
+        $this->assertFieldRejected([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'due_date' => '15/02/2026',
+        ], 'due_date');
+    }
+
+    public function test_a_malformed_date_does_not_explode_the_due_date_derivation(): void
+    {
+        // The date rule reports the bad format. The constructor must not also
+        // throw a parse error on its way past, or the user sees an exception
+        // instead of the field error.
+        $this->expectException(ValidationException::class);
+
+        TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => 'not-a-date',
+        ]));
+    }
+
+    public function test_the_conditional_rule_lists_track_the_enum(): void
+    {
+        // The "required unless" / "prohibited unless" lists are built from
+        // TransactionType, so a new case is picked up automatically. This
+        // asserts they still agree with the enum's own predicates, which is what
+        // would fail if anyone hand-wrote the lists again.
+        foreach (TransactionType::cases() as $type) {
+            // A category is required exactly when the type says so, so omitting
+            // one is rejected exactly then.
+            $this->assertSame(
+                $type->requiresCategory(),
+                $this->rejectsField('category_id', null, $type, 'category_id'),
+                "category_id requirement for {$type->value} disagrees with requiresCategory()."
+            );
+
+            // An amount is required exactly when it is not derived, so omitting
+            // one is rejected exactly then.
+            $this->assertSame(
+                ! $type->derivesAmount(),
+                $this->rejectsField('amount', null, $type, 'amount'),
+                "amount requirement for {$type->value} disagrees with derivesAmount()."
+            );
+        }
+    }
+
+    /**
+     * Whether setting one field to one value is rejected, with everything else
+     * in the payload valid for the given type.
+     *
+     * The base payload is built for the type rather than reused, because a
+     * leftover from postRequest() would otherwise be the thing that fails: a
+     * trade left holding an amount is rejected on `amount` no matter which field
+     * is under test.
+     */
+    private function rejectsField(
+        string $field,
+        mixed $value,
+        TransactionType $type,
+        string $assertionField
+    ): bool {
+        $accountId = match (true) {
+            $type->isAllowedFor(AccountType::Cash) => $this->accountId,
+            $type->isAllowedFor(AccountType::Card) => $this->cardId,
+            default => $this->securityId,
+        };
+
+        $overrides = [
+            'account_id' => $accountId,
+            'type' => $type->value,
+            $field => $value,
+        ];
+
+        // Everything not under test has to be valid for this type, or it is the
+        // thing that fails instead. Note that ??= is no use here: it treats null
+        // as absent, so it would overwrite the very value under test.
+        if ($field !== 'category_id' && $type->requiresCategory()) {
+            $overrides['category_id'] = $this->categoryId;
+        }
+
+        if ($type->derivesAmount()) {
+            $overrides['amount'] = $field === 'amount' ? $value : null;
+            $overrides['meta_data'] = [
+                'symbol' => '0700.HK',
+                'quantity' => '1',
+                'unit_price' => '1.0000',
+            ];
+        } elseif ($field !== 'amount') {
+            $overrides['amount'] = '1.0000';
+        }
+
+        try {
+            TransactionData::from($this->postRequest($overrides));
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey($assertionField, $e->errors());
+
+            return true;
+        }
+
+        return false;
+    }
+
     public function test_only_the_extra_constraints_are_declared(): void
     {
         // `required` and the type checks are derived from the constructor
         // property types by spatie, so rules() only adds what the types cannot
-        // express. This also documents the shape returned by the debug stub in
-        // TransactionController::store().
+        // express: existence, formats, and the conditions that depend on the
+        // transaction type. This also documents the shape returned by the debug
+        // stub in TransactionController::store().
         $rules = TransactionData::rules();
 
         $this->assertSame(['exists:accounts,id'], $rules['account_id']);
-        $this->assertSame(['exists:categories,id'], $rules['category_id']);
         $this->assertSame(['date_format:Y-m-d'], $rules['date']);
-        $this->assertSame(['decimal:0,4', 'max:99999999.9999'], $rules['amount']);
-        $this->assertSame(['max:255'], $rules['type']);
         $this->assertSame(['max:255'], $rules['description']);
         $this->assertSame(['size:3'], $rules['ccy']);
+        $this->assertSame(['nullable', 'decimal:0,8', 'gt:0'], $rules['fx_rate']);
+        $this->assertSame(['nullable', 'date_format:Y-m-d'], $rules['due_date']);
+
+        // type is an enum, so spatie validates its value and no length rule is
+        // needed -- the column is varchar(255) and cannot be reached with
+        // anything but a declared case.
+        $this->assertArrayNotHasKey('type', $rules);
     }
 }
