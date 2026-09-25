@@ -1,10 +1,10 @@
 <?php
 
+use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
-use Monolog\Formatter\LineFormatter;
 
 return [
 
@@ -134,14 +134,14 @@ return [
             'handler_with' => [
                 'stream' => storage_path('logs/laravel.log'),
                 'level' => 'debug',
-                'bubble' => false
+                'bubble' => false,
             ],
             'formatter' => LineFormatter::class,
             'formatter_with' => [
                 'dateFormat' => 'Y-m-d H:i:s P',
-                'ignoreEmptyContextAndExtra' => true
-            ]
-        ]
+                'ignoreEmptyContextAndExtra' => true,
+            ],
+        ],
     ],
 
 ];

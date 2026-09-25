@@ -8,9 +8,7 @@ class AccountMetaData extends Data
 {
     public function __construct(
         public ?string $due
-    ) {
-
-    }
+    ) {}
 
     public static function rules()
     {
