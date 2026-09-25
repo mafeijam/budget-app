@@ -1,0 +1,27 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "devDependencies": {
+        "@inertiajs/vue3": "^1.0.14",
+        "@quasar/extras": "^1.16.9",
+        "@quasar/vite-plugin": "^1.6.0",
+        "@vitejs/plugin-vue": "^5.0.4",
+        "@vueuse/core": "^10.8.0",
+        "axios": "^1.6.7",
+        "eslint": "^8.57.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-plugin-prettier": "^5.1.3",
+        "eslint-plugin-vue": "^9.22.0",
+        "laravel-vite-plugin": "^1.0.1",
+        "prettier": "^3.2.5",
+        "quasar": "^2.14.5",
+        "unplugin-auto-import": "^0.17.5",
+        "unplugin-vue-components": "^0.26.0",
+        "vite": "^5.1.4",
+        "vue": "^3.4.19"
+    }
+}
