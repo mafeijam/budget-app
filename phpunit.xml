@@ -20,9 +20,28 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+
+        <!--
+            Tests run against a DEDICATED MySQL database so they can never touch
+            live data. DB_USERNAME / DB_PASSWORD are inherited from .env.
+
+            PREFERRED (once "sudo apt install php8.3-sqlite3" is available):
+            replace the two MySQL lines below with
+
+                <env name="DB_CONNECTION" value="sqlite"/>
+                <env name="DB_DATABASE" value=":memory:"/>
+        -->
+        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_DATABASE" value="budget_v2_testing"/>
+
+        <!--
+            Both names are set deliberately: Laravel 10 and below reads
+            CACHE_DRIVER, Laravel 11 and above reads CACHE_STORE. Remove
+            CACHE_DRIVER after the Laravel 11 upgrade lands.
+        -->
         <env name="CACHE_DRIVER" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <env name="CACHE_STORE" value="array"/>
+
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

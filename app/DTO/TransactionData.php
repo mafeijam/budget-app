@@ -2,6 +2,7 @@
 
 namespace App\DTO;
 
+use Carbon\Carbon;
 use Spatie\LaravelData\Data;
 
 class TransactionData extends Data
