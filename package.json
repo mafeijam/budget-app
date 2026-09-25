@@ -8,12 +8,11 @@
         "lint:fix": "eslint . --fix"
     },
     "devDependencies": {
-        "@inertiajs/vue3": "^2.0",
+        "@inertiajs/vue3": "^3.7.1",
         "@quasar/extras": "^2.1.0",
         "@quasar/vite-plugin": "^2.0.2",
         "@vitejs/plugin-vue": "^6.0.9",
         "@vueuse/core": "^15.0.0",
-        "axios": "^1.6.7",
         "eslint": "^10.11.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.6",

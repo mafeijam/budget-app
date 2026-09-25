@@ -12,6 +12,16 @@ return [
     | directory. SSR therefore defaults to disabled. Set INERTIA_SSR_ENABLED
     | only if an SSR bundle is actually introduced.
     |
+    | Note that the Inertia 3 stub flips this default to true. Taking the stub
+    | would point every request at an SSR gateway that has nothing behind it.
+    |
+    | Inertia 3 also ships ssr.runtime, ssr.hot_url, ssr.timeout,
+    | ssr.ensure_runtime_exists and ssr.throw_on_error. They are deliberately
+    | not copied across: each is read only from the SSR code paths, which do
+    | not run while enabled is false, and each read carries its own inline
+    | default. Laravel merges config one level deep, so omitting them here
+    | costs nothing and keeps this block honest about what is actually used.
+    |
     */
 
     'ssr' => [
@@ -27,53 +37,29 @@ return [
     | Page Resolution
     |--------------------------------------------------------------------------
     |
-    | Inertia 2 resolves page components from these paths. This app keeps its
-    | pages in resources/js/pages (lowercase "pages"), which is why the default
-    | resources/js/Pages does not match -- see the import.meta.glob() call in
-    | resources/js/app.js.
+    | Inertia 3 folds these three settings into a single `pages` key, replacing
+    | the flat ensure_pages_exist / page_paths / page_extensions of Inertia 2.
+    | The values are unchanged: pages live in resources/js/pages, lower case,
+    | which is what the import.meta.glob() call in resources/js/app.js matches.
     |
-    | ensure_pages_exist is left off so a missing page surfaces as a normal
-    | 500 in development rather than a hard failure in production.
+    | ensure_pages_exist stays false so a missing page surfaces as a normal 500
+    | in development rather than a hard failure in production.
     |
-    */
-
-    'ensure_pages_exist' => false,
-
-    'page_paths' => [
-        resource_path('js/pages'),
-    ],
-
-    'page_extensions' => [
-        'js',
-        'jsx',
-        'svelte',
-        'ts',
-        'tsx',
-        'vue',
-    ],
-
-    'use_script_element_for_initial_page' => (bool) env('INERTIA_USE_SCRIPT_ELEMENT_FOR_INITIAL_PAGE', false),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Testing
-    |--------------------------------------------------------------------------
-    |
-    | Used by assertInertia() to locate the component on disk. Unlike the
-    | runtime keys above, this one defaults to on: a test that renders
-    | Inertia::render('category') should fail loudly if
-    | resources/js/pages/category.vue has been renamed or moved.
+    | The use_script_element_for_initial_page option is gone in Inertia 3 --
+    | the key no longer exists anywhere in the package. The initial page is
+    | always delivered the same way now, so the INERTIA_USE_SCRIPT_ELEMENT_
+    | FOR_INITIAL_PAGE variable it read has no replacement to configure.
     |
     */
 
-    'testing' => [
-        'ensure_pages_exist' => true,
+    'pages' => [
+        'ensure_pages_exist' => false,
 
-        'page_paths' => [
+        'paths' => [
             resource_path('js/pages'),
         ],
 
-        'page_extensions' => [
+        'extensions' => [
             'js',
             'jsx',
             'svelte',
@@ -81,6 +67,26 @@ return [
             'tsx',
             'vue',
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Testing
+    |--------------------------------------------------------------------------
+    |
+    | Inertia 2 let testing.page_paths and testing.page_extensions override
+    | where assertInertia() looks for a component on disk. Inertia 3 removed
+    | both; the assertion reads pages.paths and pages.extensions above, so
+    | there is now a single source of truth and the two cannot drift apart.
+    |
+    | This flag stays on: a test that renders Inertia::render('category')
+    | should fail loudly if resources/js/pages/category.vue has been renamed
+    | or moved.
+    |
+    */
+
+    'testing' => [
+        'ensure_pages_exist' => true,
     ],
 
 ];
