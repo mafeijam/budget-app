@@ -315,6 +315,19 @@
     "useFormEmpty": true,
     "useCloneForm": true,
     "useEdite": true,
-    "useWatchTarget": true
+    "useWatchTarget": true,
+    "createDisposableDirective": true,
+    "createRef": true,
+    "onElementRemoval": true,
+    "refManualReset": true,
+    "useCountdown": true,
+    "useCssSupports": true,
+    "useElementOverflow": true,
+    "useLiveAnnouncer": true,
+    "usePreferredReducedTransparency": true,
+    "useSSRWidth": true,
+    "useTemporalNow": true,
+    "useTimeAgoIntl": true,
+    "useWebMCP": true
   }
 }
