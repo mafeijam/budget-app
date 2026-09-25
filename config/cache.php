@@ -106,6 +106,27 @@ return [
     |
     */
 
+    // Laravel 13 changed its framework-level fallback prefix from
+    // "<app>_cache_" to "<app>-cache-". Because this file defines the value
+    // explicitly, the fallback is never consulted and existing cache keys are
+    // preserved. Kept on the old form deliberately so upgrading does not cold
+    // the cache.
     'prefix' => env('CACHE_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_cache_'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Serializable Classes
+    |--------------------------------------------------------------------------
+    |
+    | Laravel 13 hardens cache unserialization against PHP deserialization
+    | gadget chains: the framework only unserializes classes on this allow
+    | list, and `false` means "no objects at all". This application stores
+    | only scalar/array payloads, so nothing needs to be added. If a PHP
+    | object ever needs to be cached, list its class here explicitly rather
+    | than disabling the check.
+    |
+    */
+
+    'serializable_classes' => false,
 
 ];

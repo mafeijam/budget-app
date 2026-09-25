@@ -126,6 +126,10 @@ return [
     |
     */
 
+    // Laravel 13 changed its framework-level fallback cookie name from
+    // "<app>_session" to "<app>-session". Because this file defines the value
+    // explicitly the fallback is never consulted, so existing session cookies
+    // keep working across the upgrade.
     'cookie' => env(
         'SESSION_COOKIE',
         Str::slug(env('APP_NAME', 'laravel'), '_').'_session'
@@ -197,5 +201,27 @@ return [
     */
 
     'same_site' => 'lax',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Serialization
+    |--------------------------------------------------------------------------
+    |
+    | Laravel 13's skeleton switches this to "json" to prevent PHP
+    | deserialization gadget chain attacks. The legacy "php" value uses
+    | serialize()/unserialize(), which can instantiate arbitrary objects if a
+    | session payload is ever tampered with.
+    |
+    | This application only ever puts scalar values in the session -- Laravel
+    | core flash data (a "message" / "message_csrf" string) plus the CSRF
+    | token -- so "json" is safe here and was adopted during the Laravel 13
+    | upgrade. The one-time effect is that sessions created before the upgrade
+    | are invalidated and users must start a new session.
+    |
+    | Supported: "php", "json"
+    |
+    */
+
+    'serialization' => 'json',
 
 ];

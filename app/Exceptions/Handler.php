@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\OriginMismatchException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -28,13 +29,32 @@ class Handler extends ExceptionHandler
         });
     }
 
+    /**
+     * The flash message shown when a request fails request-forgery protection.
+     *
+     * Rendered by the amber banner in
+     * resources/js/components/Form/FormDialog.vue via $page.props.message_csrf.
+     */
+    private const CSRF_MESSAGE = 'The page expired, please try again.';
+
     public function render($request, Throwable $e)
     {
+        // Laravel 13 added Sec-Fetch-Site request-origin verification to the
+        // forgery middleware. When origin-only checking is enabled that check
+        // fails with OriginMismatchException, which the framework renders as a
+        // 403 -- NOT a 419 -- so the status check below would miss it and the
+        // user would get a raw error page instead of the banner. Match on the
+        // exception type rather than the status code so genuine 403
+        // authorization failures keep their own response.
+        if ($e instanceof OriginMismatchException) {
+            return back()->with(['message_csrf' => self::CSRF_MESSAGE]);
+        }
+
         $response = parent::render($request, $e);
 
         if ($response->status() === 419) {
             return back()->with([
-                'message_csrf' => 'The page expired, please try again.',
+                'message_csrf' => self::CSRF_MESSAGE,
             ]);
         }
 

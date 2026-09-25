@@ -125,6 +125,10 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
+            // Laravel 13 changed its framework-level fallback Redis prefix from
+            // "<app>_database_" to "<app>-database-". This value is defined
+            // explicitly here, so the fallback is never consulted and existing
+            // Redis keys are preserved.
             'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),
         ],
 
