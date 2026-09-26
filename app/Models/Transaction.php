@@ -39,6 +39,19 @@ class Transaction extends Model
         return $this->belongsTo(Account::class);
     }
 
+    /**
+     * The owning account's name, as an attribute rather than a column.
+     *
+     * An accessor so the name arrives with the row the same way every other field
+     * does. The relation is eager-loaded wherever a list is built; a lazy load here
+     * would be one query per row, and the list is the one place a transaction table
+     * is read in bulk.
+     */
+    public function getAccountNameAttribute(): ?string
+    {
+        return $this->account?->name;
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);

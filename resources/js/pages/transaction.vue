@@ -64,6 +64,20 @@ const columns = reactive([
     sortable: true,
   },
   {
+    name: 'account',
+    label: 'Account',
+    // Whose money the row is. Without it a table of cash, card and trade rows gives
+    // a number in the corner and nothing else to tell them apart.
+    //
+    // Not sortable, and not lazily so: the list orders by whatever `sort` says
+    // against the transactions table, and account_name is not a column on it. Making
+    // this sortable means teaching the query to sort through the relation, which is a
+    // decision about the index rather than about this column.
+    field: 'account_name',
+    align: 'left',
+    sortable: false,
+  },
+  {
     name: 'type',
     label: 'Type',
     field: 'type',

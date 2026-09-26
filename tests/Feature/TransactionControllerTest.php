@@ -417,6 +417,62 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_names_the_account_each_row_belongs_to(): void
+    {
+        // The table holds cash, card and trade rows alike, so a number in the corner
+        // tells the reader nothing about whose money a row is. The name is the fact,
+        // and it has to come from the row rather than from the picker above: the list
+        // is not filtered by the account the form happens to be showing.
+        //
+        // Two accounts, so a hardcoded name cannot pass for a real lookup.
+        $this->post('/transactions', $this->expense([
+            'date' => '2026-01-02',
+            'description' => 'Lunch',
+        ]));
+
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('data.data', 2)
+            // The set, not the rows by index: both are written in the same second, so
+            // created_at cannot separate them and the order is whatever the sort
+            // happens to leave. What matters is that each row is labelled with its own.
+            ->where('data.data', fn ($rows) => $rows
+                ->pluck('account_name')
+                ->sort()
+                ->values()
+                ->all() === ['Bank', 'Card'])
+        );
+    }
+
+    public function test_a_supplied_account_name_does_not_rename_the_account(): void
+    {
+        // The name is derived from the account, so a payload carrying one is inert --
+        // and it has to be inert rather than refused, because the edit form round-trips
+        // a whole table row and that row now carries the name. Refusing it would break
+        // every edit. What must not happen is the label disagreeing with the account.
+        $this->post('/transactions', $this->expense([
+            'account_name' => 'Somewhere else',
+        ]))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data', fn ($rows) => $rows
+                ->pluck('account_name')
+                ->all() === ['Bank'])
+        );
+
+        $this->assertDatabaseHas('accounts', ['name' => 'Bank']);
+    }
+
     public function test_index_pages_the_list(): void
     {
         foreach (range(1, 6) as $n) {

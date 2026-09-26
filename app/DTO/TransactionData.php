@@ -45,12 +45,25 @@ class TransactionData extends Data
 
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
+
+        // The owning account's name, read off the model rather than the accounts
+        // table, so a list of transactions costs no extra query per row. Not
+        // something a client decides, hence `prohibited` below -- the same treatment
+        // as a settlement's pairing.
+        //
+        // Last, and defaulted, because no caller has it to hand: it arrives with the
+        // model, and a test that builds a DTO to reach a constructor path has no row
+        // behind it. An optional parameter ahead of the required ones would not get
+        // its default applied at all.
+        public ?string $account_name = null,
     ) {
         $this->created_at ??= now();
         $this->status ??= TransactionStatus::Posted;
 
-        // One account read serves both the pairing check and the due date.
+        // One account read serves the pairing check, the due date and the name.
         $account = Account::find($this->account_id);
+
+        $this->account_name = $account?->name;
 
         $this->guardAccountType($account);
         $this->guardCardAmount($account);
@@ -66,6 +79,13 @@ class TransactionData extends Data
     {
         return [
             'account_id' => ['exists:accounts,id'],
+
+            // account_name carries no rule on purpose. It is derived from the account,
+            // so there is nothing to validate -- but it cannot be `prohibited` either,
+            // because the edit form round-trips a whole table row and that row now
+            // carries the name. Prohibiting it would refuse every edit of every
+            // transaction. Whatever a payload sends is overwritten by the model when
+            // the list reads the row back, so it is inert rather than trusted.
 
             // Required only for the types that are categorised spending. A payment
             // may still be labelled, which is why this is required_unless rather

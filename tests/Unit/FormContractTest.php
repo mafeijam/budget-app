@@ -73,6 +73,11 @@ class FormContractTest extends TestCase
         // something the server then overrules.
         'meta_data.due_date',
 
+        // What the account is called. The form picks the account by id; the name is
+        // the account's own, so a control for it would be a control the server
+        // overrules -- and the DTO prohibits it on any payload.
+        'account_name',
+
         // Written by TransactionController::settle() and prohibited on any payload,
         // because it links the two rows of a settlement and only that method may
         // create the link. There is no control that could write it.

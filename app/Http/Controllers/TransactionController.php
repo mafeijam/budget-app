@@ -57,7 +57,9 @@ class TransactionController extends Controller
         ]);
 
         $transactions = Transaction::query()
-            ->with('meta')
+            // `account` is here for account_name, which the accessor reads. Without it
+            // the list would run a query per row to name the account it already holds.
+            ->with(['meta', 'account'])
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
             ->paginate($r->input('per_page', 5));
 
