@@ -90,38 +90,54 @@ class FormContractTest extends TestCase
         ];
     }
 
-    public function test_no_field_declares_a_mask(): void
+    public function test_the_date_mask_is_on_the_calendar_and_nowhere_else(): void
     {
-        // Masks are silently inert in this build -- no mask runtime in the bundle, so a
-        // mask attribute hands back its own text as the value without warning. A q-date
-        // is the same failure one step on: no month label, no navigation. See the date
-        // field's comment in FormTransaction.vue.
+        // Two parsers, one string, and no warning either way.
+        //
+        // q-date parses its own value with its own language, where YYYY-MM-DD is a
+        // real date mask -- the same string the DTO's date_format:Y-m-d demands, so
+        // the calendar hands the form a value that saves.
+        //
+        // q-input masks through a different parser whose only token is #, so there
+        // YYYY-MM-DD is nine literals: the field renders the mask text as its value
+        // and swallows every keystroke. Both failures are silent, so a mask that has
+        // drifted onto the input has to be caught here rather than by a user being
+        // told their date is malformed.
         $vue = (string) file_get_contents(resource_path('js/components/Form/FormTransaction.vue'));
 
         // Comments stripped, because the field's own comment quotes mask= while
-        // explaining why there is not one.
+        // explaining which component it belongs to.
         $markup = (string) preg_replace('/<!--.*?-->/s', '', $vue);
 
-        $this->assertStringNotContainsString(
-            'mask=',
+        // The calendar, and the one place the mask may appear.
+        $this->assertMatchesRegularExpression(
+            '/<q-date[^>]*\bmask="YYYY-MM-DD"/',
             $markup,
-            'FormTransaction.vue declares a mask. It is inert in this build, so the field '
-                .'will hold the mask text rather than the value the user typed.'
+            'The q-date no longer carries mask="YYYY-MM-DD", so it emits a slash-separated '
+                .'date that date_format:Y-m-d refuses.'
         );
 
-        $this->assertStringNotContainsString(
-            'q-date',
-            $markup,
-            'FormTransaction.vue uses a Quasar calendar. Without the mask runtime it cannot '
-                .'parse its own value, so it renders with no month label and no navigation.'
+        $this->assertSame(
+            1,
+            substr_count($markup, 'mask='),
+            'The mask is on the calendar and on nothing else. On a q-input the same string '
+                .'is nine literals, so the field would hold the mask text and accept no typing.'
         );
 
-        // The format contract itself, which is what actually matters and has not moved:
-        // the form sends a bare calendar day and the DTO demands one.
+        // The input must be a plain text field, not a native date control, which renders
+        // in the browser's locale rather than the app's.
+        $this->assertStringNotContainsString(
+            'type="date"',
+            $markup,
+            'FormTransaction.vue is back to a native date input, so the field renders in '
+                .'the browser locale rather than the app one.'
+        );
+
+        // The format contract itself: the calendar emits what the DTO asks for.
         $this->assertContains(
             'date_format:Y-m-d',
             TransactionData::rules()['date'],
-            'The DTO no longer demands Y-m-d, so whatever the date field sends is unchecked.'
+            'The DTO no longer demands Y-m-d, so whatever the calendar sends is unchecked.'
         );
     }
 

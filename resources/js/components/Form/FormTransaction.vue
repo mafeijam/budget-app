@@ -25,21 +25,31 @@
       />
 
       <!--
-        A native control, not a Quasar picker. q-date needs a mask to parse its own
-        value and this build carries no mask runtime, so it renders a month grid with
-        no month label and no navigation; a mask attribute here would be silently
-        inert and hand back its own text. Check parseMask is in the bundle before
-        re-trying either.
+        A Quasar calendar rather than a native control, which renders in the browser's
+        locale whatever the app's is -- the field read "mm/dd/yyyy" while the value
+        behind it was ISO, so the visible notation was not the stored one.
+
+        The mask belongs to the q-date and to nothing else. q-date parses its own
+        value with its own language, where YYYY-MM-DD is a real date mask; q-input
+        masks through a different parser whose only token is #, so the same string
+        there is nine literals and the field renders "YYYY-MM-DD" and accepts no
+        keystroke. Silent either way, which is why the input below carries no mask.
       -->
       <q-input
         v-model="form.date"
         class="col-4"
         label="Date"
         filled
-        type="date"
         :error="!!form.errors.date"
         :error-message="form.errors.date"
-      />
+      >
+        <template #prepend>
+          <q-icon name="event" />
+        </template>
+        <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+          <q-date v-model="form.date" mask="YYYY-MM-DD" color="green-7" />
+        </q-popup-proxy>
+      </q-input>
 
       <q-input
         v-model="form.amount"
