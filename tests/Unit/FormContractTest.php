@@ -668,7 +668,7 @@ class FormContractTest extends TestCase
      * Supported, with && binding tighter than || as in JavaScript:
      *
      *   form.type === 'card'   form.type !== 'card'   form.due == "15"   form.day > 3
-     *   form.settlement_account_id   !form.settlement_account_id
+     *   form.meta_data.due   !form.meta_data.statement_day
      *
      * @param  array<string, string>  $form
      */
@@ -837,9 +837,9 @@ class FormContractTest extends TestCase
      *
      * Only the template is read. The script holds the same references -- the
      * useWatchTarget watcher reads form.type and writes
-     * form.settlement_account_id -- and those are shared composables rather than
-     * anything this form owns, so folding them in would attribute one file's
-     * behaviour to another. It is a known gap, not an oversight.
+     * form.meta_data.settlement_account_id -- and those are shared composables
+     * rather than anything this form owns, so folding them in would attribute
+     * one file's behaviour to another. It is a known gap, not an oversight.
      */
     private function template(string $vue): string
     {

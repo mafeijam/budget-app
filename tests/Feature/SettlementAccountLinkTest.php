@@ -3,11 +3,11 @@
 namespace Tests\Feature;
 
 use App\DTO\AccountData;
+use App\DTO\AccountMetaData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +22,12 @@ use Tests\TestCase;
  * account. A buy recorded against the securities account therefore says nothing
  * about any bank balance, and without a link there is no way to tell which bank
  * the money left or arrived in.
+ *
+ * The link lives in the account's meta bag, with the card terms, rather than in a
+ * column. That is a deliberate reversal of an earlier decision and it costs two
+ * things this file has to keep honest: the database can no longer refuse a delete
+ * on its own, so AccountController::destroy() has to do it, and the link can no
+ * longer be joined or indexed. Both are asserted here.
  *
  * The link is a pointer and nothing more. It does not write a second row on the
  * cash account, so the two sides of a trade are recorded separately and can drift
@@ -63,15 +69,33 @@ class SettlementAccountLinkTest extends TestCase
             'status' => 'active',
             'type' => 'security',
             'ccy' => 'HKD',
-            'settlement_account_id' => $this->cashId,
+            'meta_data' => ['settlement_account_id' => $this->cashId],
         ], $overrides));
+    }
+
+    /**
+     * Write a settlement link directly, bypassing the DTO.
+     *
+     * Most tests need a brokerage that is already linked before they can build a
+     * payload about it, and the DTO refuses to build a securities account without
+     * one. Going through the meta relation keeps that in one place, so a change to
+     * where the link lives is a one-line change rather than a sweep.
+     */
+    private function pointAt(Account $broker, int $targetId): void
+    {
+        $broker->meta()->updateOrCreate(
+            ['id' => $broker->meta?->id],
+            ['meta' => ['settlement_account_id' => $targetId]]
+        );
     }
 
     /**
      * Asserts that a payload override is rejected on a specific field.
      *
      * The error bag is inspected rather than the exception type so an unrelated
-     * rule firing first cannot mask the field under test.
+     * rule firing first cannot mask the field under test. The path is the full
+     * dotted one because that is the key the error bag is keyed by, and spelling
+     * it out means a failure message points at the field the user would fix.
      */
     private function assertFieldRejected(array $overrides, string $field): void
     {
@@ -87,154 +111,123 @@ class SettlementAccountLinkTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
-    // Schema
+    // Where the link lives
     // ---------------------------------------------------------------------
 
-    /**
-     * Every column is aliased explicitly. information_schema reports its column
-     * names upper-case, and whether the driver hands them back upper- or
-     * lower-case depends on PDO::ATTR_CASE, so the aliases pin it down.
-     *
-     * column_type rather than data_type, because "is it unsigned" is only
-     * visible in the former -- both a signed and an unsigned 64-bit id report
-     * data_type `bigint`.
-     */
-    private function columns(): array
+    public function test_the_link_is_not_a_column(): void
     {
-        $rows = DB::select(
-            "SELECT column_name AS col_name, data_type AS col_type,
-                    column_type AS col_full_type, is_nullable AS col_nullable
-               FROM information_schema.columns
+        // The reversal, asserted rather than assumed. A column here would mean two
+        // places for a type-specific attribute, and whichever the code forgot to
+        // read would be the one silently holding the stale value.
+        $columns = DB::select(
+            "SELECT column_name AS col_name FROM information_schema.columns
               WHERE table_schema = DATABASE() AND table_name = 'accounts'"
         );
 
-        $columns = [];
-        foreach ($rows as $row) {
-            $columns[$row->col_name] = $row;
-        }
+        $names = array_map(fn ($row) => $row->col_name, $columns);
 
-        return $columns;
+        $this->assertNotContains('settlement_account_id', $names);
     }
 
-    public function test_the_settlement_column_exists_and_may_be_empty(): void
+    public function test_the_link_round_trips_through_the_meta_bag(): void
     {
-        // Nullable because most accounts are not securities accounts, and
-        // because a cash or card account must not carry it at all.
-        $columns = $this->columns();
+        // The whole move in one assertion: what the DTO accepted is what the
+        // meta row holds. A dropped key or a filter() that ate the id both fail
+        // here, and neither is visible from the DTO alone.
+        $data = AccountData::from($this->accountRequest());
 
-        $this->assertArrayHasKey(
-            'settlement_account_id',
-            $columns,
-            'accounts.settlement_account_id is missing; found: '.implode(', ', array_keys($columns))
-        );
+        $broker = Account::create($data->except('meta_data')->toArray());
+        $broker->meta()->create(['meta' => collect($data->meta_data->all())->filter()]);
 
-        $this->assertSame('YES', $columns['settlement_account_id']->col_nullable);
-    }
-
-    /**
-     * The indexed columns of a table, from information_schema.statistics.
-     *
-     * Aliases are explicit for the same reason as in columns(): the driver may
-     * hand back upper- or lower-case names depending on PDO::ATTR_CASE.
-     */
-    private function indexes(string $table): array
-    {
-        $rows = DB::select(
-            'SELECT index_name AS idx_name, column_name AS col_name, seq_in_index AS col_seq
-               FROM information_schema.statistics
-              WHERE table_schema = DATABASE() AND table_name = ?
-              ORDER BY index_name, seq_in_index',
-            [$table]
-        );
-
-        $indexes = [];
-        foreach ($rows as $row) {
-            $indexes[$row->idx_name][] = $row->col_name;
-        }
-
-        return $indexes;
-    }
-
-    public function test_the_settlement_column_is_an_unsigned_id(): void
-    {
         $this->assertSame(
-            'bigint unsigned',
-            $this->columns()['settlement_account_id']->col_full_type
+            $this->cashId,
+            (int) $broker->fresh()->meta->meta['settlement_account_id']
         );
     }
 
-    public function test_the_settlement_column_is_indexed(): void
-    {
-        // Not decoration: the next migration's foreign key needs it, and so does
-        // "which brokerages settle into this bank", which is the question a cash
-        // account delete has to answer before it may proceed.
-        $indexes = $this->indexes('accounts');
-        $indexed = array_merge(...array_values($indexes));
-
-        $this->assertContains('settlement_account_id', $indexed);
-    }
-
-    public function test_the_settlement_column_is_bound_to_the_accounts_table(): void
-    {
-        // Self-referential and restrict-on-delete, both deliberate. Cascade
-        // would delete a user's securities account because they tidied up a
-        // dormant bank account; set null would manufacture the exact invalid row
-        // that prohibited_unless exists to prevent. Failing the delete is the
-        // honest outcome, and this asserts it at the database level.
-        $row = DB::selectOne(
-            "SELECT k.column_name AS col_name, k.referenced_table_name AS ref_table,
-                    r.delete_rule AS on_delete
-               FROM information_schema.key_column_usage AS k
-               JOIN information_schema.referential_constraints AS r
-                 ON r.constraint_schema = k.constraint_schema
-                AND r.constraint_name = k.constraint_name
-              WHERE k.table_schema = DATABASE() AND k.table_name = 'accounts'
-                AND k.column_name = 'settlement_account_id'"
-        );
-
-        $this->assertNotNull($row, 'accounts.settlement_account_id has no foreign key.');
-        $this->assertSame('accounts', $row->ref_table);
-        $this->assertSame('RESTRICT', $row->on_delete);
-    }
+    // ---------------------------------------------------------------------
+    // What the foreign key used to do, and what does it now
+    // ---------------------------------------------------------------------
 
     public function test_deleting_a_bank_a_brokerage_settles_into_is_refused(): void
     {
-        // The behaviour that rule buys. Tidy up a dormant cash account with a
-        // brokerage still pointing at it and the delete must fail, rather than
-        // leaving a securities account with no cash story or taking the
-        // brokerage down with it.
+        // The behaviour the foreign key used to buy, now bought by the
+        // controller: tidy up a dormant cash account with a brokerage still
+        // pointing at it and the delete must fail, rather than leaving a
+        // securities account with no cash story.
         //
         // Named apart from setUp()'s 'Bank' because accounts.name is unique and
         // a collision fails the test for the wrong reason.
         $bank = Account::create(['name' => 'Settlement Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
         $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $broker->update(['settlement_account_id' => $bank->id]);
+        $this->pointAt($broker, $bank->id);
 
-        $refused = false;
-        try {
-            DB::table('accounts')->where('id', $bank->id)->delete();
-        } catch (QueryException) {
-            $refused = true;
-        }
+        $this->delete("/accounts/{$bank->id}")->assertSessionHas('message');
 
-        $this->assertTrue($refused, 'The bank was deleted while a brokerage still settled into it.');
-        $this->assertSame($bank->id, $broker->fresh()->settlement_account_id);
+        $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
+        $this->assertDatabaseHas('accounts', ['id' => $broker->id]);
+    }
+
+    public function test_the_refusal_names_the_account_that_blocks_the_delete(): void
+    {
+        // Otherwise the user is left to work out which brokerage is in the way,
+        // and the only other way to find out is to delete things until something
+        // complains.
+        $bank = Account::create(['name' => 'Named Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Blocking Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $this->pointAt($broker, $bank->id);
+
+        $response = $this->delete("/accounts/{$bank->id}");
+
+        $response->assertSessionHas('message', fn (string $m) => str_contains($m, 'Named Bank')
+            && str_contains($m, 'Blocking Broker'));
     }
 
     public function test_a_brokerage_does_not_block_its_own_deletion(): void
     {
-        // The mirror, so the constraint is not simply refusing everything. The
-        // brokerage is the referring row here and the bank the referenced one,
-        // so deleting the brokerage must be allowed even though it points
-        // somewhere.
+        // The mirror, so the guard is not simply refusing everything. The
+        // brokerage is the referring row here and the bank the referenced one, so
+        // deleting the brokerage must be allowed even though it points somewhere.
         $bank = Account::create(['name' => 'Spare Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
         $broker = Account::create(['name' => 'Lone Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $broker->update(['settlement_account_id' => $bank->id]);
+        $this->pointAt($broker, $bank->id);
 
-        DB::table('accounts')->where('id', $broker->id)->delete();
+        $this->delete("/accounts/{$broker->id}")->assertSessionHas('message', 'Account [Lone Broker] deleted');
 
         $this->assertDatabaseMissing('accounts', ['id' => $broker->id]);
         $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
+    }
+
+    public function test_the_refusal_survives_the_id_stored_as_a_string(): void
+    {
+        // The guard reaches into the JSON, and a JSON number is not the same
+        // value as the string "12" when MySQL compares them. A form submits the
+        // select's value as a string, so the unguarded form of this query matches
+        // nothing and the delete goes through.
+        $bank = Account::create(['name' => 'Stringly Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Stringly Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $broker->meta()->create(['meta' => ['settlement_account_id' => (string) $bank->id]]);
+
+        $this->delete("/accounts/{$bank->id}");
+
+        $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
+    }
+
+    public function test_the_database_no_longer_refuses_the_delete_on_its_own(): void
+    {
+        // Stated rather than left implied, because it is the price of the move and
+        // the next person to find a dangling link needs to know where to look.
+        // Only AccountController::destroy() checks; anything else writing SQL
+        // deletes the bank and leaves the brokerage pointing at nothing.
+        $bank = Account::create(['name' => 'Unguarded Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Unguarded Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $this->pointAt($broker, $bank->id);
+
+        DB::table('accounts')->where('id', $bank->id)->delete();
+
+        $this->assertDatabaseMissing('accounts', ['id' => $bank->id]);
+        $this->assertNull($broker->fresh()->settlementAccount());
     }
 
     // ---------------------------------------------------------------------
@@ -248,7 +241,10 @@ class SettlementAccountLinkTest extends TestCase
         // money went, and there is nothing to group or report on. Failing at the
         // door is better than an account that saves cleanly and is silently
         // incomplete forever after.
-        $this->assertFieldRejected(['settlement_account_id' => null], 'settlement_account_id');
+        $this->assertFieldRejected(
+            ['meta_data' => ['settlement_account_id' => null]],
+            'meta_data.settlement_account_id'
+        );
     }
 
     public function test_a_securities_account_is_accepted_with_a_cash_account(): void
@@ -256,7 +252,7 @@ class SettlementAccountLinkTest extends TestCase
         $data = AccountData::from($this->accountRequest());
 
         $this->assertSame('security', $data->type->value);
-        $this->assertSame($this->cashId, $data->settlement_account_id);
+        $this->assertSame($this->cashId, $data->meta_data->settlement_account_id);
     }
 
     /**
@@ -274,14 +270,18 @@ class SettlementAccountLinkTest extends TestCase
         // strict about: a cash account pointing at a securities account is the
         // second hop a cycle would need, and closing it here means no cycle can
         // be constructed at all rather than needing to be detected.
+        //
+        // A card payload carries its statement terms too, so the field under test
+        // is the only thing wrong with it -- otherwise term_days would be the
+        // error and this would pass without the prohibition ever running.
         $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
+        $meta['settlement_account_id'] = $this->cashId;
 
         $this->assertFieldRejected([
             'name' => "Probe {$type}",
             'type' => $type,
             'meta_data' => $meta,
-            'settlement_account_id' => $this->cashId,
-        ], 'settlement_account_id');
+        ], 'meta_data.settlement_account_id');
     }
 
     #[DataProvider('nonSecurityTypeProvider')]
@@ -290,15 +290,15 @@ class SettlementAccountLinkTest extends TestCase
         // The mirror, so the pair of rules is pinned as "present iff securities"
         // rather than "prohibited for cash" with nothing said about card.
         $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
+        $meta['settlement_account_id'] = null;
 
         $data = AccountData::from($this->accountRequest([
             'name' => "Probe {$type}",
             'type' => $type,
             'meta_data' => $meta,
-            'settlement_account_id' => null,
         ]));
 
-        $this->assertNull($data->settlement_account_id);
+        $this->assertNull($data->meta_data->settlement_account_id);
     }
 
     // ---------------------------------------------------------------------
@@ -327,15 +327,17 @@ class SettlementAccountLinkTest extends TestCase
         ]);
 
         if ($targetType === 'security') {
-            $target->update(['settlement_account_id' => $this->cashId]);
+            $this->pointAt($target, $this->cashId);
         }
 
         try {
-            AccountData::from($this->accountRequest(['settlement_account_id' => $target->id]));
+            AccountData::from($this->accountRequest([
+                'meta_data' => ['settlement_account_id' => $target->id],
+            ]));
             $this->fail("A securities account was allowed to settle into a {$targetType} account.");
         } catch (ValidationException $e) {
-            $this->assertArrayHasKey('settlement_account_id', $e->errors());
-            $this->assertStringContainsString('cash', $e->errors()['settlement_account_id'][0]);
+            $this->assertArrayHasKey('meta_data.settlement_account_id', $e->errors());
+            $this->assertStringContainsString('cash', $e->errors()['meta_data.settlement_account_id'][0]);
         }
     }
 
@@ -361,8 +363,11 @@ class SettlementAccountLinkTest extends TestCase
             type: AccountType::Security,
             ccy: Currency::Hkd,
             created_at: null,
-            meta_data: null,
-            settlement_account_id: $card->id,
+            meta_data: new AccountMetaData(
+                term_days: null,
+                statement_day: null,
+                settlement_account_id: $card->id,
+            ),
         );
     }
 
@@ -371,7 +376,10 @@ class SettlementAccountLinkTest extends TestCase
         // Left to the constructor this would be a "not a cash account" message,
         // which points at the wrong problem. The exists rule reports the real
         // one, and it runs first.
-        $this->assertFieldRejected(['settlement_account_id' => 999999], 'settlement_account_id');
+        $this->assertFieldRejected(
+            ['meta_data' => ['settlement_account_id' => 999999]],
+            'meta_data.settlement_account_id'
+        );
     }
 
     public function test_a_securities_account_may_not_settle_into_itself(): void
@@ -387,12 +395,12 @@ class SettlementAccountLinkTest extends TestCase
             'type' => 'security',
             'ccy' => 'HKD',
         ]);
-        $broker->update(['settlement_account_id' => $this->cashId]);
+        $this->pointAt($broker, $this->cashId);
 
         $this->assertFieldRejected([
             'id' => $broker->id,
-            'settlement_account_id' => $broker->id,
-        ], 'settlement_account_id');
+            'meta_data' => ['settlement_account_id' => $broker->id],
+        ], 'meta_data.settlement_account_id');
     }
 
     public function test_a_settlement_cycle_cannot_be_built(): void
@@ -404,19 +412,19 @@ class SettlementAccountLinkTest extends TestCase
         // prohibition forbids, so this test would still pass if the prohibition
         // were ever loosened by accident.
         $one = Account::create(['name' => 'One', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $one->update(['settlement_account_id' => $this->cashId]);
+        $this->pointAt($one, $this->cashId);
 
         $two = Account::create(['name' => 'Two', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $two->update(['settlement_account_id' => $one->id]);
+        $this->pointAt($two, $one->id);
 
         // The hop that would close a cycle is the one a cash account is refused.
         $this->assertFieldRejected([
             'name' => 'Loop',
             'type' => 'cash',
-            'settlement_account_id' => $two->id,
-        ], 'settlement_account_id');
+            'meta_data' => ['settlement_account_id' => $two->id],
+        ], 'meta_data.settlement_account_id');
 
-        $this->assertNotSame($one->fresh()->settlement_account_id, $two->id);
+        $this->assertNotSame($two->id, (int) $one->fresh()->meta->meta['settlement_account_id']);
     }
 
     public function test_an_inactive_cash_account_may_still_be_settled_into(): void
@@ -432,9 +440,11 @@ class SettlementAccountLinkTest extends TestCase
             'ccy' => 'HKD',
         ]);
 
-        $data = AccountData::from($this->accountRequest(['settlement_account_id' => $closed->id]));
+        $data = AccountData::from($this->accountRequest([
+            'meta_data' => ['settlement_account_id' => $closed->id],
+        ]));
 
-        $this->assertSame($closed->id, $data->settlement_account_id);
+        $this->assertSame($closed->id, $data->meta_data->settlement_account_id);
     }
 
     // ---------------------------------------------------------------------
@@ -443,26 +453,26 @@ class SettlementAccountLinkTest extends TestCase
 
     public function test_the_link_can_be_traversed(): void
     {
-        // A column nothing can follow is half-built. The relation is what lets
-        // settlement queries and the account form's picker read the target
-        // without every call site repeating the join by hand.
+        // A link nothing can follow is half-built. This is a method rather than a
+        // belongsTo, because Eloquent cannot join on a JSON path -- so this test
+        // is also the thing that would fail if the accessor were dropped.
         $broker = Account::create([
             'name' => 'Traversed',
             'status' => 'active',
             'type' => 'security',
             'ccy' => 'HKD',
         ]);
-        $broker->update(['settlement_account_id' => $this->cashId]);
+        $this->pointAt($broker, $this->cashId);
 
-        $this->assertInstanceOf(Account::class, $broker->fresh()->settlementAccount);
-        $this->assertSame($this->cashId, $broker->fresh()->settlementAccount->id);
+        $this->assertInstanceOf(Account::class, $broker->fresh()->settlementAccount());
+        $this->assertSame($this->cashId, $broker->fresh()->settlementAccount()->id);
     }
 
     public function test_an_account_with_no_settlement_account_traverses_to_null(): void
     {
         $cash = Account::find($this->cashId);
 
-        $this->assertNull($cash->settlementAccount);
+        $this->assertNull($cash->settlementAccount());
     }
 
     // ---------------------------------------------------------------------
@@ -473,7 +483,7 @@ class SettlementAccountLinkTest extends TestCase
     {
         // The pairing is refused rather than converted. Converting would need a
         // rate at a moment neither account can see, and then a second conversion
-        // on the way back with the proceeds; transactions.fx_rate exists and is
+        // on the way back with the proceeds; a transaction's fx_rate exists and is
         // wired to nothing, so the honest answer is that this cannot be recorded
         // rather than a guess at what it means.
         $yen = Account::create([
@@ -483,7 +493,10 @@ class SettlementAccountLinkTest extends TestCase
             'ccy' => 'JPY',
         ]);
 
-        $this->assertFieldRejected(['settlement_account_id' => $yen->id], 'settlement_account_id');
+        $this->assertFieldRejected(
+            ['meta_data' => ['settlement_account_id' => $yen->id]],
+            'meta_data.settlement_account_id'
+        );
     }
 
     public function test_the_mismatch_message_names_both_currencies(): void
@@ -502,12 +515,12 @@ class SettlementAccountLinkTest extends TestCase
         try {
             AccountData::from($this->accountRequest([
                 'ccy' => 'HKD',
-                'settlement_account_id' => $usd->id,
+                'meta_data' => ['settlement_account_id' => $usd->id],
             ]));
         } catch (ValidationException $e) {
             $this->assertSame(
                 ['A HKD brokerage cannot settle into a USD account.'],
-                $e->errors()['settlement_account_id']
+                $e->errors()['meta_data.settlement_account_id']
             );
 
             return;
@@ -532,11 +545,11 @@ class SettlementAccountLinkTest extends TestCase
 
             $data = AccountData::from($this->accountRequest([
                 'ccy' => $currency->value,
-                'settlement_account_id' => $bank->id,
+                'meta_data' => ['settlement_account_id' => $bank->id],
             ]));
 
             $this->assertSame($currency, $data->ccy, "{$currency->value} would not settle into its own bank");
-            $this->assertSame($bank->id, $data->settlement_account_id);
+            $this->assertSame($bank->id, $data->meta_data->settlement_account_id);
         }
     }
 
@@ -561,8 +574,11 @@ class SettlementAccountLinkTest extends TestCase
             type: AccountType::Security,
             ccy: Currency::Hkd,
             created_at: null,
-            meta_data: null,
-            settlement_account_id: $yen->id,
+            meta_data: new AccountMetaData(
+                term_days: null,
+                statement_day: null,
+                settlement_account_id: $yen->id,
+            ),
         );
     }
 
@@ -583,12 +599,12 @@ class SettlementAccountLinkTest extends TestCase
         try {
             AccountData::from($this->accountRequest([
                 'ccy' => 'HKD',
-                'settlement_account_id' => $card->id,
+                'meta_data' => ['settlement_account_id' => $card->id],
             ]));
         } catch (ValidationException $e) {
             $this->assertSame(
                 ['A securities account settles into a cash account, not a card account.'],
-                $e->errors()['settlement_account_id']
+                $e->errors()['meta_data.settlement_account_id']
             );
 
             return;
@@ -612,10 +628,10 @@ class SettlementAccountLinkTest extends TestCase
 
         $data = AccountData::from($this->accountRequest([
             'ccy' => 'JPY',
-            'settlement_account_id' => $yen->id,
+            'meta_data' => ['settlement_account_id' => $yen->id],
         ]));
 
         $this->assertSame(Currency::Jpy, $data->ccy);
-        $this->assertSame($yen->id, $data->settlement_account_id);
+        $this->assertSame($yen->id, $data->meta_data->settlement_account_id);
     }
 }

@@ -180,6 +180,32 @@ class AccountController extends Controller
 
     public function destroy(Account $account)
     {
+        // The referential check the foreign key used to do, done here because the
+        // link is in the meta bag and a JSON value carries no constraint. Refuse
+        // rather than cascade or clear: cascading would delete a user's securities
+        // account because they tidied up a dormant bank, and clearing would
+        // manufacture the exact row AccountMetaData prohibits. Leaving it dangling
+        // is the one outcome that is not a lie, so it is the one taken.
+        //
+        // JSON_UNQUOTE because the value may be stored as a number or as the
+        // string a select emits, and MySQL does not consider those equal. A
+        // securities account is never its own settlement target, so no
+        // self-exclusion is needed.
+        $settledInto = Account::query()
+            ->whereHas('meta', fn ($query) => $query->whereRaw(
+                'JSON_UNQUOTE(JSON_EXTRACT(meta.meta, \'$.settlement_account_id\')) = ?',
+                [(string) $account->id]
+            ))
+            ->pluck('name');
+
+        if ($settledInto->isNotEmpty()) {
+            return back()->with('message', sprintf(
+                'Account [%s] is the settlement account for [%s] and cannot be deleted',
+                $account->name,
+                $settledInto->implode('], [')
+            ));
+        }
+
         $account->meta()->delete();
         $account->delete();
 

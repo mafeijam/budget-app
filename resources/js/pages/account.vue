@@ -30,6 +30,16 @@ const props = defineProps({
 const pagination = usePagination()
 const formatDate = useHongKongTime()
 
+// Absent rather than null: an account with no meta row at all hydrates to null,
+// and Object.entries on that is a crash rather than an empty column. Back to
+// null once the last key is dropped, so an account with nothing stored still
+// reads as having nothing rather than as an empty object.
+const stripNulls = meta => {
+  const kept = Object.fromEntries(Object.entries(meta ?? {}).filter(([, value]) => value !== null))
+
+  return Object.keys(kept).length ? kept : null
+}
+
 const columns = reactive([
   {
     name: 'name',
@@ -62,7 +72,12 @@ const columns = reactive([
   {
     name: 'metaData',
     label: 'Meta',
-    field: val => JSON.stringify(val.meta_data),
+    // The nulls dropped, because meta_data arrives as the DTO rather than as
+    // what is stored: every declared key is present whether or not this account
+    // uses it, so a card would read {"term_days":15,"statement_day":25,
+    // "settlement_account_id":null} and a brokerage would carry two card fields
+    // it has no use for. Which keys appear is the whole content of this column.
+    field: val => JSON.stringify(stripNulls(val.meta_data)),
     sortable: false,
   },
   {

@@ -22,10 +22,6 @@ class AccountData extends Data
         public Currency $ccy,
         public ?Carbon $created_at,
         public ?AccountMetaData $meta_data,
-
-        // Required for a securities account, prohibited for every other type, and
-        // the target must be a cash account -- see guardSettlementAccount().
-        public ?int $settlement_account_id,
     ) {
         $this->created_at ??= now();
 
@@ -44,27 +40,9 @@ class AccountData extends Data
             // accepted 'ZZZ' and 'hkd' as readily as 'HKD'. The column is
             // varchar(255) and every case is three characters, so nothing is lost.
             //
-            // `nullable` first on settlement_account_id because the validator counts
-            // null as present, so `integer` and `exists` would otherwise fire on
-            // every cash and card account whose form was never touched.
-            // required_if and prohibited_unless are implicit and survive.
-            //
-            // Between them the two say the column is present exactly when the
-            // account is a securities one, and the prohibition is what makes a
-            // settlement cycle unrepresentable: a cycle needs a cash account in the
-            // middle, and a cash account may not carry the field.
-            //
-            // `different` is redundant with guardSettlementAccount() -- a securities
-            // account is not cash, so it cannot point at itself. It is here for the
-            // message, which would otherwise blame the target.
-            'settlement_account_id' => [
-                'nullable',
-                'required_if:type,security',
-                'prohibited_unless:type,security',
-                'integer',
-                'exists:accounts,id',
-                'different:id',
-            ],
+            // No settlement rule here: that field is type-specific and lives in
+            // AccountMetaData with the card terms. See the comment there on why a
+            // nested rule can still read `type` and `id` from the root.
         ];
     }
 
@@ -89,11 +67,13 @@ class AccountData extends Data
      */
     private function guardSettlementAccount(): void
     {
-        if ($this->settlement_account_id === null) {
+        $id = $this->meta_data?->settlement_account_id;
+
+        if ($id === null) {
             return;
         }
 
-        $target = Account::find($this->settlement_account_id);
+        $target = Account::find($id);
 
         // No account to inspect: `exists:accounts,id` reports that, and throwing
         // here as well would mask it with a less accurate message.
@@ -103,7 +83,7 @@ class AccountData extends Data
 
         if ($target->type !== AccountType::Cash->value) {
             throw ValidationException::withMessages([
-                'settlement_account_id' => sprintf(
+                'meta_data.settlement_account_id' => sprintf(
                     'A securities account settles into a cash account, not a %s account.',
                     $target->type
                 ),
@@ -114,7 +94,7 @@ class AccountData extends Data
         // fundamental mismatch: naming its currency would imply the pairing could
         // be fixed by converting, and it cannot.
         //
-        // Refuse rather than convert. transactions.fx_rate exists and is wired to
+        // Refuse rather than convert. A transaction's fx_rate exists and is wired to
         // nothing, so there is no rate to convert at, and the proceeds would need
         // converting back again. The pairing is real and cannot be recorded until
         // that lands; today the account is unusable rather than silently
@@ -123,7 +103,7 @@ class AccountData extends Data
         // Both currencies named, because there are two accounts to change.
         if ($target->ccy !== $this->ccy->value) {
             throw ValidationException::withMessages([
-                'settlement_account_id' => sprintf(
+                'meta_data.settlement_account_id' => sprintf(
                     'A %s brokerage cannot settle into a %s account.',
                     $this->ccy->value,
                     $target->ccy

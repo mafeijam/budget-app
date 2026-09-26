@@ -69,15 +69,15 @@
 
       <template v-if="form.type === 'security'">
         <q-select
-          v-model="form.settlement_account_id"
+          v-model="form.meta_data.settlement_account_id"
           :options="settlementOptions"
           class="col-6"
           label="Settles into"
           filled
           emit-value
           map-options
-          :error="!!form.errors.settlement_account_id"
-          :error-message="form.errors.settlement_account_id"
+          :error="!!form.errors['meta_data.settlement_account_id']"
+          :error-message="form.errors['meta_data.settlement_account_id']"
         >
           <template #no-option>
             <q-item>

@@ -42,11 +42,6 @@ class DevAccountSeeder extends Seeder
                     'status' => $definition['status'],
                     'type' => $definition['type'],
                     'ccy' => Currency::Hkd->value,
-
-                    // Set explicitly rather than left alone, so re-running
-                    // restores the intended state instead of merging with
-                    // whatever an earlier experiment left in the column.
-                    'settlement_account_id' => null,
                 ],
             );
 
@@ -58,6 +53,8 @@ class DevAccountSeeder extends Seeder
                 continue;
             }
 
+            // Set outright rather than merged, so re-running restores the intended
+            // state instead of accumulating whatever an earlier run left behind.
             $account->meta()->updateOrCreate(
                 ['model_id' => $account->id, 'model_type' => Account::class],
                 ['meta' => $meta],
@@ -68,10 +65,21 @@ class DevAccountSeeder extends Seeder
         // ids are not known until the rows are written, so this is necessarily
         // a second pass. Keyed on the name rather than the id, which is what
         // makes it idempotent.
+        //
+        // Merged into the existing bag rather than replacing it, so a brokerage
+        // that also carried card terms would keep them -- the two sets of
+        // attributes are disjoint by rule, but the seeder should not be the thing
+        // that decides that.
         foreach ($this->settlements() as $name => $settlesInto) {
-            Account::where('name', $name)->update([
-                'settlement_account_id' => Account::where('name', $settlesInto)->value('id'),
-            ]);
+            $broker = Account::where('name', $name)->firstOrFail();
+
+            $meta = $broker->fresh()->meta?->meta?->getArrayCopy() ?? [];
+            $meta['settlement_account_id'] = Account::where('name', $settlesInto)->value('id');
+
+            $broker->meta()->updateOrCreate(
+                ['model_id' => $broker->id, 'model_type' => Account::class],
+                ['meta' => $meta],
+            );
         }
     }
 

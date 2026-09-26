@@ -93,14 +93,14 @@ export function useWatchTarget(target, schema, form) {
         form.meta_data = useCloneForm(schema.meta_data)
 
         // Leaving the securities type makes a settlement link invalid, and
-        // AccountData prohibits the column on every other type rather than
+        // AccountMetaData prohibits the field on every other type rather than
         // ignoring it -- so a stale value would fail the save over a field the
         // user can no longer see. Not cleared on the way in: a non-securities
         // account can never have held one, so there is nothing stale to drop,
         // and clearing unconditionally would wipe the link off an account
         // toggled away from security and back.
         if (val !== 'security') {
-          form.settlement_account_id = null
+          form.meta_data.settlement_account_id = null
         }
       }
     },

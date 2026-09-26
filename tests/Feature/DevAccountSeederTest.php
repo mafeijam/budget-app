@@ -96,12 +96,12 @@ class DevAccountSeederTest extends TestCase
 
         foreach ($securities as $account) {
             $this->assertNotNull(
-                $account->settlement_account_id,
+                $account->meta?->meta['settlement_account_id'] ?? null,
                 "Security account [{$account->name}] has no settlement account. "
-                .'AccountData prohibits the column for every other type and requires it here.'
+                .'AccountMetaData requires the field for this type and prohibits it for every other.'
             );
 
-            $target = Account::find($account->settlement_account_id);
+            $target = $account->settlementAccount();
 
             $this->assertNotNull($target, "Security account [{$account->name}] settles into a row that does not exist.");
 
@@ -164,10 +164,6 @@ class DevAccountSeederTest extends TestCase
 
             if ($meta !== []) {
                 $payload['meta_data'] = $meta;
-            }
-
-            if ($account->settlement_account_id !== null) {
-                $payload['settlement_account_id'] = $account->settlement_account_id;
             }
 
             $response = $this->put("/accounts/{$account->id}", $payload);

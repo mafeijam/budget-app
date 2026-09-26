@@ -58,13 +58,15 @@ class AccountDataTest extends TestCase
         $this->assertNull($empty['name']);
         $this->assertNull($empty['id']);
         $this->assertNull($empty['created_at']);
-        $this->assertNull($empty['settlement_account_id']);
         // Null, not a default currency. The currency dropdown starts empty, so a
         // prefilled value here would make the form look like it had a currency
         // chosen when it did not -- and the empty form is what the create
         // button shows.
         $this->assertNull($empty['ccy']);
-        $this->assertSame(['term_days' => null, 'statement_day' => null], $empty['meta_data']);
+        $this->assertSame(
+            ['term_days' => null, 'statement_day' => null, 'settlement_account_id' => null],
+            $empty['meta_data']
+        );
     }
 
     public function test_from_request_populates_every_property(): void
@@ -88,7 +90,7 @@ class AccountDataTest extends TestCase
 
         $this->assertSame('Test Account', $array['name']);
         $this->assertSame(
-            ['term_days' => 15, 'statement_day' => 25],
+            ['term_days' => 15, 'statement_day' => 25, 'settlement_account_id' => null],
             $array['meta_data']
         );
     }
@@ -143,8 +145,16 @@ class AccountDataTest extends TestCase
         // "payment term", not "due day": `due` holds a number of days, so a
         // label reading as a day of the month would send a user looking for the
         // wrong field. `statement_day` keeps its name because it really is one.
+        //
+        // "settlement account", not "settlement account id": the word "id" is the
+        // database's name for it, and this string is the only thing a user sees
+        // when the link is missing or points somewhere illegal.
         $this->assertSame(
-            ['term_days' => 'payment term', 'statement_day' => 'statement day'],
+            [
+                'term_days' => 'payment term',
+                'statement_day' => 'statement day',
+                'settlement_account_id' => 'settlement account',
+            ],
             AccountMetaData::attributes()
         );
     }
@@ -257,7 +267,7 @@ class AccountDataTest extends TestCase
                 // thing it is named for instead of drifting into the settlement
                 // rules.
                 if ($type === AccountType::Security) {
-                    $overrides['settlement_account_id'] = $this->cashId;
+                    $overrides['meta_data'] = ['settlement_account_id' => $this->cashId];
                     // And it has to be in the bank's currency, or this fails on
                     // the currency and the type coverage it is named for is lost.
                     $overrides['ccy'] = 'HKD';

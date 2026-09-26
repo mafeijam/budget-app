@@ -225,13 +225,19 @@ class AccountControllerTest extends TestCase
             'status' => 'active',
             'type' => 'security',
             'ccy' => 'HKD',
-            'settlement_account_id' => $bank->id,
-            'meta_data' => ['term_days' => null, 'statement_day' => null],
+            'meta_data' => [
+                'term_days' => null,
+                'statement_day' => null,
+                'settlement_account_id' => $bank->id,
+            ],
         ]);
 
         $response->assertSessionHasNoErrors();
         $response->assertSessionHas('message', 'Account [Broker] created');
-        $this->assertSame($bank->id, Account::firstWhere('name', 'Broker')->settlement_account_id);
+        $this->assertSame(
+            $bank->id,
+            (int) Meta::firstWhere('model_id', Account::firstWhere('name', 'Broker')->id)->meta['settlement_account_id']
+        );
     }
 
     public function test_the_payload_the_card_form_now_sends_is_accepted(): void
@@ -246,8 +252,11 @@ class AccountControllerTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'settlement_account_id' => null,
-            'meta_data' => ['term_days' => 15, 'statement_day' => 25],
+            'meta_data' => [
+                'term_days' => 15,
+                'statement_day' => 25,
+                'settlement_account_id' => null,
+            ],
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(25, Meta::firstWhere('model_id', Account::firstWhere('name', 'Card')->id)->meta['statement_day']);
@@ -262,8 +271,11 @@ class AccountControllerTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'settlement_account_id' => null,
-            'meta_data' => ['term_days' => 15, 'statement_day' => null],
+            'meta_data' => [
+                'term_days' => 15,
+                'statement_day' => null,
+                'settlement_account_id' => null,
+            ],
         ]);
 
         $response->assertSessionHasErrors('meta_data.statement_day');
@@ -486,14 +498,13 @@ class AccountControllerTest extends TestCase
             // fail for the currency rather than for the settlement link it is
             // named for.
             'ccy' => 'HKD',
-            'meta_data' => [],
-            'settlement_account_id' => $bank->id,
+            'meta_data' => ['settlement_account_id' => $bank->id],
         ]));
 
         $broker = Account::firstWhere('name', 'Broker');
 
         $this->assertNotNull($broker);
-        $this->assertSame($bank->id, $broker->settlement_account_id);
+        $this->assertSame($bank->id, (int) $broker->fresh()->meta->meta['settlement_account_id']);
     }
 
     public function test_store_requires_a_settlement_account_for_a_securities_account(): void
@@ -508,7 +519,7 @@ class AccountControllerTest extends TestCase
             'meta_data' => [],
         ]));
 
-        $response->assertSessionHasErrors('settlement_account_id');
+        $response->assertSessionHasErrors('meta_data.settlement_account_id');
         $this->assertDatabaseCount('accounts', 0);
     }
 
@@ -524,12 +535,11 @@ class AccountControllerTest extends TestCase
             'name' => 'Broker',
             'type' => 'security',
             'ccy' => 'HKD',
-            'meta_data' => [],
-            'settlement_account_id' => $bank->id,
+            'meta_data' => ['settlement_account_id' => $bank->id],
         ]));
 
         $response->assertSessionHasErrors([
-            'settlement_account_id' => 'A HKD brokerage cannot settle into a JPY account.',
+            'meta_data.settlement_account_id' => 'A HKD brokerage cannot settle into a JPY account.',
         ]);
         $this->assertDatabaseMissing('accounts', ['name' => 'Broker']);
     }
@@ -548,15 +558,14 @@ class AccountControllerTest extends TestCase
             'name' => 'Broker',
             'type' => 'security',
             'ccy' => 'HKD',
-            'meta_data' => [],
-            'settlement_account_id' => $bank->id,
+            'meta_data' => ['settlement_account_id' => $bank->id],
         ]));
 
-        $response->assertSessionHasErrors('settlement_account_id');
+        $response->assertSessionHasErrors('meta_data.settlement_account_id');
 
         // Unchanged, not just rejected: a refused update that still moved the link
         // would report an error and save anyway.
-        $this->assertNull($broker->fresh()->settlement_account_id);
+        $this->assertNull($broker->fresh()->meta);
     }
 
     public function test_store_rejects_a_securities_account_settling_into_a_card(): void
@@ -566,11 +575,10 @@ class AccountControllerTest extends TestCase
         $response = $this->post('/accounts', $this->payload([
             'name' => 'Broker',
             'type' => 'security',
-            'meta_data' => [],
-            'settlement_account_id' => $card->id,
+            'meta_data' => ['settlement_account_id' => $card->id],
         ]));
 
-        $response->assertSessionHasErrors('settlement_account_id');
+        $response->assertSessionHasErrors('meta_data.settlement_account_id');
         // Only the card that set up the test exists; the brokerage did not land.
         $this->assertNull(Account::firstWhere('name', 'Broker'));
     }
@@ -585,11 +593,10 @@ class AccountControllerTest extends TestCase
         $response = $this->post('/accounts', $this->payload([
             'name' => 'Second Bank',
             'type' => 'cash',
-            'meta_data' => [],
-            'settlement_account_id' => $bank->id,
+            'meta_data' => ['settlement_account_id' => $bank->id],
         ]));
 
-        $response->assertSessionHasErrors('settlement_account_id');
+        $response->assertSessionHasErrors('meta_data.settlement_account_id');
         $this->assertDatabaseCount('accounts', 1);
     }
 
@@ -599,7 +606,7 @@ class AccountControllerTest extends TestCase
         $two = Account::create(['name' => 'Bank Two', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
 
         $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $broker->update(['settlement_account_id' => $one->id]);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $one->id]]);
 
         $this->put("/accounts/{$broker->id}", $this->payload([
             'id' => $broker->id,
@@ -609,25 +616,23 @@ class AccountControllerTest extends TestCase
             // payload's USD default would move the brokerage out of HKD and out
             // of both banks' currency at once, and the update would be refused.
             'ccy' => 'HKD',
-            'meta_data' => [],
-            'settlement_account_id' => $two->id,
+            'meta_data' => ['settlement_account_id' => $two->id],
         ]))->assertSessionHasNoErrors();
 
-        $this->assertSame($two->id, $broker->fresh()->settlement_account_id);
+        $this->assertSame($two->id, (int) $broker->fresh()->meta->meta['settlement_account_id']);
     }
 
     public function test_update_refuses_to_drop_the_settlement_link(): void
     {
         // The guard that makes the link safe to require. An absent field
-        // hydrates to null and toArray() passes it to update(), so without
-        // required_if a save from any form that omits the field -- which is
-        // every form today -- would quietly null the link out and leave a
-        // brokerage with no cash story. Refusing the save is the loud option;
-        // the link survives.
+        // hydrates to null and all() passes it on, so without required_if a save
+        // from any form that omits the field -- which is every form today --
+        // would quietly null the link out and leave a brokerage with no cash
+        // story. Refusing the save is the loud option; the link survives.
         $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
 
         $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $broker->update(['settlement_account_id' => $bank->id]);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $bank->id]]);
 
         $response = $this->put("/accounts/{$broker->id}", $this->payload([
             'id' => $broker->id,
@@ -636,8 +641,8 @@ class AccountControllerTest extends TestCase
             'meta_data' => [],
         ]));
 
-        $response->assertSessionHasErrors('settlement_account_id');
-        $this->assertSame($bank->id, $broker->fresh()->settlement_account_id);
+        $response->assertSessionHasErrors('meta_data.settlement_account_id');
+        $this->assertSame($bank->id, (int) $broker->fresh()->meta->meta['settlement_account_id']);
         $this->assertSame('Broker', $broker->fresh()->name);
     }
 
