@@ -51,6 +51,145 @@ class AccountControllerTest extends TestCase
         );
     }
 
+    public function test_index_offers_the_cash_accounts_a_brokerage_can_settle_into(): void
+    {
+        // The settlement picker's whole option list. Cash accounts only, because
+        // every other type is refused by AccountData, so offering them would be
+        // offering a choice that cannot be submitted.
+        //
+        // Ids are compared against the created models rather than hardcoded:
+        // RefreshDatabase rolls back rows but not AUTO_INCREMENT, so the values
+        // depend on how many accounts earlier tests in the process created.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $bankTwo = Account::create(['name' => 'Bank Two', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $response = $this->get('/accounts');
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('account')
+            ->has('settlementOptions', 2)
+            ->where('settlementOptions.0.label', 'Bank (HKD)')
+            ->where('settlementOptions.0.value', $bank->id)
+            ->where('settlementOptions.1.label', 'Bank Two (USD)')
+            ->where('settlementOptions.1.value', $bankTwo->id)
+        );
+    }
+
+    public function test_index_offers_a_cash_account_the_user_has_closed(): void
+    {
+        // Status is orthogonal to settlement, and AccountData allows an inactive
+        // target. Excluding it from the picker would make an account that saves
+        // cleanly impossible to re-point at, so the list is filtered by type only.
+        Account::create(['name' => 'Closed Bank', 'status' => 'inactive', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->has('settlementOptions', 1)
+            ->where('settlementOptions.0.label', 'Closed Bank (HKD)')
+        );
+    }
+
+    public function test_index_orders_the_settlement_picker_by_name(): void
+    {
+        // A picker ordered by id is a picker whose contents move around as
+        // accounts are created, which reads as the list reordering itself.
+        foreach (['Zebra', 'Alpha', 'Middle'] as $name) {
+            Account::create(['name' => $name, 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        }
+
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->where('settlementOptions.0.label', 'Alpha (HKD)')
+            ->where('settlementOptions.1.label', 'Middle (HKD)')
+            ->where('settlementOptions.2.label', 'Zebra (HKD)')
+        );
+    }
+
+    public function test_the_option_list_is_not_the_paginated_page_of_accounts(): void
+    {
+        // The picker must reach every cash account, not the handful on the
+        // current page. The account table paginates at 5 by default, so reusing
+        // that result set would quietly make most banks unselectable.
+        foreach (range(1, 8) as $n) {
+            Account::create(['name' => "Bank $n", 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        }
+
+        $response = $this->get('/accounts');
+
+        $response->assertInertia(fn (Assert $page) => $page->has('settlementOptions', 8));
+        // ...while the table itself stays paginated.
+        $response->assertInertia(fn (Assert $page) => $page->has('data.data', 5));
+    }
+
+    public function test_index_exposes_the_picker_even_with_no_accounts(): void
+    {
+        // An empty list, not a missing key. A q-select bound to undefined
+        // options renders as a broken control rather than an empty one.
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->component('account')
+            ->has('settlementOptions', 0)
+        );
+    }
+
+    public function test_the_payload_the_security_form_now_sends_is_accepted(): void
+    {
+        // The form's exact card-and-link payload. Asserted end to end because the
+        // fields it sends are hand-maintained on both sides: when settlement
+        // became required for a brokerage, the form had no control for it and
+        // every securities account stopped being creatable through the browser
+        // while the API tests stayed green.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $response = $this->post('/accounts', [
+            'name' => 'Broker',
+            'status' => 'active',
+            'type' => 'security',
+            'ccy' => 'HKD',
+            'settlement_account_id' => $bank->id,
+            'meta_data' => ['due' => null, 'statement_day' => null],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $response->assertSessionHas('message', 'Account [Broker] created');
+        $this->assertSame($bank->id, Account::firstWhere('name', 'Broker')->settlement_account_id);
+    }
+
+    public function test_the_payload_the_card_form_now_sends_is_accepted(): void
+    {
+        // Same reason, and pre-existing rather than introduced here: the form's
+        // card branch sent `due` but never `statement_day`, which is
+        // required_if:type,card, so creating a card account through the browser
+        // has been rejected since that rule landed. Quasar's number input emits
+        // null for a blank field, which is what a cleared box sends.
+        $this->post('/accounts', [
+            'name' => 'Card',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'HKD',
+            'settlement_account_id' => null,
+            'meta_data' => ['due' => '15', 'statement_day' => 25],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(25, Meta::firstWhere('model_id', Account::firstWhere('name', 'Card')->id)->meta['statement_day']);
+    }
+
+    public function test_a_card_form_submitted_with_the_statement_day_cleared_is_rejected(): void
+    {
+        // The failure the previous test's fix prevents, pinned so the form
+        // cannot regress into sending a bare `due` again.
+        $response = $this->post('/accounts', [
+            'name' => 'Card',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'HKD',
+            'settlement_account_id' => null,
+            'meta_data' => ['due' => '15', 'statement_day' => null],
+        ]);
+
+        $response->assertSessionHasErrors('meta_data.statement_day');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
     public function test_store_creates_the_account(): void
     {
         $response = $this->post('/accounts', $this->payload());

@@ -47,6 +47,38 @@
           :error="!!form.errors['meta_data.due']"
           :error-message="form.errors['meta_data.due']"
         />
+        <q-input
+          v-model="form.meta_data.statement_day"
+          class="col-6"
+          label="Statement day"
+          filled
+          type="number"
+          min="1"
+          max="31"
+          hint="Day of the month the statement closes"
+          :error="!!form.errors['meta_data.statement_day']"
+          :error-message="form.errors['meta_data.statement_day']"
+        />
+      </template>
+
+      <template v-if="form.type === 'security'">
+        <q-select
+          v-model="form.settlement_account_id"
+          :options="settlementOptions"
+          class="col-6"
+          label="Settles into"
+          filled
+          emit-value
+          map-options
+          :error="!!form.errors.settlement_account_id"
+          :error-message="form.errors.settlement_account_id"
+        >
+          <template #no-option>
+            <q-item>
+              <q-item-section class="text-grey"> No cash account yet </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
       </template>
     </q-form>
   </FormDialog>
@@ -58,6 +90,13 @@ const pagination = inject('pagination')
 const { schema, form } = useFormEmpty()
 const { target, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
+
+// Cash accounts only, straight off the server. Read from the page props rather
+// than the table's rows: the table paginates, so a securities account could not
+// settle into a bank that happened to be off the first page. Server-rendered
+// rather than derived here so the options cannot disagree with what AccountData
+// will accept.
+const settlementOptions = computed(() => usePage().props.settlementOptions ?? [])
 
 const title = computed(() => {
   return target.value ? 'edit account' : 'create new account'

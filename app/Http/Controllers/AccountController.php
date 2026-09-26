@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\DTO\AccountData;
+use App\Enums\AccountType;
 use App\Models\Account;
 use Exception;
 use Illuminate\Http\Request;
@@ -24,6 +25,31 @@ class AccountController extends Controller
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
 
+        // The settlement picker's options. Filtered to cash because every other
+        // type is refused by AccountData, so offering one would offer a choice
+        // that cannot be submitted. Inactive accounts are kept: status is
+        // orthogonal to settlement and a closed bank still holds the history a
+        // dividend arrives into.
+        //
+        // Deliberately not the paginated result set. The table above pages at 5,
+        // so reusing it would make every bank off the first page unselectable
+        // while the form still looked complete. Cash accounts are one-per-bank
+        // and few, so an unbounded list is the right trade against a picker that
+        // silently cannot reach a valid target.
+        $settlementOptions = Account::query()
+            ->where('type', AccountType::Cash->value)
+            ->orderBy('name')
+            ->get(['id', 'name', 'ccy'])
+            // ccy in the label because nothing stops a brokerage settling into a
+            // bank holding a different currency, and the rate that covers the
+            // difference is not wired up yet. Showing it surfaces the choice
+            // rather than hiding a conversion the user is not making.
+            ->map(fn (Account $account) => [
+                'label' => "{$account->name} ({$account->ccy})",
+                'value' => $account->id,
+            ])
+            ->values();
+
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
         $meta = [
@@ -31,7 +57,7 @@ class AccountController extends Controller
             'path' => '/accounts',
         ];
 
-        return inertia('account', compact('formEmpty', 'data', 'params', 'meta'));
+        return inertia('account', compact('formEmpty', 'data', 'params', 'meta', 'settlementOptions'));
     }
 
     public function store(AccountData $data)
