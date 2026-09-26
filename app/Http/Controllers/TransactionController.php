@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\DTO\TransactionData;
+use App\DTO\TransactionMetaData;
 use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Enums\TransactionStatus;
@@ -11,9 +12,11 @@ use App\Models\Account;
 use App\Models\Category;
 use App\Models\Transaction;
 use App\Support\CardStatement;
+use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\PaginatedDataCollection;
 
 class TransactionController extends Controller
@@ -113,6 +116,11 @@ class TransactionController extends Controller
             ->where('type', AccountType::Card->value)
             ->where('status', 'active')
             ->orderBy('name')
+            // with('meta') so the statement query does not re-read each card's bag, and
+            // so settlementAccount() is not a second query per card. It is a plain
+            // find() rather than a belongsTo because the link is a JSON path and
+            // Eloquent cannot join on one -- see Account::settlementAccount().
+            ->with('meta')
             ->get()
             ->map(fn (Account $card) => [
                 'card' => [
@@ -136,6 +144,23 @@ class TransactionController extends Controller
             ->filter(fn (array $group) => $group['periods'] !== [])
             ->values();
 
+        // Which bank each of those cards is paid from, keyed by card id.
+        //
+        // Sent so the settle dialog can name the account the money leaves *before*
+        // the user commits, and so a card that has none shows a disabled control with
+        // a reason rather than a button that fails on click. A second lookup of what
+        // settle() will check, which is the duplication the cost is worth: the
+        // alternative is the user finding out from an error message.
+        $cardBanks = Account::query()
+            ->where('type', AccountType::Card->value)
+            ->with('meta')
+            ->get()
+            ->filter(fn (Account $card) => $card->settlementAccount() !== null)
+            ->mapWithKeys(fn (Account $card) => [
+                $card->id => $card->settlementAccount()->name,
+            ])
+            ->all();
+
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
         $meta = [
@@ -150,6 +175,7 @@ class TransactionController extends Controller
             'meta',
             'options',
             'statements',
+            'cardBanks',
             'typeOptions',
             'statusOptions',
             'currencyOptions',
@@ -243,8 +269,154 @@ class TransactionController extends Controller
         return back()->with('message', "Transaction [{$transaction->fresh()->type}] updated");
     }
 
+    /**
+     * Pay off one statement period of a card, in two rows.
+     *
+     * The amount is computed here and never taken from the request. The one figure
+     * the client does send is the one the user was shown, and it is compared rather
+     * than used: a payment recorded against a figure that has since changed would be
+     * a payment the user did not agree to, and because both rows are written
+     * together the mistake would be internally consistent and invisible.
+     */
+    public function settle(Account $account, Request $r)
+    {
+        $figures = $r->validate([
+            'due_date' => ['required', 'date_format:Y-m-d'],
+            'owed' => ['required', 'decimal:0,'.TransactionMetaData::AMOUNT_SCALE],
+        ]);
+
+        $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
+
+        if ($account->type !== AccountType::Card->value) {
+            $refuse(sprintf(
+                'Account [%s] is a %s account. Only a card has a statement to settle.',
+                $account->name,
+                $account->type
+            ));
+        }
+
+        // The bank the money leaves. A card with no bank named cannot be settled, and
+        // saying so is more use than guessing one: the account form is where it is
+        // set, and the picker there lists only cash accounts in the card's currency.
+        $bank = $account->settlementAccount();
+
+        if ($bank === null) {
+            $refuse(sprintf(
+                'Card [%s] does not name the bank it is paid from, so it cannot be settled.',
+                $account->name
+            ));
+        }
+
+        $statement = CardStatement::forAccount($account)
+            ->firstWhere('dueDate', $figures['due_date']);
+
+        $owed = $statement?->owed() ?? '0.0000';
+
+        if (BigDecimal::of($owed)->isLessThanOrEqualTo(BigDecimal::zero())) {
+            $refuse(sprintf('Nothing is owed for the statement due %s.', $figures['due_date']));
+        }
+
+        // Checked before the figure is compared, because this is the case where the
+        // owed total is arithmetically right and still not a number to pay: the
+        // issuer has not billed the pending rows, so paying the counted figure now
+        // leaves the period owing the rest under someone who believes they have
+        // settled it.
+        if ($statement->hasPendingActivity()) {
+            $refuse(sprintf(
+                'That statement has %d row%s not yet posted, so its total is not final. Post or remove %s first.',
+                $statement->pendingCount,
+                $statement->pendingCount === 1 ? '' : 's',
+                $statement->pendingCount === 1 ? 'it' : 'them'
+            ));
+        }
+
+        if (! BigDecimal::of($owed)->isEqualTo(BigDecimal::of($figures['owed']))) {
+            $refuse(sprintf(
+                'That statement now owes %s %s, not %s. Check the figure and confirm again.',
+                $owed,
+                $account->ccy,
+                $figures['owed']
+            ));
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $payment = Transaction::create([
+                'account_id' => $account->id,
+                'category_id' => null,
+                'date' => today()->toDateString(),
+                'type' => TransactionType::Payment->value,
+                'description' => sprintf('Statement %s', $figures['due_date']),
+                'amount' => $owed,
+                'ccy' => $account->ccy,
+                'status' => TransactionStatus::Posted->value,
+            ]);
+
+            $transfer = Transaction::create([
+                'account_id' => $bank->id,
+                'category_id' => null,
+                'date' => today()->toDateString(),
+                'type' => TransactionType::Transfer->value,
+                'description' => sprintf('Card payment [%s]', $account->name),
+                'amount' => $owed,
+                'ccy' => $account->ccy,
+                'status' => TransactionStatus::Posted->value,
+            ]);
+
+            // The link, written here rather than through TransactionMetaData because
+            // the ids do not exist until both rows do -- and the DTO prohibits the
+            // field, which is the point: this is the only place in the app allowed to
+            // set it.
+            //
+            // On the card side the bag also carries the due_date, because that is the
+            // key the statement query groups by and the payment is what zeroes it.
+            // The transfer's bag carries nothing else: a bank has no statement
+            // periods, and a due_date here would drop it into a card's arithmetic.
+            $payment->meta()->create([
+                'meta' => ['due_date' => $figures['due_date'], 'paired_transaction_id' => $transfer->id],
+            ]);
+
+            $transfer->meta()->create([
+                'meta' => ['paired_transaction_id' => $payment->id],
+            ]);
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            // Both rows or neither. A payment without the transfer is a card that
+            // says it was paid while the bank says the money is still there, and
+            // there is no field in either row that would show it.
+            report($e);
+
+            return back()->with('message', 'error db...');
+        }
+
+        return back()->with('message', sprintf(
+            'Card statement [%s] settled: %s %s',
+            $figures['due_date'],
+            $owed,
+            $account->ccy
+        ));
+    }
+
     public function destroy(Transaction $transaction)
     {
+        // A settlement is two rows and must not come apart. Deleting one half leaves a
+        // payment that never happened: the card shows the period owing again while
+        // the bank shows the money having left. Refused, the same shape as the
+        // refusal to delete an account a card is paid from.
+        $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
+
+        if ($pairedId !== null) {
+            return back()->with('message', sprintf(
+                'Transaction [%d] is half of a card settlement with [%d] and cannot be deleted on its own',
+                $transaction->id,
+                $pairedId
+            ));
+        }
+
         $transaction->meta()->delete();
         $transaction->delete();
 

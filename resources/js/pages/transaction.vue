@@ -2,7 +2,7 @@
   <div class="column q-gutter-md">
     <FormTransaction :options="options" />
 
-    <CardStatements :groups="statements" />
+    <CardStatements :groups="statements" :banks="cardBanks" />
 
     <AppTable :rows="data.data" :columns="columns" title="Transaction">
       <template #top>
@@ -36,6 +36,9 @@ const props = defineProps({
   // card with nothing due gets no heading, and the payments that closed the rest
   // are in the table below.
   statements: { type: Array, default: Array },
+  // Which bank each card is paid from, keyed by card id, so the settle dialog can
+  // say where the money leaves before the user commits.
+  cardBanks: { type: Object, default: () => ({}) },
 })
 
 const pagination = usePagination()

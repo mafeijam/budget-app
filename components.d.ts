@@ -19,5 +19,6 @@ declare module 'vue' {
     FormCategory: typeof import('./resources/js/components/Form/FormCategory.vue')['default']
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']
     FormTransaction: typeof import('./resources/js/components/Form/FormTransaction.vue')['default']
+    SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
   }
 }

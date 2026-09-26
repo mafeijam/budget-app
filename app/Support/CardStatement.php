@@ -74,6 +74,21 @@ class CardStatement
         // anything a request supplied -- there is nothing here to inject.
         $counting = implode("', '", TransactionStatus::countingTowardBalance());
 
+        // What a charge contributes to its card's statement: its own card-currency
+        // amount where it has one, and its amount otherwise.
+        //
+        // The fallback is only ever reached for a charge already denominated in the
+        // card's currency. TransactionData::guardCardAmount() refuses a cross-currency
+        // charge with no figure, so by the time a row exists the two branches cannot be
+        // confused -- and that is what makes the fallback safe rather than the silent
+        // arithmetic error it would otherwise be, adding USD 100 to an HKD total.
+        //
+        // JSON_EXTRACT rather than JSON_UNQUOTE, as in the join below, so a
+        // present-and-null key is not read as the string "null" and cast to zero.
+        $inCardCurrency = 'COALESCE('
+            ."CAST(JSON_EXTRACT(m.meta, '$.card_amount') AS DECIMAL(12,4)), "
+            .'t.amount)';
+
         $rows = DB::select(
             // The status filter sits inside each CASE rather than in the WHERE,
             // deliberately. In the WHERE it would hide a pending row outright, and a
@@ -93,7 +108,7 @@ class CardStatement
                     COUNT(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN 1 END) AS charge_count,
                     COUNT(CASE WHEN t.type = 'payment' AND t.status IN ('{$counting}') THEN 1 END) AS payment_count,
                     COUNT(CASE WHEN t.status = 'pending' THEN 1 END)                   AS pending_count,
-                    COALESCE(SUM(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN t.amount END), 0) AS charged,
+                    COALESCE(SUM(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN {$inCardCurrency} END), 0) AS charged,
                     COALESCE(SUM(CASE WHEN t.type = 'payment' AND t.status IN ('{$counting}') THEN t.amount END), 0) AS paid
                FROM transactions t
                JOIN meta m ON m.model_id = t.id AND m.model_type = ?

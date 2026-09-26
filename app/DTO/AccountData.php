@@ -114,11 +114,15 @@ class AccountData extends Data
         // fundamental mismatch: naming its currency would imply the pairing could
         // be fixed by converting, and it cannot.
         //
-        // Refuse rather than convert. A transaction's fx_rate exists and is wired to
-        // nothing, so there is no rate to convert at, and the proceeds would need
-        // converting back again. The pairing is real and cannot be recorded until
-        // that lands; today the account is unusable rather than silently
-        // miscounted.
+        // Refuse rather than convert, and the reason is the one that survives every
+        // re-reading of it: a *charge* in another currency is fine, because the user
+        // states what it came to in the card's own currency (card_amount, which
+        // CardStatement sums) -- so the cross-currency problem on the spending side is
+        // solved without a rate. A *bank* in another currency is not the same. The
+        // transfer that leaves it has no figure to state, because the card's statement
+        // total is not that bank-currency amount and nothing here converts between
+        // them. So the pairing stays refused: the account is unusable rather than
+        // quietly miscounted.
         //
         // Both currencies named, because there are two accounts to change.
         if ($target->ccy !== $this->ccy->value) {

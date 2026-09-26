@@ -53,6 +53,7 @@ class TransactionData extends Data
         $account = Account::find($this->account_id);
 
         $this->guardAccountType($account);
+        $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
     }
@@ -104,9 +105,9 @@ class TransactionData extends Data
 
             // No membership rule is needed -- Currency is the type, so spatie
             // derives it. Not narrowed to the account's ccy, since accommodating a
-            // difference is the transaction's fx_rate's whole purpose; not widened
-            // to all of ISO 4217, which would let a transaction record a code no
-            // account can hold and no dropdown anywhere offers.
+            // difference is what card_amount is for, on a charge; not widened to all
+            // of ISO 4217, which would let a transaction record a code no account can
+            // hold and no dropdown anywhere offers.
             //
             // fx_rate and due_date are declared in TransactionMetaData rather
             // than here: both are type-specific, so they belong with the merchant
@@ -180,6 +181,63 @@ class TransactionData extends Data
         }
 
         $this->amount = $this->meta_data?->derivedAmount($this->type);
+    }
+
+    /**
+     * Demand the card-currency figure for a charge entered in another currency.
+     *
+     * A card's charges may be in whatever currency the merchant charged in, while the
+     * statement is in the card's own. So a charge in USD on an HKD card stores 100 and
+     * contributes 780 to what the card owes, and the difference between those two
+     * numbers is not derivable from anything this app holds.
+     *
+     * Hence the user types it. Required rather than optional with a fallback to
+     * `amount`, because the fallback is silent: a forgotten figure would contribute
+     * the raw amount in the wrong currency, and a statement that is quietly wrong is
+     * worse than one that refuses to be recorded. A constructor check for the same
+     * reason guardAccountType() is one -- the account row is the other half of the
+     * comparison and a rule cannot see it.
+     *
+     * Only a charge. A payment is in the card's currency by definition, and the bank
+     * it is paid from must be in the same one, so nothing on that side needs
+     * converting either. See AccountData::guardSettlementAccount().
+     */
+    private function guardCardAmount(?Account $account): void
+    {
+        if ($account === null || $this->type !== TransactionType::Charge) {
+            return;
+        }
+
+        if ($this->ccy->value === $account->ccy) {
+            // Refused rather than ignored. A figure on a charge already in the card's
+            // currency is not merely redundant: CardStatement prefers card_amount over
+            // amount, so a stale one left over from when the charge was entered in
+            // another currency would silently replace the real amount in what the card
+            // owes. Ignored would mean accepted, and the statement would be wrong with
+            // nothing reporting it.
+            if ($this->meta_data?->card_amount !== null) {
+                throw ValidationException::withMessages([
+                    'meta_data.card_amount' => sprintf(
+                        'This charge is already in the card\'s currency (%s), so it needs no separate amount.',
+                        $this->ccy->value
+                    ),
+                ]);
+            }
+
+            return;
+        }
+
+        if ($this->meta_data?->card_amount !== null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'meta_data.card_amount' => sprintf(
+                'This charge is in %s and the card is in %s, so the amount in the card\'s currency is required.',
+                $this->ccy->value,
+                $account->ccy
+            ),
+        ]);
     }
 
     /**

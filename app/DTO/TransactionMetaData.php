@@ -60,10 +60,17 @@ class TransactionMetaData extends Data
         public ?string $unit_price = null,
         public ?string $fees = null,
 
-        // Converts amount, denominated in the transaction's own ccy, into the
-        // owning account's currency. NULL means already in the account's currency,
-        // which is the common case and is never forced to a literal 1. Nothing
-        // converts with it yet -- see AccountData::guardSettlementAccount().
+        // A rate for converting amount, denominated in the transaction's own ccy, into
+        // the owning account's currency. NULL means already in the account's currency,
+        // which is the common case and is never forced to a literal 1.
+        //
+        // Still converts nothing. Where a cross-currency amount actually has to be
+        // expressed in the account's own currency, the app asks for the result rather
+        // than a rate and multiplies nothing: card_amount on a card charge, which is
+        // what CardStatement sums. Two ways to do the same job is worse than one, and
+        // the one that cannot be silently misapplied is the one kept -- a rate applied
+        // to the wrong amount is wrong with nothing to detect it, whereas a stated
+        // figure is at least the figure someone meant.
         public ?string $fx_rate = null,
 
         // The statement period a charge rolls up into, and so the day it is
@@ -74,6 +81,16 @@ class TransactionMetaData extends Data
         // A column while MySQL could index it, and a bag now that it cannot --
         // see create_transactions_table for the reasoning.
         public ?string $due_date = null,
+
+        // A charge in a currency other than its card's, as that amount in the card's
+        // own currency. See guardCardAmount() in TransactionData for when it is
+        // required and why there is no rate anywhere in this.
+        public ?string $card_amount = null,
+
+        // The other half of a card settlement, which is two rows and not one. Written
+        // by TransactionController::settle() and by nothing else; see the rule below
+        // for why that distinction is the whole point of the field.
+        public ?int $paired_transaction_id = null,
     ) {}
 
     public static function rules()
@@ -123,6 +140,44 @@ class TransactionMetaData extends Data
             // on a card with no statement day has none, and requiring it would
             // reject a row the schema permits.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
+
+            // Not `required_if`. Whether this is needed depends on the charge's
+            // currency against the *account row's* currency, which a rule cannot see
+            // for the same reason guardAccountType() is a constructor check rather
+            // than a rule. What this does is bound it: a figure that is zero, or
+            // carries more than four decimal places, or is past the amount column's
+            // width, is refused here rather than summed into a statement and rounded
+            // by the database.
+            //
+            // `gt:0` rather than `min:0` because a zero here is a missing figure
+            // wearing a value: it would contribute nothing to the statement while
+            // looking recorded.
+            //
+            // The ceiling is the amount column's, and for the same reason -- this
+            // figure is summed into what the card owes, so it has to fit where an
+            // amount fits.
+            'card_amount' => [
+                'nullable',
+                'decimal:0,'.self::AMOUNT_SCALE,
+                'gt:0',
+                'max:'.self::MAX_AMOUNT,
+            ],
+
+            // The only rule in this DTO that is not `nullable`, and the only one
+            // that is a flat prohibition rather than something conditional on the
+            // root `type`. Both are the point.
+            //
+            // A card settlement is two rows that must not come apart, and this is the
+            // link between them. Nothing else may write it: settle() creates the two
+            // rows and then fills this in itself, writing the bag directly rather
+            // than through the DTO, because the ids do not exist until both rows do.
+            //
+            // So the field is prohibited on any payload. Permitted on one type and
+            // forbidden on the rest would not do -- a client claiming `type=transfer`
+            // and naming somebody else's transaction would pass every other rule, and
+            // a forged pair would refuse deletion of an unrelated row. Prohibited
+            // outright means the only writer is the one place that means it.
+            'paired_transaction_id' => ['prohibited'],
         ];
     }
 
@@ -155,6 +210,8 @@ class TransactionMetaData extends Data
             'fees' => 'fees',
             'fx_rate' => 'exchange rate',
             'due_date' => 'due date',
+            'card_amount' => 'amount in the card\'s currency',
+            'paired_transaction_id' => 'paired transaction',
         ];
     }
 

@@ -378,6 +378,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
         ]));
 
         $this->assertSame(TransactionType::Charge, $data->type);
@@ -720,6 +721,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'date' => '2026-01-01',
             'meta_data' => ['merchant' => 'Cafe'],
         ]));
@@ -736,6 +738,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'date' => '2026-01-01',
             'meta_data' => ['merchant' => 'Cafe', 'fx_rate' => '7.8'],
         ]));
@@ -756,6 +759,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'date' => '2026-01-01',
         ]));
 
@@ -768,6 +772,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'date' => '2026-01-26',
             'meta_data' => ['merchant' => 'Cafe'],
         ]));
@@ -780,6 +785,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'date' => '2026-01-25',
             'meta_data' => ['merchant' => 'Cafe'],
         ]));
@@ -805,6 +811,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $card->id,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
@@ -818,6 +825,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
+            'ccy' => 'HKD',
             'meta_data' => ['merchant' => 'Cafe', 'due_date' => '2026-04-15'],
         ]));
 

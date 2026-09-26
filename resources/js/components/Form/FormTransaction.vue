@@ -105,6 +105,31 @@
         />
       </template>
 
+      <!--
+        Only when the charge is in a currency the card is not. The card's statement is
+        denominated in the card's own currency, so that is the figure the card will
+        owe and the figure a settlement will pay -- and the difference between it and
+        the amount is not derivable from anything this app holds, so it is typed.
+
+        Shown only when it applies rather than always, because it is refused when it
+        does not: CardStatement prefers it over `amount`, so a stale one left from a
+        currency the user has since changed back would replace the real amount in what
+        the card owes. Clearing it below is the same rule, kept on this side so the
+        field disappears rather than sitting there refusing the save.
+      -->
+      <q-input
+        v-if="needsCardAmount"
+        v-model="form.meta_data.card_amount"
+        class="col-6"
+        label="Amount in the card's currency"
+        filled
+        type="number"
+        step="0.0001"
+        :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
+        :error="!!form.errors['meta_data.card_amount']"
+        :error-message="form.errors['meta_data.card_amount']"
+      />
+
       <template v-if="derivesAmount">
         <q-input
           v-model="form.meta_data.symbol"
@@ -218,6 +243,18 @@ const typeOptions = computed(() => {
   return type ? (typeOptionsByAccountType.value[type] ?? []) : []
 })
 
+// A charge in a currency the card is not, needs what it came to in the card's own --
+// the figure the statement will total and the settlement will pay. The account's
+// currency rides along on its option, which is the second reason the options carry
+// more than a label: without it the browser could not know whether the field applies
+// and would have to show it always.
+const needsCardAmount = computed(
+  () =>
+    form.type === 'charge' &&
+    Boolean(chosenAccount.value?.ccy) &&
+    chosenAccount.value.ccy !== form.ccy,
+)
+
 const title = computed(() => {
   return target.value ? 'edit transaction' : 'create new transaction'
 })
@@ -266,6 +303,23 @@ watch(
   (type, previousType) => {
     if (previousType) clearBag()
     if (derivesAmount.value) form.amount = null
+  },
+)
+
+// The figure is only meaningful while the two currencies differ, and the DTO refuses
+// it otherwise rather than ignoring it -- so a leftover value from before the user
+// changed the currency would fail the save over a field that is no longer on screen.
+watch(needsCardAmount, applies => {
+  if (!applies) form.meta_data.card_amount = null
+})
+
+// Same when the currency is changed back to the card's own, which is the case the
+// watcher above cannot see: needsCardAmount depends on both, so it does fire -- but
+// only once both have settled, and the field may already be hidden.
+watch(
+  () => form.ccy,
+  () => {
+    if (!needsCardAmount.value) form.meta_data.card_amount = null
   },
 )
 

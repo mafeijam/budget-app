@@ -297,6 +297,37 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_names_the_bank_each_card_is_paid_from(): void
+    {
+        // So the settle dialog can say where the money leaves before the user
+        // commits, rather than the user finding out from a refusal. A card with no
+        // bank is simply absent from the map, which is how the panel tells the
+        // difference between "owes nothing" and "cannot be paid".
+        // update, not create: setUp already gave the card its terms, and the bag is
+        // one row per model -- the unique index is on (model_id, model_type).
+        $this->card->meta()->update(['meta' => [
+            'term_days' => 15,
+            'statement_day' => 25,
+            'settlement_account_id' => $this->bank->id,
+        ]]);
+
+        $lonely = Account::create(['name' => 'Lonely', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        $lonely->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('cardBanks', [$this->card->id => 'Bank'])
+        );
+    }
+
+    public function test_index_sends_no_banks_when_no_card_names_one(): void
+    {
+        // The card in setUp has terms but no bank, which is the default state of a
+        // card a user has just added.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('cardBanks', [])
+        );
+    }
+
     public function test_index_omits_a_card_whose_only_period_is_settled(): void
     {
         // A heading for a card owing nothing is noise, and a card whose period has
