@@ -138,6 +138,35 @@ class FormContractTest extends TestCase
                 .'the browser locale rather than the app one.'
         );
 
+        // The calendar hangs off a button in the field's append slot, in a menu anchored
+        // to the button rather than covering the field. q-popup-proxy is the other way
+        // round: it ties the popup to the field's own box, so the calendar is laid over
+        // the input it belongs to, and it stays open after a day is chosen.
+        $this->assertMatchesRegularExpression(
+            '/<q-menu[^>]*\banchor="bottom right"[^>]*\bself="top right"/',
+            $markup,
+            'The calendar is not in a menu anchored bottom-right of the button, so it no '
+                .'longer drops below and to the left of the field as intended.'
+        );
+
+        $this->assertStringNotContainsString(
+            'q-popup-proxy',
+            $markup,
+            'FormTransaction.vue uses a q-popup-proxy. It anchors the calendar to the field '
+                .'itself and leaves it open after a choice; the menu is the arrangement '
+                .'that closes.'
+        );
+
+        // Quasar 2's q-date emits only update:modelValue. The Quasar 1 spelling is
+        // `input`, and a listener for an event that is never emitted is not an error --
+        // it is a menu that never closes.
+        $this->assertStringNotContainsString(
+            '@input=',
+            $markup,
+            'FormTransaction.vue listens for @input on the calendar. Quasar 2 emits only '
+                .'update:model-value, so the menu would never close.'
+        );
+
         // The format contract itself: the calendar emits what the DTO asks for.
         $this->assertContains(
             'date_format:Y-m-d',
@@ -231,10 +260,17 @@ class FormContractTest extends TestCase
         // the opposite of the truth, and a false pass rather than a false failure.
         // Counting it is enough: the reference has then been seen, which is all this
         // assertion is for.
+        //
+        // modelValues() is counted here and deliberately NOT in controls(). A
+        // :model-value displays a value the user cannot change on that element; the
+        // date field is writable only because a handler elsewhere writes it back.
+        // Counting it as a control would let "the server reads this and the form can
+        // send it" pass on a field nobody can move.
         $seen = count($this->controls($vue, false))
             + count($this->conditions($vue, false))
             + count($this->errorKeys($vue, false))
-            + count($this->disabled($vue, false));
+            + count($this->disabled($vue, false))
+            + count($this->modelValues($vue, false));
 
         $this->assertSame(
             substr_count($template, 'form.'),
@@ -894,6 +930,20 @@ class FormContractTest extends TestCase
         return $this->match(
             $this->template($vue),
             '/:disable="!?form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/',
+            $unique
+        );
+    }
+
+    /**
+     * The fields bound one-way, by :model-value rather than v-model.
+     *
+     * @return string[]
+     */
+    private function modelValues(string $vue, bool $unique = true): array
+    {
+        return $this->match(
+            $this->template($vue),
+            '/:model-value="!?form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/',
             $unique
         );
     }

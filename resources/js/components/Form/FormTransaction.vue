@@ -34,6 +34,13 @@
         masks through a different parser whose only token is #, so the same string
         there is nine literals and the field renders "YYYY-MM-DD" and accepts no
         keystroke. Silent either way, which is why the input below carries no mask.
+
+        A button in the append slot holding a q-menu, not a q-popup-proxy on the
+        input. The proxy anchors the calendar to the field's own box and leaves it
+        open after a day is chosen, so the next click lands on the calendar instead of
+        on whatever was underneath. The menu drops below and to the left of the button
+        and closes on a choice, which is the one arrangement where the calendar is
+        never over the thing it is filling in.
       -->
       <q-input
         v-model="form.date"
@@ -43,12 +50,19 @@
         :error="!!form.errors.date"
         :error-message="form.errors.date"
       >
-        <template #prepend>
-          <q-icon name="event" />
+        <template #append>
+          <q-btn flat dense icon="event" rounded>
+            <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+              <q-date
+                :model-value="form.date"
+                mask="YYYY-MM-DD"
+                minimal
+                color="green-7"
+                @update:model-value="pickDate"
+              />
+            </q-menu>
+          </q-btn>
         </template>
-        <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-          <q-date v-model="form.date" mask="YYYY-MM-DD" color="green-7" />
-        </q-popup-proxy>
       </q-input>
 
       <q-input
@@ -241,6 +255,21 @@ const derivesAmount = computed(() => ['buy', 'sell'].includes(form.type))
 // legal at all. Disabled until an account is picked, since there is nothing to
 // narrow by before then.
 const chosenAccount = computed(() => accountOptions.value.find(a => a.value === form.account_id))
+
+// The calendar's menu, so a chosen day can close it. A template ref rather than
+// $refs, which does not exist under <script setup>.
+const dateMenu = ref(null)
+
+// Writing the value and closing the menu together, so they cannot come apart. A v-model
+// on the calendar plus a separate listener would leave the menu open if one ran and the
+// other did not.
+//
+// update:model-value, not input: Quasar 2's q-date emits only that, and a listener for
+// an event that is never emitted is not an error -- it is a menu that never closes.
+const pickDate = value => {
+  form.date = typeof value === 'string' ? value : ''
+  dateMenu.value?.hide()
+}
 
 const typeOptions = computed(() => {
   const type = chosenAccount.value?.type
