@@ -677,15 +677,17 @@ class TransactionDataTest extends TestCase
 
     public function test_a_charge_derives_its_due_date_from_the_account_terms(): void
     {
-        // Closing on the 25th, due on the 15th: a charge on 1 Jan falls in the
-        // statement that closes on 25 Jan, so it is due 15 Feb.
+        // Closing on the 25th and payable 15 days later: a charge on 1 Jan falls
+        // in the statement that closes on 25 Jan, so it is due on 9 Feb. Note
+        // the term runs from the closing day, not from the charge, which is why
+        // 1 Jan becomes 9 Feb rather than 16 Jan.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
             'date' => '2026-01-01',
         ]));
 
-        $this->assertSame('2026-02-15', $data->due_date);
+        $this->assertSame('2026-02-09', $data->due_date);
     }
 
     public function test_a_charge_after_the_closing_day_moves_to_the_next_period(): void
@@ -696,7 +698,7 @@ class TransactionDataTest extends TestCase
             'date' => '2026-01-26',
         ]));
 
-        $this->assertSame('2026-03-15', $data->due_date);
+        $this->assertSame('2026-03-12', $data->due_date);
     }
 
     public function test_a_charge_on_the_closing_day_belongs_to_that_statement(): void
@@ -707,14 +709,16 @@ class TransactionDataTest extends TestCase
             'date' => '2026-01-25',
         ]));
 
-        $this->assertSame('2026-02-15', $data->due_date);
+        $this->assertSame('2026-02-09', $data->due_date);
     }
 
     public function test_a_charge_on_a_card_with_no_statement_day_has_no_due_date(): void
     {
         // Possible for a card row that predates statement_day, or one written
         // straight to the database. No cycle means no due date -- better a null
-        // the user can see than a date invented from the due day alone.
+        // the user can see than a date invented from the payment term alone,
+        // since a term is only a number of days and says nothing about when the
+        // statement it runs from closed.
         $card = Account::create([
             'name' => 'Card B',
             'status' => 'active',

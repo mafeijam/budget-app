@@ -119,7 +119,7 @@ class AccountDataTest extends TestCase
         // `nullable` has to lead. A null counts as present to the validator, so
         // without it the `integer` and `between` below both fire on the null a
         // blank form field and empty() produce. required_if is implicit and
-        // still runs, so a card with no due day is rejected.
+        // still runs, so a card with no payment term is rejected.
         $this->assertSame(['nullable', 'required_if:type,card', 'integer', 'between:1,31'], $rules['due']);
     }
 
@@ -140,21 +140,21 @@ class AccountDataTest extends TestCase
         // Laravel's snake->sentence casing, but being explicit keeps it aligned
         // with the `due` entry and avoids depending on that casing.
         //
-        // "due day", not "due date": the field holds a day of month, and calling
-        // it a date is what let a date-shaped value sit in the fixtures looking
-        // reasonable.
+        // "payment term", not "due day": `due` holds a number of days, so a
+        // label reading as a day of the month would send a user looking for the
+        // wrong field. `statement_day` keeps its name because it really is one.
         $this->assertSame(
-            ['due' => 'due day', 'statement_day' => 'statement day'],
+            ['due' => 'payment term', 'statement_day' => 'statement day'],
             AccountMetaData::attributes()
         );
     }
 
     public function test_meta_data_requires_both_card_days_not_just_the_due_day(): void
     {
-        // A due day alone cannot place a charge in a statement period: many
-        // different statement days produce the same due day, so "when is it due"
-        // does not answer "which statement is this in". Both are required, and
-        // `due` alone is now insufficient rather than merely incomplete.
+        // A term alone cannot place a charge in a statement period: it is an
+        // interval counted from the closing day, so it says nothing about when
+        // that closing was. Both are required, and `due` alone is now
+        // insufficient rather than merely incomplete.
         $rules = AccountMetaData::rules();
 
         $this->assertContains('required_if:type,card', $rules['statement_day']);

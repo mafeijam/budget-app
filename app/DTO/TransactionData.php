@@ -196,7 +196,7 @@ class TransactionData extends Data
      * Only a charge. A payment's due date names the statement it settles, normally
      * the earliest unpaid -- a question about outstanding balances that belongs in
      * the controller. A card with no statement day yields no due date rather than
-     * one guessed from the due day alone, which would be a whole cycle out.
+     * one counted from the payment term alone, which would be a whole cycle out.
      */
     private function deriveDueDate(?Account $account): void
     {

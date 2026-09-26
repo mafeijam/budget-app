@@ -9,28 +9,26 @@ use InvalidArgumentException;
 /**
  * The billing cycle of one credit card, and the day each cycle falls due.
  *
- * Placing a charge in a statement period needs two numbers, not one. A due day
- * on its own cannot do it: many different statement days produce the same due
- * day, so "when is it due" cannot answer "which statement is this in". The
- * statement day draws the cycle boundaries and the due day follows from them.
- *
- * That is why AccountMetaData carries statement_day alongside due. With only
- * `due`, a card closing on the 25th and a card closing on the 5th are
- * indistinguishable, and every charge would be attributed to the wrong
- * statement.
+ * The two numbers mean different things. statement_day is a day of the month and
+ * draws the cycle boundaries; the term is a number of days counted forward from
+ * the closing day. Both are needed because the term is an interval rather than a
+ * calendar day: it says how long after closing, not which day, so on its own it
+ * cannot say when the statement it runs from closed.
  */
 class CardStatementCycle
 {
     public function __construct(
         private readonly int $statementDay,
-        private readonly int $dueDay,
+        private readonly int $termDays,
     ) {
         // Clamping below is for "the 31st does not exist this month", which is
         // a property of the calendar. A day of 0 or 32 is a data entry error,
         // and quietly turning it into the 1st or the 28th would misstate when a
-        // card is billed without anything looking wrong.
-        self::guardDay($statementDay, 'statement day');
-        self::guardDay($dueDay, 'due day');
+        // card is billed without anything looking wrong. A term outside 1-31 is
+        // likewise a data entry error -- zero would make a statement payable on
+        // the day it closes, which is not a payment term at all.
+        self::guardStatementDay($statementDay);
+        self::guardTermDays($termDays);
     }
 
     /**
@@ -51,13 +49,13 @@ class CardStatementCycle
         }
 
         $statementDay = $meta['statement_day'] ?? null;
-        $dueDay = $meta['due'] ?? null;
+        $termDays = $meta['due'] ?? null;
 
-        if (! is_numeric($statementDay) || ! is_numeric($dueDay)) {
+        if (! is_numeric($statementDay) || ! is_numeric($termDays)) {
             return null;
         }
 
-        return new self((int) $statementDay, (int) $dueDay);
+        return new self((int) $statementDay, (int) $termDays);
     }
 
     public function statementDay(): int
@@ -65,33 +63,26 @@ class CardStatementCycle
         return $this->statementDay;
     }
 
-    public function dueDay(): int
+    public function termDays(): int
     {
-        return $this->dueDay;
+        return $this->termDays;
     }
 
     /**
      * The date this charge's statement falls due.
+     *
+     * Counted from the day the statement closes, not from the charge: a charge
+     * made on the 1st on a card closing on the 25th with a 15-day term is due on
+     * the 9th of the following month, and the same charge on a card closing on
+     * the 2nd is not due until the 17th. Adding days rather than setting a day
+     * of the month is also what keeps the term the same length in a short month
+     * -- there is no day-of-month to clamp, so a 20-day term stays 20 days in
+     * February.
      */
     public function dueDateFor(Carbon $chargeDate): Carbon
     {
-        $closed = $this->statementClosingOnOrAfter($chargeDate);
-
-        // The due date is the first occurrence of the due day strictly after
-        // the statement closed. "Strictly after" is what lets a card that
-        // closes early in the month and is due later in that same month work:
-        // its due day is ahead of the closing day, so it stays in the closing
-        // month instead of being pushed a whole month further out.
-        $due = $this->dayOfMonth($closed->copy()->startOfMonth(), $this->dueDay);
-
-        if ($due->lte($closed)) {
-            $due = $this->dayOfMonth(
-                $closed->copy()->addMonthNoOverflow()->startOfMonth(),
-                $this->dueDay
-            );
-        }
-
-        return $due;
+        return $this->statementClosingOnOrAfter($chargeDate)
+            ->addDays($this->termDays);
     }
 
     /**
@@ -136,11 +127,20 @@ class CardStatementCycle
         return $month->day(min($day, $month->daysInMonth));
     }
 
-    private static function guardDay(int $day, string $label): void
+    private static function guardStatementDay(int $day): void
     {
         if ($day < 1 || $day > 31) {
             throw new InvalidArgumentException(
-                "The {$label} must be between 1 and 31, got {$day}."
+                "The statement day must be between 1 and 31, got {$day}."
+            );
+        }
+    }
+
+    private static function guardTermDays(int $days): void
+    {
+        if ($days < 1 || $days > 31) {
+            throw new InvalidArgumentException(
+                "The payment term must be between 1 and 31 days, got {$days}."
             );
         }
     }

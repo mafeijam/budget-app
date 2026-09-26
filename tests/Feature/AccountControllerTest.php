@@ -334,9 +334,9 @@ class AccountControllerTest extends TestCase
         $this->assertIsInt($meta->meta['due']);
     }
 
-    public function test_a_card_built_from_a_stored_due_day_derives_a_due_date(): void
+    public function test_a_card_built_from_a_stored_payment_term_derives_a_due_date(): void
     {
-        // The end of the ambiguity: a card that saves a due day is now
+        // The end of the ambiguity: a card that saves a payment term is now
         // guaranteed to place its charges in a statement period. Before the
         // retype, a date-shaped value produced an account that looked complete
         // and derived nothing.
@@ -347,7 +347,7 @@ class AccountControllerTest extends TestCase
         $cycle = CardStatementCycle::fromMeta($card->fresh()->meta->meta);
 
         $this->assertNotNull($cycle);
-        $this->assertSame(15, $cycle->dueDay());
+        $this->assertSame(15, $cycle->termDays());
         $this->assertSame(25, $cycle->statementDay());
     }
 
@@ -450,7 +450,7 @@ class AccountControllerTest extends TestCase
 
     public function test_store_requires_a_statement_day_when_type_is_card(): void
     {
-        // A card with a due day but no statement day cannot be settled against:
+        // A card with a payment term but no statement day cannot be settled against:
         // nothing says which statement the charge belongs to. Rejecting it at
         // the door is the point -- the alternative is an account that saves
         // cleanly and then silently derives no due date for any charge on it.
@@ -714,7 +714,7 @@ class AccountControllerTest extends TestCase
     {
         // The counterpart to the test above: for type=card the due date is
         // required, so blanking it fails validation and nothing is written.
-        // statement_day is supplied so the only error under test is the due day.
+        // statement_day is supplied so the only error under test is the payment term.
         $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
         $account->meta()->create(['meta' => ['due' => 15, 'statement_day' => 25]]);
 

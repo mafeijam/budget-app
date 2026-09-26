@@ -53,11 +53,11 @@ class BudgetSeederTest extends TestCase
         $this->assertNull($cash->fresh()->meta);
     }
 
-    public function test_the_seeded_card_days_form_a_usable_statement_cycle(): void
+    public function test_the_seeded_card_terms_form_a_usable_statement_cycle(): void
     {
         // The end-to-end reason both days are seeded rather than just `due`:
         // CardStatementCycle::fromMeta refuses to build a cycle unless both are
-        // numeric, so a card carrying only a due day would silently derive no
+        // numeric, so a card carrying only a payment term would silently derive no
         // due date for any charge made against it.
         $this->seed(BudgetSeeder::class);
 
@@ -66,20 +66,20 @@ class BudgetSeederTest extends TestCase
 
         $this->assertNotNull($cycle, 'The seeded card must yield a statement cycle.');
         $this->assertSame(25, $cycle->statementDay());
-        $this->assertSame(15, $cycle->dueDay());
+        $this->assertSame(15, $cycle->termDays());
     }
 
-    public function test_the_due_day_is_truthy(): void
+    public function test_the_payment_term_is_truthy(): void
     {
         // AccountController builds the meta payload with collect(...)->filter(),
-        // which strips falsy values. A due day of "0" or "" would be dropped on
+        // which strips falsy values. A payment term of "0" or "" would be dropped on
         // the next save, silently deleting the meta row from a card account.
         $this->seed(BudgetSeeder::class);
 
         $card = Account::where('type', 'card')->firstOrFail();
         $due = $card->meta->meta['due'];
 
-        $this->assertNotEmpty($due, 'Seeded due day must be truthy or it vanishes on the next save.');
+        $this->assertNotEmpty($due, 'Seeded payment term must be truthy or it vanishes on the next save.');
         $this->assertLessThanOrEqual(28, mb_strlen((string) $due));
     }
 

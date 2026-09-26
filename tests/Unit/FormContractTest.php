@@ -199,11 +199,12 @@ class FormContractTest extends TestCase
         // form.type === 'card'. Agreement today is two places agreeing by hand.
         //
         // So change the rule -- required_if:type,card,bond when the brokerage
-        // starts carrying a due day, or a new type that turns out to need one --
-        // and the server starts demanding a field the form does not show. The
-        // save is rejected with "The due day field is required", the field is not
-        // on screen, and the first test still passes because the v-model is
-        // still there. The feature is unreachable and nothing in the suite fails.
+        // starts carrying a payment term, or a new type that turns out to need
+        // one -- and the server starts demanding a field the form does not show.
+        // The save is rejected with "The payment term field is required", the
+        // field is not on screen, and the first test still passes because the
+        // v-model is still there. The feature is unreachable and nothing in the
+        // suite fails.
         //
         // Derived on both sides rather than compared as literals, so widening a
         // required_if to two types is caught as readily as adding a case to the

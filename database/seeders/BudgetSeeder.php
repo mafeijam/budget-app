@@ -22,8 +22,8 @@ use Illuminate\Database\Seeder;
  *
  * So the NAMES below are borrowed from that old `budget` database on the
  * theory that they are what was here before. Everything else -- status, type,
- * currency, and the card's due day -- is a guess. Treat all of it as
- * placeholder: correct it through the UI rather than trusting it.
+ * currency, and the card's statement day and payment term -- is a guess. Treat
+ * all of it as placeholder: correct it through the UI rather than trusting it.
  *
  * The seeder is idempotent (keyed on the unique name columns) so it can be
  * re-run without duplicating rows, and it deliberately reproduces the shape of
@@ -61,9 +61,13 @@ class BudgetSeeder extends Seeder
                 // AccountMetaData requires both `due` and `statement_day`
                 // whenever type is card. A card seeded without them would
                 // therefore fail validation the moment it is opened in the edit
-                // form. A due day on its own is not enough: it cannot say which
-                // statement a charge belongs to, so no charge on this account
+                // form. A payment term on its own is not enough either: it is an
+                // interval counted from the closing day, so it cannot say which
+                // statement a charge belongs to, and no charge on this account
                 // would get a due date.
+                //
+                // Closing on the 25th and payable 15 days later, so this
+                // statement falls due on 9 October.
                 'meta' => ['due' => 15, 'statement_day' => 25],
             ],
         ] as $attributes) {
