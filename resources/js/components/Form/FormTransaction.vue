@@ -169,8 +169,25 @@ const props = defineProps({
 const pagination = inject('pagination')
 
 const { schema, form } = useFormEmpty()
-const { target, resetEdit } = useEdit(form)
+const { target: row, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
+
+// A row with no bag hydrates meta_data to null, and the template binds
+// form.meta_data.merchant, so a null bag throws during render and takes the whole
+// form with it -- no fields at all, not just that one. Which rows those are: every
+// cash expense, income, dividend and payment, so most of what anyone would edit.
+//
+// Repaired here rather than in the bindings, because the bindings are what they are
+// and the shape they need is the one the schema declares. Derived rather than
+// mutated, so the row the edit map holds is not quietly rewritten -- and so
+// useWatchTarget, which watches this, hands the form something it can bind.
+const target = computed(() => {
+  const editing = row.value
+
+  if (!editing) return null
+
+  return editing.meta_data ? editing : { ...editing, meta_data: useCloneForm(schema.meta_data) }
+})
 
 // Every option list arrives from the controller, derived from the enum that decides
 // it, so the pickers cannot offer a value TransactionData would reject nor fall
@@ -217,12 +234,21 @@ const clearBag = () => {
 
 watch(
   () => form.account_id,
-  (accountId, previousId) => {
-    // Guarded on the new value, not the old. watch() does not fire on the initial
-    // value, so the first real change arrives with previousId still null -- and a
-    // `!previousId` guard here skips exactly the first account the user picks,
-    // which is every first pick there is.
-    if (!accountId) return
+  accountId => {
+    // Guarded on isDirty, not on the previous value. useWatchTarget seeds the form
+    // from a whole table row when editing, and form.reset() moves account_id off
+    // null the same way a user's pick does -- so a guard on `previousId` cannot tell
+    // the two apart, and both plausible versions of one get something wrong:
+    //
+    //   `if (!previousId) return`  skips the first account a user picks, which is
+    //                             every first pick, leaving the currency unset
+    //   no guard at all            fires while seeding, clearing the type the row
+    //                             came with and failing the save over a field the
+    //                             user never touched
+    //
+    // Dirty separates them exactly: a form that has just been reset is clean, and
+    // anything the user changes makes it dirty before the watcher runs.
+    if (!form.isDirty || !accountId) return
 
     form.type = null
     clearBag()

@@ -583,6 +583,248 @@ class TransactionControllerTest extends TestCase
         $this->assertDatabaseCount('transactions', 1);
     }
 
+    // ---------------------------------------------------------------------
+    // Updating
+    // ---------------------------------------------------------------------
+
+    public function test_update_changes_a_transaction(): void
+    {
+        $transaction = $this->storedCharge();
+
+        $response = $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'description' => 'Cafe Central',
+            'amount' => '135.0000',
+        ]));
+
+        $response->assertSessionHasNoErrors();
+        $response->assertSessionHas('message', 'Transaction [charge] updated');
+
+        $fresh = $transaction->fresh();
+
+        $this->assertSame('Cafe Central', $fresh->description);
+        $this->assertSame('135.0000', $fresh->amount);
+    }
+
+    public function test_update_ignores_an_id_in_the_payload(): void
+    {
+        // The payload's id is a number the client chose, and the row's is not the
+        // client's to set. MassAssignmentTest covers the allowlist; this is the
+        // endpoint, where the consequence would be a transaction renumbered onto
+        // another one.
+        $target = $this->storedCharge();
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'id' => $target->id,
+            'description' => 'Renamed',
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertNotSame($target->id, $transaction->fresh()->id);
+        $this->assertSame($transaction->id, $transaction->fresh()->id);
+        $this->assertSame('Cafe', $target->fresh()->description);
+    }
+
+    public function test_update_keeps_the_original_created_at(): void
+    {
+        $transaction = $this->storedCharge();
+        $original = $transaction->created_at;
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'created_at' => now()->subYears(5)->toAtomString(),
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertTrue(
+            $transaction->fresh()->created_at->equalTo($original),
+            'created_at was rewritten from the payload.'
+        );
+    }
+
+    public function test_update_replaces_the_bag_rather_than_accumulating_one(): void
+    {
+        // The second write is where a bag goes wrong. Merging would leave a merchant
+        // from the previous save sitting beside the new one, and the row would read
+        // complete while carrying two contradictory values.
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'meta_data' => ['merchant' => 'Different Shop'],
+        ]))->assertSessionHasNoErrors();
+
+        $fresh = $transaction->fresh();
+
+        $this->assertSame(1, Meta::where('model_type', Transaction::class)->count());
+        $this->assertSame('Different Shop', $fresh->meta_data['merchant']);
+        // Re-derived rather than carried over, so the period is right.
+        $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
+    }
+
+    public function test_update_re_derives_the_due_date_when_the_date_moves_period(): void
+    {
+        // A charge on the 26th falls in the next statement, so a client correcting
+        // the date has to move the period with it. due_date is derived, not supplied,
+        // so this is the server noticing rather than being told.
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-26',
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-03-12', $transaction->fresh()->meta_data['due_date']);
+    }
+
+    public function test_update_deletes_the_bag_when_the_new_type_has_none(): void
+    {
+        // The only way a transaction's bag goes away, and it took three rules to
+        // establish that. deriveDueDate() fills in a due date for anything with card
+        // terms; TransactionMetaData requires a merchant for a charge regardless of
+        // terms; and a charge is not a type anything else can be. So a charge always
+        // has a bag, and the only reachable empty bag is a row changed to a type that
+        // has none -- a charge reclassified as a cash expense, which is below.
+        //
+        // Which matters more than it looks. Left behind, the stale due_date keeps the
+        // row in a card statement period, and the statement query groups on exactly
+        // that key: the expense would show up in what the card owes, and what the
+        // card owes would be a figure no user could account for.
+        $transaction = $this->storedCharge();
+
+        $this->assertNotNull($transaction->fresh()->meta);
+
+        $this->put("/transactions/{$transaction->id}", $this->expense([
+            'description' => 'Reclassified',
+        ]))->assertSessionHasNoErrors();
+
+        $fresh = $transaction->fresh();
+
+        $this->assertNull($fresh->meta);
+        $this->assertSame(0, Meta::where('model_type', Transaction::class)->count());
+        $this->assertSame('Reclassified', $fresh->description);
+        $this->assertSame($this->bank->id, $fresh->account_id);
+    }
+
+    public function test_update_re_derives_a_trades_amount_from_the_new_numbers(): void
+    {
+        $this->post('/transactions', $this->tradePayload([
+            'quantity' => '100',
+        ]))->assertSessionHasNoErrors();
+
+        $id = Transaction::firstOrFail()->id;
+        $this->assertSame('15050.0000', Transaction::firstOrFail()->amount);
+
+        $this->put("/transactions/{$id}", $this->tradePayload([
+            'quantity' => '200',
+        ]))->assertSessionHasNoErrors();
+
+        // 200 x 150.50, rather than the figure the previous numbers gave.
+        $this->assertSame('30100.0000', Transaction::firstOrFail()->amount);
+    }
+
+    public function test_update_rejects_a_type_that_is_wrong_for_the_account(): void
+    {
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'account_id' => $this->bank->id,
+        ]))->assertSessionHasErrors('type');
+
+        // Untouched, not half-written.
+        $this->assertSame('Cafe', $transaction->fresh()->description);
+        $this->assertSame($this->card->id, $transaction->fresh()->account_id);
+    }
+
+    public function test_a_rejected_update_writes_nothing(): void
+    {
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'amount' => 'not money',
+        ]))->assertSessionHasErrors('amount');
+
+        $this->assertSame('120.0000', $transaction->fresh()->amount);
+        $this->assertSame('Cafe', $transaction->fresh()->meta_data['merchant']);
+    }
+
+    // ---------------------------------------------------------------------
+    // Deleting
+    // ---------------------------------------------------------------------
+
+    public function test_destroy_removes_the_transaction_and_its_bag(): void
+    {
+        $transaction = $this->storedCharge();
+
+        $response = $this->delete("/transactions/{$transaction->id}");
+
+        $response->assertStatus(302);
+        $response->assertSessionHas('message', 'Transaction [charge] deleted');
+
+        $this->assertDatabaseCount('transactions', 0);
+        $this->assertSame(0, Meta::where('model_type', Transaction::class)->count());
+    }
+
+    public function test_destroy_removes_a_row_that_has_no_bag(): void
+    {
+        // Nothing to delete but the row, and its absence must not be mistaken for a
+        // failure -- a cash expense has no bag to begin with.
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+
+        $this->delete('/transactions/'.Transaction::firstOrFail()->id)
+            ->assertSessionHas('message', 'Transaction [expense] deleted');
+
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_deleting_one_charge_changes_what_its_period_owes(): void
+    {
+        // Why deleting has to reach into the bag: a charge is one row among several
+        // sharing a due_date, so removing it changes what the period owes without
+        // touching the others.
+        $this->storedCharge();
+        $this->storedCharge();
+
+        $this->assertSame('240.0000', CardStatement::forAccount($this->card)->sole()->owed());
+
+        $this->delete('/transactions/'.Transaction::orderBy('id')->value('id'))->assertSessionHasNoErrors();
+
+        $this->assertSame('120.0000', CardStatement::forAccount($this->card)->sole()->owed());
+    }
+
+    // ---------------------------------------------------------------------
+
+    private function storedCharge(): Transaction
+    {
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+
+        return Transaction::latest('id')->firstOrFail();
+    }
+
+    private function chargePayload(array $overrides = []): array
+    {
+        return array_merge([
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ], $overrides);
+    }
+
+    private function tradePayload(array $overrides = []): array
+    {
+        return array_merge([
+            'account_id' => $this->broker->id,
+            'category_id' => null,
+            'date' => '2026-01-05',
+            'type' => 'buy',
+            'description' => 'Buy 0700.HK',
+            'ccy' => 'HKD',
+            'meta_data' => ['symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '150.50'],
+        ], $overrides ? ['meta_data' => array_merge([
+            'symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '150.50',
+        ], $overrides)] : []);
+    }
+
     private function expense(array $overrides = []): array
     {
         return array_merge([

@@ -14,6 +14,12 @@
           </div>
         </div>
       </template>
+
+      <template #body-cell-action="cell">
+        <q-td :props="cell">
+          <AppTableActions :cell="cell" />
+        </q-td>
+      </template>
     </AppTable>
   </div>
 </template>
@@ -116,6 +122,11 @@ const columns = reactive([
     field: 'created_at',
     format: val => formatDate(val),
     sortable: true,
+  },
+  {
+    name: 'action',
+    label: 'Action',
+    align: 'right',
   },
 ])
 

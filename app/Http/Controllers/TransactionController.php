@@ -198,4 +198,56 @@ class TransactionController extends Controller
         // comes back the string the column holds. See MassAssignmentTest.
         return back()->with('message', "Transaction [{$transaction->type}] recorded");
     }
+
+    public function update(Transaction $transaction, TransactionData $data)
+    {
+        // Same two writes and the same transaction as store(). The difference is the
+        // bag: on a second write it is replaced rather than added, or a merchant the
+        // user corrected would sit beside the one they replaced and the row would read
+        // complete while carrying both.
+        DB::beginTransaction();
+
+        try {
+            $transaction->update($data->except('meta_data')->toArray());
+
+            $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
+
+            if ($meta->isNotEmpty()) {
+                // Keyed on the bag's own id, as AccountController does. Without it
+                // updateOrCreate would search on the relation's foreign key with no
+                // values to fill, find nothing, and try to insert -- which the meta
+                // table's unique index on (model_id, model_type) then refuses.
+                $transaction->meta()->updateOrCreate(
+                    ['id' => $transaction->meta?->id],
+                    ['meta' => $meta]
+                );
+            } else {
+                // A payload with no bag is valid for a charge, and the statement
+                // query groups on the bag's due_date. A bag left behind would keep
+                // the charge in its period after the user had cleared the merchant,
+                // so the absence has to be written rather than skipped.
+                $transaction->meta()->delete();
+            }
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            report($e);
+
+            return back()->with('message', 'error db...');
+        }
+
+        // fresh(), not the instance: the payload's type may have been a different one,
+        // and the message should name what the row now is rather than what was sent.
+        return back()->with('message', "Transaction [{$transaction->fresh()->type}] updated");
+    }
+
+    public function destroy(Transaction $transaction)
+    {
+        $transaction->meta()->delete();
+        $transaction->delete();
+
+        return back()->with('message', "Transaction [{$transaction->type}] deleted");
+    }
 }
