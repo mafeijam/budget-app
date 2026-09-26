@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\DTO\TransactionData;
 use App\DTO\TransactionMetaData;
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
@@ -142,7 +143,7 @@ class TransactionDataTest extends TestCase
         $this->assertSame(TransactionType::Expense, $data->type);
         $this->assertSame('Coffee', $data->description);
         $this->assertSame('4.5000', $data->amount);
-        $this->assertSame('USD', $data->ccy);
+        $this->assertSame(Currency::Usd, $data->ccy);
         $this->assertNotNull($data->created_at);
     }
 
@@ -168,10 +169,16 @@ class TransactionDataTest extends TestCase
     {
         // Guards the wire format. toArray() must emit the scalar, not the enum
         // name, or every Inertia prop carrying a transaction changes shape.
+        //
+        // ccy is here for the same reason as the other two, and with more at
+        // stake: store() is still a stub that returns the rules rather than
+        // writing, so the moment it is wired to Transaction::create() a leaked
+        // enum becomes a broken INSERT that no test currently stands between.
         $array = TransactionData::from($this->postRequest())->toArray();
 
         $this->assertSame('expense', $array['type']);
         $this->assertSame('posted', $array['status']);
+        $this->assertSame('USD', $array['ccy']);
     }
 
     public function test_amount_must_be_numeric(): void
@@ -223,9 +230,64 @@ class TransactionDataTest extends TestCase
         $this->assertFieldRejected(['description' => str_repeat('x', 256)], 'description');
     }
 
-    public function test_ccy_is_capped_at_three_characters(): void
+    public function test_ccy_must_be_a_currency_the_app_offers(): void
     {
-        $this->assertFieldRejected(['ccy' => 'HK Dollar'], 'ccy');
+        // Previously this was a length cap, so it rejected 'HK Dollar' and
+        // accepted 'ZZZ' and 'hkd' just as readily as 'HKD' -- a code no account
+        // can hold and no dropdown offers, on a row whose amount is denominated
+        // in it. The enum decides now, and case is part of the value.
+        foreach (['ZZZ', 'hkd', 'HK Dollar', 'HKDD', 'US', ''] as $ccy) {
+            $this->assertFieldRejected(['ccy' => $ccy], 'ccy');
+        }
+    }
+
+    public function test_a_transaction_may_differ_from_its_account_currency(): void
+    {
+        // The one thing the enum must not do here: narrow ccy to the account's own
+        // currency. A foreign purchase is denominated in the merchant's currency
+        // and fx_rate is what brings it home, so requiring the two to match would
+        // make fx_rate unreachable and quietly forbid the only case it exists for.
+        //
+        // setUp's account is HKD and the request default is already USD, so this
+        // asserts the pairing rather than the accident of which code came first.
+        $account = Account::find($this->accountId);
+        $this->assertSame('HKD', $account->ccy);
+
+        $data = TransactionData::from($this->postRequest(['ccy' => 'USD']));
+
+        $this->assertSame(Currency::Usd, $data->ccy);
+    }
+
+    public function test_every_offered_currency_is_accepted_on_a_transaction(): void
+    {
+        // The mirror of the membership test, so the two cannot be broken by
+        // trimming the enum: a currency a client may legitimately pay in has to
+        // be submittable, and the set is the account enum rather than a
+        // transaction-only one.
+        foreach (Currency::cases() as $currency) {
+            $data = TransactionData::from($this->postRequest(['ccy' => $currency->value]));
+
+            $this->assertSame($currency, $data->ccy);
+        }
+    }
+
+    public function test_a_rejected_currency_is_reported_as_a_currency_not_a_ccy(): void
+    {
+        // "The selected ccy is invalid" is the one field error a user cannot act
+        // on. Same wording as the account form's, since it is the same field on
+        // the same form.
+        try {
+            TransactionData::from($this->postRequest(['ccy' => 'ZZZ']));
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                ['The selected currency is invalid.'],
+                $e->errors()['ccy']
+            );
+
+            return;
+        }
+
+        $this->fail('Expected a ZZZ currency to be rejected, but the payload validated.');
     }
 
     public function test_an_unknown_transaction_type_is_rejected(): void
@@ -526,7 +588,7 @@ class TransactionDataTest extends TestCase
             type: TransactionType::Buy,
             description: 'Buy 0700.HK',
             amount: '1.00',
-            ccy: 'HKD',
+            ccy: Currency::Hkd,
             status: null,
             fx_rate: null,
             due_date: null,
@@ -548,7 +610,7 @@ class TransactionDataTest extends TestCase
             type: TransactionType::Expense,
             description: 'Coffee',
             amount: '4.5000',
-            ccy: 'HKD',
+            ccy: Currency::Hkd,
             status: null,
             fx_rate: null,
             due_date: null,
@@ -824,9 +886,13 @@ class TransactionDataTest extends TestCase
         $this->assertSame(['exists:accounts,id'], $rules['account_id']);
         $this->assertSame(['date_format:Y-m-d'], $rules['date']);
         $this->assertSame(['max:255'], $rules['description']);
-        $this->assertSame(['size:3'], $rules['ccy']);
         $this->assertSame(['nullable', 'decimal:0,8', 'gt:0'], $rules['fx_rate']);
         $this->assertSame(['nullable', 'date_format:Y-m-d'], $rules['due_date']);
+
+        // ccy is an enum, so spatie derives its membership and the `size:3` that
+        // stood in for it is gone -- it never checked membership anyway, so what
+        // it actually guarded was a value length the column already allows.
+        $this->assertArrayNotHasKey('ccy', $rules);
 
         // type is an enum, so spatie validates its value and no length rule is
         // needed -- the column is varchar(255) and cannot be reached with

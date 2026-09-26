@@ -3,6 +3,7 @@
 namespace App\DTO;
 
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
@@ -48,7 +49,7 @@ class TransactionData extends Data
         // Nullable only because a trade derives its own. Rules make it required
         // for every other type and prohibited for the trades.
         public ?string $amount,
-        public string $ccy,
+        public Currency $ccy,
 
         // Defaults to posted below; that is the only state a plain cash expense
         // is ever in, so a client that does not care should not have to say.
@@ -132,7 +133,18 @@ class TransactionData extends Data
             ],
 
             'description' => ['max:255'],
-            'ccy' => ['size:3'],
+
+            // No rule, for the reason AccountData's has none: the property is
+            // typed as Currency, so spatie/laravel-data derives the membership
+            // check. The old `size:3` was the same half-measure as the account
+            // one -- it accepted 'ZZZ' and 'hkd' as readily as 'HKD'.
+            //
+            // The same enum as the account's currency, and deliberately not a
+            // wider one. A transaction may be denominated in something other than
+            // its account's currency -- that is what fx_rate is for -- so this
+            // cannot be narrowed to "the account's ccy". It could be widened to
+            // all of ISO 4217, and that is the day a transaction records a code
+            // no account can hold and no dropdown anywhere offers.
             'fx_rate' => ['nullable', 'decimal:0,8', 'gt:0'],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
@@ -150,6 +162,7 @@ class TransactionData extends Data
     public static function attributes()
     {
         return [
+            'ccy' => 'currency',
             'fx_rate' => 'exchange rate',
             'due_date' => 'due date',
         ];
