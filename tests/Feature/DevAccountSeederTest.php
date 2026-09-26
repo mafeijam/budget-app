@@ -216,10 +216,10 @@ class DevAccountSeederTest extends TestCase
 
     public function test_it_refuses_to_run_against_a_database_that_is_not_a_test_database(): void
     {
-        // .env sets DB_DATABASE=budget_v2, the live database, so an unqualified
-        // `db:seed --class=DevAccountSeeder` resolves there. The guard has to hold
-        // on the resolved name rather than on an env var, because a cached config
-        // (bootstrap/cache/config.php) overrides the environment entirely.
+        // The safe database is a local, uncommitted .env setting, and it has
+        // already been repointed once, so the guard is asserted against any name
+        // that does not look like a test database rather than against whatever
+        // .env happens to say today.
         Config::set('database.connections.mysql.database', 'budget_v2');
 
         $this->expectException(RuntimeException::class);
