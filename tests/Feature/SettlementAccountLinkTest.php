@@ -129,12 +129,47 @@ class SettlementAccountLinkTest extends TestCase
         $this->assertSame('YES', $columns['settlement_account_id']->col_nullable);
     }
 
+    /**
+     * The indexed columns of a table, from information_schema.statistics.
+     *
+     * Aliases are explicit for the same reason as in columns(): the driver may
+     * hand back upper- or lower-case names depending on PDO::ATTR_CASE.
+     */
+    private function indexes(string $table): array
+    {
+        $rows = DB::select(
+            "SELECT index_name AS idx_name, column_name AS col_name, seq_in_index AS col_seq
+               FROM information_schema.statistics
+              WHERE table_schema = DATABASE() AND table_name = ?
+              ORDER BY index_name, seq_in_index",
+            [$table]
+        );
+
+        $indexes = [];
+        foreach ($rows as $row) {
+            $indexes[$row->idx_name][] = $row->col_name;
+        }
+
+        return $indexes;
+    }
+
     public function test_the_settlement_column_is_an_unsigned_id(): void
     {
         $this->assertSame(
             'bigint unsigned',
             $this->columns()['settlement_account_id']->col_full_type
         );
+    }
+
+    public function test_the_settlement_column_is_indexed(): void
+    {
+        // Not decoration: the next migration's foreign key needs it, and so does
+        // "which brokerages settle into this bank", which is the question a cash
+        // account delete has to answer before it may proceed.
+        $indexes = $this->indexes('accounts');
+        $indexed = array_merge(...array_values($indexes));
+
+        $this->assertContains('settlement_account_id', $indexed);
     }
 
     public function test_the_settlement_column_has_no_foreign_key(): void

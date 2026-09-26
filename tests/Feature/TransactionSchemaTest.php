@@ -25,6 +25,23 @@ class TransactionSchemaTest extends TestCase
      * column names upper-case, and whether the driver hands them back upper- or
      * lower-case depends on PDO::ATTR_CASE, so the aliases pin it down.
      */
+    private function indexes(): array
+    {
+        $rows = DB::select(
+            "SELECT index_name AS idx_name, column_name AS col_name, seq_in_index AS col_seq
+               FROM information_schema.statistics
+              WHERE table_schema = DATABASE() AND table_name = 'transactions'
+              ORDER BY index_name, seq_in_index"
+        );
+
+        $indexes = [];
+        foreach ($rows as $row) {
+            $indexes[$row->idx_name][] = $row->col_name;
+        }
+
+        return $indexes;
+    }
+
     private function columns(): array
     {
         $rows = DB::select(
@@ -111,24 +128,44 @@ class TransactionSchemaTest extends TestCase
     public function test_account_and_date_are_indexed_together(): void
     {
         // The balance query is always scoped to one account and ordered by
-        // date, and the settlement query groups by due_date within an account.
-        $indexes = DB::select(
-            "SELECT index_name AS idx_name, seq_in_index AS idx_seq, column_name AS col_name
-               FROM information_schema.statistics
-              WHERE table_schema = DATABASE() AND table_name = 'transactions'
-              ORDER BY index_name, seq_in_index"
-        );
-
-        $grouped = [];
-        foreach ($indexes as $row) {
-            $grouped[$row->idx_name][] = $row->col_name;
-        }
-
+        // date.
         $this->assertContains(
             ['account_id', 'date'],
-            array_values($grouped),
+            array_values($this->indexes()),
             'Expected a composite index on (account_id, date); found: '
-                .json_encode($grouped)
+                .json_encode($this->indexes())
         );
+    }
+
+    public function test_account_and_due_date_are_indexed_together(): void
+    {
+        // How much a card statement owes is a GROUP BY due_date scoped to one
+        // account:
+        //
+        //   SELECT due_date, SUM(charge) - SUM(payment) FROM transactions
+        //    WHERE account_id = ? GROUP BY due_date
+        //
+        // Leading with account_id keeps it scoped; trailing due_date lets MySQL
+        // take the groups off the index in order instead of sorting them.
+        //
+        // due_date is the period key, which is why there is no statements table
+        // to join for this.
+        $this->assertContains(
+            ['account_id', 'due_date'],
+            array_values($this->indexes()),
+            'Expected a composite index on (account_id, due_date); found: '
+                .json_encode($this->indexes())
+        );
+    }
+
+    public function test_category_id_is_indexed(): void
+    {
+        // Required by the category_id foreign key, and independently the lookup
+        // behind "everything filed under this category" -- the question a
+        // category delete has to answer before it may claim the category is
+        // unused.
+        $indexed = array_merge(...array_values($this->indexes()));
+
+        $this->assertContains('category_id', $indexed, 'Found: ' . json_encode($this->indexes()));
     }
 }
