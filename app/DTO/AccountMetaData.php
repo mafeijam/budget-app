@@ -44,18 +44,23 @@ class AccountMetaData extends Data
             // what it depends on.
             //
             // Between required_if and prohibited_unless the two say the field is
-            // present exactly when the account is a securities one, and the
-            // prohibition is what makes a settlement cycle unrepresentable: a cycle
-            // needs a cash account in the middle, and a cash account may not carry
-            // the field.
+            // present exactly when the account may have one. Required for a
+            // securities account, whose trades have no meaning without a bank to
+            // settle into; merely permitted for a card, which is usable before the
+            // user has decided where they pay it from -- though it cannot be settled
+            // until they have.
+            //
+            // A cash account is prohibited, and that is the point: the account
+            // settled *into* is the one that may not name a target.
             //
             // `different` is redundant with AccountData::guardSettlementAccount() --
-            // a securities account is not cash, so it cannot point at itself. It is
-            // here for the message, which would otherwise blame the target.
+            // neither a securities account nor a card is cash, so neither can point
+            // at itself. It is here for the message, which would otherwise blame the
+            // target.
             'settlement_account_id' => [
                 'nullable',
                 'required_if:type,security',
-                'prohibited_unless:type,security',
+                'prohibited_unless:type,security,card',
                 'integer',
                 'exists:accounts,id',
                 'different:id',

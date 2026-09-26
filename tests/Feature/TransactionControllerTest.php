@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\DTO\TransactionData;
+use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Enums\TransactionStatus;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
@@ -419,13 +421,22 @@ class TransactionControllerTest extends TestCase
         // account and be refused by the constructor -- correct, but a picker that
         // offers a choice it will reject is worse than one that does not offer it.
         //
-        // Derived from TransactionType::accountTypes() so the two cannot disagree.
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('typeOptions', [
-                'cash' => ['expense', 'income'],
-                'card' => ['charge', 'payment'],
-                'security' => ['buy', 'sell', 'dividend'],
+        // Derived from TransactionType::accountTypes() rather than written out, and
+        // that is what makes it a real check: a case added to the enum and not
+        // offered here would fail, which a list of literals would not notice until a
+        // user tried to record the type and found it missing from the dropdown.
+        $expected = collect(AccountType::cases())
+            ->mapWithKeys(fn (AccountType $accountType) => [
+                $accountType->value => collect(TransactionType::cases())
+                    ->filter(fn (TransactionType $type) => $type->isAllowedFor($accountType))
+                    ->map(fn (TransactionType $type) => $type->value)
+                    ->values()
+                    ->all(),
             ])
+            ->all();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('typeOptions', $expected)
         );
     }
 

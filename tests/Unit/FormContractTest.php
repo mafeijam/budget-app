@@ -714,6 +714,26 @@ class FormContractTest extends TestCase
             return $m[2] === '===' || $m[2] === '==' ? $equal : ! $equal;
         }
 
+        // A list membership test: `['security', 'card'].includes(form.type)`. Added
+        // for the settlement picker, which is shown for a card as well as a
+        // brokerage and so cannot be written as a chain of === the way the other
+        // conditions here are.
+        //
+        // Matched before the bare-path and negation cases, since it opens with '['.
+        if (preg_match(
+            "/^\[([^\]]*)\]\.includes\(form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\)$/",
+            $term,
+            $m
+        )) {
+            $candidates = array_map('trim', array_filter(explode(',', $m[1]), fn ($v) => trim($v) !== ''));
+            $value = $form[$m[2]] ?? null;
+
+            return in_array((string) $value, array_map(
+                fn ($v) => trim($v, "'\""),
+                $candidates
+            ), true);
+        }
+
         if (str_starts_with($term, '!')) {
             return ! $this->termHolds(trim(substr($term, 1)), $form);
         }
@@ -727,7 +747,7 @@ class FormContractTest extends TestCase
         $this->fail(sprintf(
             'FormContractTest cannot evaluate the visibility condition `%s`, so the visibility '
                 .'assertions cannot be trusted. It handles comparisons against a quoted string or '
-                .'a number, a bare form path, a leading `!`, and && / || chains. Widen '
+                .'a number, a bare form path, a list .includes(), a leading `!`, and && / || chains. Widen '
                 .'termHolds() to cover this one.',
             $term
         ));
@@ -758,11 +778,25 @@ class FormContractTest extends TestCase
      */
     private function conditions(string $vue, bool $unique = true): array
     {
-        return $this->match(
-            $this->template($vue),
-            '/v-if="form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/',
-            $unique
-        );
+        // Any v-if that reads a form field, whatever shape the condition takes.
+        //
+        // Matching only `v-if="form.` assumed every condition starts with the field
+        // it reads, which was true until a condition became
+        // `['security', 'card'].includes(form.type)` -- a list membership test, where
+        // the field is at the end. Such a condition was skipped, which is what the
+        // count assertion in test_every_form_reference_uses_a_recognised_syntax()
+        // exists to catch; the fix is here rather than in the template, because the
+        // template's condition is the clearer of the two.
+        preg_match_all('/v-if="([^"]*)"/', $this->template($vue), $conditions);
+
+        $paths = [];
+
+        foreach ($conditions[1] as $condition) {
+            preg_match_all('/form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/', $condition, $found);
+            $paths = array_merge($paths, $found[1]);
+        }
+
+        return $unique ? array_values(array_unique($paths)) : $paths;
     }
 
     /**

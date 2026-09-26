@@ -256,6 +256,12 @@ class SettlementAccountLinkTest extends TestCase
     }
 
     /**
+     * Account types other than securities.
+     *
+     * Card was here once and is not now. It is permitted to name the bank it is
+     * paid from -- see CardSettlementAccountTest -- so the two tests below are about
+     * cash alone, and the "may not carry" one has nothing left to say about cards.
+     *
      * @return array<string, array{0: string}>
      */
     public static function nonSecurityTypeProvider(): array
@@ -263,32 +269,37 @@ class SettlementAccountLinkTest extends TestCase
         return ['cash' => ['cash'], 'card' => ['card']];
     }
 
-    #[DataProvider('nonSecurityTypeProvider')]
-    public function test_no_other_account_type_may_carry_a_settlement_account(string $type): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function cashTypeProvider(): array
+    {
+        return ['cash' => ['cash']];
+    }
+
+    #[DataProvider('cashTypeProvider')]
+    public function test_a_cash_account_may_not_carry_a_settlement_account(string $type): void
     {
         // This is the rule that makes cycles impossible, so it is worth being
         // strict about: a cash account pointing at a securities account is the
         // second hop a cycle would need, and closing it here means no cycle can
-        // be constructed at all rather than needing to be detected.
-        //
-        // A card payload carries its statement terms too, so the field under test
-        // is the only thing wrong with it -- otherwise term_days would be the
-        // error and this would pass without the prohibition ever running.
-        $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
-        $meta['settlement_account_id'] = $this->cashId;
-
+        // be constructed at all rather than needing to be detected. A card is no
+        // longer covered here, because a card is not cash and never points at
+        // another card -- AccountMetaData still refuses a card from naming a
+        // non-cash target, and the ccy guard still applies.
         $this->assertFieldRejected([
             'name' => "Probe {$type}",
             'type' => $type,
-            'meta_data' => $meta,
+            'meta_data' => ['settlement_account_id' => $this->cashId],
         ], 'meta_data.settlement_account_id');
     }
 
     #[DataProvider('nonSecurityTypeProvider')]
     public function test_no_other_account_type_needs_one_either(string $type): void
     {
-        // The mirror, so the pair of rules is pinned as "present iff securities"
-        // rather than "prohibited for cash" with nothing said about card.
+        // The mirror, so the pair of rules is pinned as "required iff securities"
+        // rather than "prohibited for cash" with nothing said about card. A card may
+        // carry one and is not made to.
         $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
         $meta['settlement_account_id'] = null;
 
@@ -603,7 +614,7 @@ class SettlementAccountLinkTest extends TestCase
             ]));
         } catch (ValidationException $e) {
             $this->assertSame(
-                ['A securities account settles into a cash account, not a card account.'],
+                ['A brokerage can only settle into a cash account, not a card account.'],
                 $e->errors()['meta_data.settlement_account_id']
             );
 

@@ -22,6 +22,17 @@ enum TransactionType: string
     case Expense = 'expense';
     case Income = 'income';
 
+    // Money leaving a bank toward something whose far side this app does not track
+    // -- most often a credit card payment, which records two rows: a Payment on the
+    // card and a Transfer on the bank.
+    //
+    // Not an expense, and that is the whole reason it is a case of its own. Expense
+    // requires a category and counts as spending, so recording a card repayment as
+    // one would put money that was never spent into every spending total. Cash only:
+    // the card side of the pair already has a type, and a transfer here would be a
+    // second name for it.
+    case Transfer = 'transfer';
+
     // Credit card accounts. A charge spends the card's credit and rolls up into
     // a statement period; a payment reduces what is owed and is deliberately
     // not an expense, so it need not be categorised -- though a payment may
@@ -44,7 +55,7 @@ enum TransactionType: string
     public function accountTypes(): array
     {
         return match ($this) {
-            self::Expense, self::Income => [AccountType::Cash],
+            self::Expense, self::Income, self::Transfer => [AccountType::Cash],
             self::Charge, self::Payment => [AccountType::Card],
             self::Buy, self::Sell, self::Dividend => [AccountType::Security],
         };

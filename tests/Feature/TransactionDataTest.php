@@ -533,7 +533,10 @@ class TransactionDataTest extends TestCase
         // that decides. Expense and charge are the only two that are categorised
         // spending, so those are the only two that may be omitted nowhere.
         $this->assertContains(
-            'required_unless:type,income,payment,buy,sell,dividend',
+            'required_unless:type,'.collect(TransactionType::cases())
+                ->reject(fn (TransactionType $type) => $type->requiresCategory())
+                ->map(fn (TransactionType $type) => $type->value)
+                ->implode(','),
             $rules
         );
 

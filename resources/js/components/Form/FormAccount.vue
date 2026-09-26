@@ -67,15 +67,22 @@
         />
       </template>
 
-      <template v-if="form.type === 'security'">
+      <!--
+        Card as well as securities, for the same reason the rule allows it on both: a
+        brokerage settles trades into a bank, a card is paid from one. Offering it for
+        securities alone would leave a card with no way to record where it is paid
+        from, and the field would have to be set by hand.
+      -->
+      <template v-if="['security', 'card'].includes(form.type)">
         <q-select
           v-model="form.meta_data.settlement_account_id"
           :options="settlementOptions"
           class="col-6"
-          label="Settles into"
+          :label="settlementLabel"
           filled
           emit-value
           map-options
+          :hint="settlementHint"
           :error="!!form.errors['meta_data.settlement_account_id']"
           :error-message="form.errors['meta_data.settlement_account_id']"
         >
@@ -124,21 +131,47 @@ const title = computed(() => {
   return target.value ? 'edit account' : 'create new account'
 })
 
+// Named for what the link means to each type. A computed rather than an inline
+// ternary on form.type, which FormContractTest parses with a fixed set of syntaxes --
+// and a template it cannot read is one whose visibility conditions it then cannot
+// check, so anything conditional belongs here.
+const settlementLabel = computed(() => (form.type === 'card' ? 'Paid from' : 'Settles into'))
+
+// Why this picker exists, which differs by account type: a brokerage has to have a
+// bank or its trades mean nothing, while a card works without one and simply cannot
+// be settled until it names a bank.
+const settlementHint = computed(() => {
+  if (form.type === 'card') {
+    return form.meta_data.settlement_account_id
+      ? 'Settling this card records a payment here too'
+      : 'Needed before this card can be settled'
+  }
+
+  return 'Required: trades settle through this bank'
+})
+
 useWatchTarget(target, schema, form)
 
-// Leaving the securities type makes a settlement link invalid, and
-// AccountMetaData prohibits the field on every other type rather than ignoring it
-// -- so a stale value would fail the save over a field the user can no longer see.
-// Not cleared on the way in: a non-securities account can never have held one, so
-// there is nothing stale to drop, and clearing unconditionally would wipe the
-// link off an account toggled away from security and back.
+// The two account types that may carry a settlement link, as the one place that says
+// so on the frontend. Mirrors AccountMetaData's `prohibited_unless:type,security,card`;
+// the form cannot read a validation rule, so this is a copy that can go stale, and the
+// consequence of its going stale is a visible wrong answer rather than a silent one --
+// a field shown for a cash account, which the save then refuses.
+//
+// Leaving a type that may not carry a link makes the value invalid, and the rule
+// prohibits the field rather than ignoring it, so a stale one would fail the save
+// over a field the user can no longer see. Not cleared on the way in: an account that
+// may not have held one has nothing stale to drop, and clearing unconditionally
+// would wipe the link off an account toggled away and back.
+const maySettle = type => ['security', 'card'].includes(type)
+
 watch(
   () => form.type,
   (val, oldVal) => {
     if (oldVal && form.isDirty) {
       form.meta_data = useCloneForm(schema.meta_data)
 
-      if (val !== 'security') {
+      if (!maySettle(val)) {
         form.meta_data.settlement_account_id = null
       }
     }

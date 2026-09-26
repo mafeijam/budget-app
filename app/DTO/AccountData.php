@@ -81,10 +81,30 @@ class AccountData extends Data
             return;
         }
 
+        // How this account type is named, and the verb that goes with it. Written out
+        // rather than read from the enum because the verbs genuinely differ -- a
+        // brokerage settles into a bank, a card is paid from one -- and a shared
+        // "account" would be vaguer than either situation warrants. Kept beside the
+        // messages rather than on the enum, because these are sentences about this
+        // field, not facts about an account type.
+        // The verb is stored bare -- "settle into", "be paid from" -- because both
+        // messages need it in a different grammatical slot, and a stored phrase with
+        // the subject baked in produced "cannot is paid from".
+        [$subject, $verb] = match ($this->type) {
+            AccountType::Security => ['brokerage', 'settle into'],
+            AccountType::Card => ['card', 'be paid from'],
+            // Unreachable: a cash account is prohibited the field outright. Named
+            // rather than defaulted to, so a case added to the enum without a decision
+            // here fails loudly rather than producing a nonsense sentence.
+            AccountType::Cash => ['cash account', 'settle into'],
+        };
+
         if ($target->type !== AccountType::Cash->value) {
             throw ValidationException::withMessages([
                 'meta_data.settlement_account_id' => sprintf(
-                    'A securities account settles into a cash account, not a %s account.',
+                    'A %s can only %s a cash account, not a %s account.',
+                    $subject,
+                    $verb,
                     $target->type
                 ),
             ]);
@@ -104,8 +124,10 @@ class AccountData extends Data
         if ($target->ccy !== $this->ccy->value) {
             throw ValidationException::withMessages([
                 'meta_data.settlement_account_id' => sprintf(
-                    'A %s brokerage cannot settle into a %s account.',
+                    'A %s %s cannot %s a %s account.',
                     $this->ccy->value,
+                    $subject,
+                    $verb,
                     $target->ccy
                 ),
             ]);
