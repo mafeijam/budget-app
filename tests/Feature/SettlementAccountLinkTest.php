@@ -6,6 +6,7 @@ use App\DTO\AccountData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use App\Models\Account;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -172,20 +173,67 @@ class SettlementAccountLinkTest extends TestCase
         $this->assertContains('settlement_account_id', $indexed);
     }
 
-    public function test_the_settlement_column_has_no_foreign_key(): void
+    public function test_the_settlement_column_is_bound_to_the_accounts_table(): void
     {
-        // Stated so the omission is a decision on the record rather than an
-        // oversight. `accounts` carries no foreign keys at all -- the original
-        // migration used foreignIdFor() without constrained() -- and adding one
-        // here alone would change what happens when an account is deleted. The
-        // `exists:` rule is what rejects an orphan id in the meantime.
-        $count = DB::selectOne(
-            "SELECT COUNT(*) AS c FROM information_schema.table_constraints
-              WHERE table_schema = DATABASE() AND table_name = 'accounts'
-                AND constraint_type = 'FOREIGN KEY'"
+        // Self-referential and restrict-on-delete, both deliberate. Cascade
+        // would delete a user's securities account because they tidied up a
+        // dormant bank account; set null would manufacture the exact invalid row
+        // that prohibited_unless exists to prevent. Failing the delete is the
+        // honest outcome, and this asserts it at the database level.
+        $row = DB::selectOne(
+            "SELECT k.column_name AS col_name, k.referenced_table_name AS ref_table,
+                    r.delete_rule AS on_delete
+               FROM information_schema.key_column_usage AS k
+               JOIN information_schema.referential_constraints AS r
+                 ON r.constraint_schema = k.constraint_schema
+                AND r.constraint_name = k.constraint_name
+              WHERE k.table_schema = DATABASE() AND k.table_name = 'accounts'
+                AND k.column_name = 'settlement_account_id'"
         );
 
-        $this->assertSame(0, (int) $count->c);
+        $this->assertNotNull($row, 'accounts.settlement_account_id has no foreign key.');
+        $this->assertSame('accounts', $row->ref_table);
+        $this->assertSame('RESTRICT', $row->on_delete);
+    }
+
+    public function test_deleting_a_bank_a_brokerage_settles_into_is_refused(): void
+    {
+        // The behaviour that rule buys. Tidy up a dormant cash account with a
+        // brokerage still pointing at it and the delete must fail, rather than
+        // leaving a securities account with no cash story or taking the
+        // brokerage down with it.
+        //
+        // Named apart from setUp()'s 'Bank' because accounts.name is unique and
+        // a collision fails the test for the wrong reason.
+        $bank = Account::create(['name' => 'Settlement Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->update(['settlement_account_id' => $bank->id]);
+
+        $refused = false;
+        try {
+            DB::table('accounts')->where('id', $bank->id)->delete();
+        } catch (QueryException) {
+            $refused = true;
+        }
+
+        $this->assertTrue($refused, 'The bank was deleted while a brokerage still settled into it.');
+        $this->assertSame($bank->id, $broker->fresh()->settlement_account_id);
+    }
+
+    public function test_a_brokerage_does_not_block_its_own_deletion(): void
+    {
+        // The mirror, so the constraint is not simply refusing everything. The
+        // brokerage is the referring row here and the bank the referenced one,
+        // so deleting the brokerage must be allowed even though it points
+        // somewhere.
+        $bank = Account::create(['name' => 'Spare Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Lone Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->update(['settlement_account_id' => $bank->id]);
+
+        DB::table('accounts')->where('id', $broker->id)->delete();
+
+        $this->assertDatabaseMissing('accounts', ['id' => $broker->id]);
+        $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
     }
 
     // ---------------------------------------------------------------------
