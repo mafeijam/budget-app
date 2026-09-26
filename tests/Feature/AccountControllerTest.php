@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AccountStatus;
+use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Meta;
@@ -86,6 +88,46 @@ class AccountControllerTest extends TestCase
         $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
             ->has('currencyOptions', count(Currency::cases()))
             ->where('currencyOptions.0.value', 'HKD')
+        );
+    }
+
+    public function test_index_offers_every_account_type_the_app_accepts(): void
+    {
+        // The type dropdown's whole option list. Previously a literal in the
+        // template, so a case added to AccountType was accepted by AccountData
+        // and unoffered by the form -- uncreatable through the browser, with
+        // every test in this file still green.
+        //
+        // Derived from the enum rather than written out, so adding a case fails
+        // here instead of appearing in the browser only.
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->component('account')
+            ->where('typeOptions', array_column(AccountType::cases(), 'value'))
+        );
+    }
+
+    public function test_index_offers_every_account_status_the_app_accepts(): void
+    {
+        // The same, for the status dropdown.
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->component('account')
+            ->where('statusOptions', array_column(AccountStatus::cases(), 'value'))
+        );
+    }
+
+    public function test_index_offers_the_type_and_status_options_with_no_accounts_in_existence(): void
+    {
+        // Both lists come from the enum, not from a query, so they must not
+        // depend on there being anything to show. An empty accounts table is the
+        // state a fresh install is in, and a dropdown that only filled in once an
+        // account existed would be empty exactly when it is first needed.
+        $this->assertDatabaseCount('accounts', 0);
+
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->has('typeOptions', count(AccountType::cases()))
+            ->has('statusOptions', count(AccountStatus::cases()))
+            ->where('typeOptions.0', 'cash')
+            ->where('statusOptions.0', 'active')
         );
     }
 

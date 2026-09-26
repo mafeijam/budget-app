@@ -23,7 +23,7 @@
       />
       <q-select
         v-model="form.type"
-        :options="['cash', 'card', 'security']"
+        :options="typeOptions"
         class="col-6"
         label="Type"
         filled
@@ -32,7 +32,7 @@
       />
       <q-select
         v-model="form.status"
-        :options="['active', 'inactive']"
+        :options="statusOptions"
         class="col-6"
         label="Status"
         filled
@@ -111,6 +111,14 @@ const settlementOptions = computed(() => usePage().props.settlementOptions ?? []
 // `?? []` rather than a literal fallback, so a missing prop shows an empty
 // dropdown rather than silently offering a stale hardcoded set.
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
+
+// Type and status, same reason and same route. These two were the last option
+// lists still written into this template, which left a case added to either enum
+// accepted by AccountData and unoffered here -- a brokerage type the user could
+// not create, with nothing failing. `?? []` for the same reason as above.
+const typeOptions = computed(() => usePage().props.typeOptions ?? [])
+
+const statusOptions = computed(() => usePage().props.statusOptions ?? [])
 
 const title = computed(() => {
   return target.value ? 'edit account' : 'create new account'

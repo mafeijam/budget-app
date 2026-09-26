@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\DTO\AccountData;
+use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
@@ -56,7 +57,7 @@ class AccountController extends Controller
         // The currency dropdown's options.
         //
         // Sent from the server rather than written into FormAccount.vue as a
-        // literal, which is what the type and status pickers still do. The
+        // literal, which is what the type and status pickers used to do. The
         // AccountType docblock claims that hardcoding "can no longer drift ahead
         // of the server" -- true, because the server rejects what the browser
         // offers -- but it can still drift *behind*: adding a case to the enum
@@ -73,6 +74,22 @@ class AccountController extends Controller
             ])
             ->values();
 
+        // The type and status pickers' options, for the same reason and by the
+        // same route. These two were the last option lists still written into the
+        // template, which left a case added to either enum accepted by the server
+        // and unoffered by the form -- a brokerage type the user could not
+        // create, with no test failing anywhere.
+        //
+        // Plain value arrays, not {label, value} pairs like currencyOptions,
+        // because these enums have no separate display name: the value is what
+        // the user reads. Adding a label() to either enum is a visible change to
+        // the form's wording, and belongs in a commit about wording rather than
+        // one about staying in sync. The two shapes differ because the data
+        // differs.
+        $typeOptions = array_column(AccountType::cases(), 'value');
+
+        $statusOptions = array_column(AccountStatus::cases(), 'value');
+
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
         $meta = [
@@ -80,7 +97,16 @@ class AccountController extends Controller
             'path' => '/accounts',
         ];
 
-        return inertia('account', compact('formEmpty', 'data', 'params', 'meta', 'settlementOptions', 'currencyOptions'));
+        return inertia('account', compact(
+            'formEmpty',
+            'data',
+            'params',
+            'meta',
+            'settlementOptions',
+            'currencyOptions',
+            'typeOptions',
+            'statusOptions',
+        ));
     }
 
     public function store(AccountData $data)
