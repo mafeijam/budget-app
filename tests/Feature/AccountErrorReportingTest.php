@@ -42,7 +42,7 @@ class AccountErrorReportingTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '15', 'statement_day' => 25],
+            'meta_data' => ['due' => 15, 'statement_day' => 25],
         ], $overrides);
     }
 

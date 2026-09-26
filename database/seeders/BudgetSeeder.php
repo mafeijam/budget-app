@@ -64,7 +64,7 @@ class BudgetSeeder extends Seeder
                 // form. A due day on its own is not enough: it cannot say which
                 // statement a charge belongs to, so no charge on this account
                 // would get a due date.
-                'meta' => ['due' => '15', 'statement_day' => 25],
+                'meta' => ['due' => 15, 'statement_day' => 25],
             ],
         ] as $attributes) {
             $meta = $attributes['meta'];

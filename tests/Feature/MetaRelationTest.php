@@ -23,7 +23,7 @@ class MetaRelationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function accountWithMeta(array $meta = ['due' => '2026-10-01']): Account
+    private function accountWithMeta(array $meta = ['due' => 15]): Account
     {
         $account = Account::create([
             'name' => 'Alpha',
@@ -86,10 +86,10 @@ class MetaRelationTest extends TestCase
 
     public function test_several_accounts_each_resolve_their_own_metadata(): void
     {
-        $alpha = $this->accountWithMeta(['due' => '2026-10-01']);
+        $alpha = $this->accountWithMeta(['due' => 15]);
 
         $beta = Account::create(['name' => 'Beta', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        Meta::create(['model_id' => $beta->id, 'model_type' => Account::class, 'meta' => ['due' => '2026-11-05']]);
+        Meta::create(['model_id' => $beta->id, 'model_type' => Account::class, 'meta' => ['due' => 20]]);
 
         $owners = Meta::with('metable')->get()->map(fn (Meta $m) => $m->metable->name);
 

@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Meta;
+use App\Support\CardStatementCycle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class AccountControllerTest extends TestCase
@@ -19,7 +21,7 @@ class AccountControllerTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 25],
+            'meta_data' => ['due' => 15, 'statement_day' => 25],
         ], $overrides);
     }
 
@@ -167,7 +169,7 @@ class AccountControllerTest extends TestCase
             'type' => 'card',
             'ccy' => 'HKD',
             'settlement_account_id' => null,
-            'meta_data' => ['due' => '15', 'statement_day' => 25],
+            'meta_data' => ['due' => 15, 'statement_day' => 25],
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(25, Meta::firstWhere('model_id', Account::firstWhere('name', 'Card')->id)->meta['statement_day']);
@@ -183,11 +185,92 @@ class AccountControllerTest extends TestCase
             'type' => 'card',
             'ccy' => 'HKD',
             'settlement_account_id' => null,
-            'meta_data' => ['due' => '15', 'statement_day' => null],
+            'meta_data' => ['due' => 15, 'statement_day' => null],
         ]);
 
         $response->assertSessionHasErrors('meta_data.statement_day');
         $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_a_date_shaped_due_day_is_rejected(): void
+    {
+        // The whole point of retyping `due`. This exact value used to validate
+        // and store: the rule was `max:28`, which measured the length of a
+        // string, so '2026-10-01' sailed through. CardStatementCycle then
+        // refused to build a cycle for it (it requires both card terms to be
+        // numeric), so the account saved cleanly and every charge placed on it
+        // derived a null due_date. Silent incompleteness, no error anywhere.
+        $response = $this->post('/accounts', $this->payload([
+            'type' => 'card',
+            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 25],
+        ]));
+
+        $response->assertSessionHasErrors('meta_data.due');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    /**
+     * @return array<string, array{0: mixed}>
+     */
+    public static function invalidDueDayProvider(): array
+    {
+        return [
+            'zero' => [0],
+            'negative' => [-1],
+            'past the end of the month' => [32],
+            'not a number at all' => ['soon'],
+            'a float' => [15.5],
+        ];
+    }
+
+    #[DataProvider('invalidDueDayProvider')]
+    public function test_a_due_day_outside_the_calendar_is_rejected(mixed $due): void
+    {
+        // The old `max:28` accepted all of these. A day of 32 is a data entry
+        // error rather than a short month, which is why CardStatementCycle
+        // throws on it rather than clamping -- so validation has to agree with
+        // the guard instead of quietly accepting what the guard will refuse.
+        $response = $this->post('/accounts', $this->payload([
+            'type' => 'card',
+            'meta_data' => ['due' => $due, 'statement_day' => 25],
+        ]));
+
+        $response->assertSessionHasErrors('meta_data.due');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_the_due_day_is_stored_as_a_number(): void
+    {
+        // Meta is JSON, so '15' and 15 are different values and the distinction
+        // survives the round trip. CardStatementCycle casts with is_numeric so
+        // it tolerates either, but storing the string form is how the field
+        // became ambiguous in the first place.
+        $this->post('/accounts', $this->payload([
+            'type' => 'card',
+            'meta_data' => ['due' => 15, 'statement_day' => 25],
+        ]))->assertSessionHasNoErrors();
+
+        $meta = Meta::firstWhere('model_id', Account::firstWhere('name', 'Test Account')->id);
+
+        $this->assertSame(15, $meta->meta['due']);
+        $this->assertIsInt($meta->meta['due']);
+    }
+
+    public function test_a_card_built_from_a_stored_due_day_derives_a_due_date(): void
+    {
+        // The end of the ambiguity: a card that saves a due day is now
+        // guaranteed to place its charges in a statement period. Before the
+        // retype, a date-shaped value produced an account that looked complete
+        // and derived nothing.
+        Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        $card = Account::firstWhere('name', 'Card');
+        $card->meta()->create(['meta' => ['due' => 15, 'statement_day' => 25]]);
+
+        $cycle = CardStatementCycle::fromMeta($card->fresh()->meta->meta);
+
+        $this->assertNotNull($cycle);
+        $this->assertSame(15, $cycle->dueDay());
+        $this->assertSame(25, $cycle->statementDay());
     }
 
     public function test_store_creates_the_account(): void
@@ -217,7 +300,7 @@ class AccountControllerTest extends TestCase
             'model_type' => Account::class,
         ]);
 
-        $this->assertSame('2026-10-01', $account->meta->meta['due']);
+        $this->assertSame(15, $account->meta->meta['due']);
     }
 
     public function test_store_omits_the_meta_row_when_meta_data_is_blank(): void
@@ -228,7 +311,7 @@ class AccountControllerTest extends TestCase
         // rejected the whole request.
         $this->post('/accounts', $this->payload([
             'type' => 'cash',
-            'meta_data' => ['due' => '', 'statement_day' => null],
+            'meta_data' => ['due' => null, 'statement_day' => null],
         ]));
 
         $this->assertDatabaseCount('accounts', 1);
@@ -280,7 +363,7 @@ class AccountControllerTest extends TestCase
     {
         $response = $this->post('/accounts', $this->payload([
             'type' => 'card',
-            'meta_data' => ['due' => '', 'statement_day' => 25],
+            'meta_data' => ['due' => null, 'statement_day' => 25],
         ]));
 
         $response->assertSessionHasErrors('meta_data.due');
@@ -295,7 +378,7 @@ class AccountControllerTest extends TestCase
         // cleanly and then silently derives no due date for any charge on it.
         $response = $this->post('/accounts', $this->payload([
             'type' => 'card',
-            'meta_data' => ['due' => '2026-10-01', 'statement_day' => null],
+            'meta_data' => ['due' => 15, 'statement_day' => null],
         ]));
 
         $response->assertSessionHasErrors('meta_data.statement_day');
@@ -306,7 +389,7 @@ class AccountControllerTest extends TestCase
     {
         $response = $this->post('/accounts', $this->payload([
             'type' => 'card',
-            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 45],
+            'meta_data' => ['due' => 15, 'statement_day' => 45],
         ]));
 
         $response->assertSessionHasErrors('meta_data.statement_day');
@@ -477,7 +560,7 @@ class AccountControllerTest extends TestCase
         // the controller runs. The meta-deletion branch is only reachable for
         // non-card accounts.
         $account = Account::create(['name' => 'HasMeta', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01']]);
+        $account->meta()->create(['meta' => ['due' => 15]]);
 
         $this->assertDatabaseCount('meta', 1);
 
@@ -485,7 +568,7 @@ class AccountControllerTest extends TestCase
             'id' => $account->id,
             'name' => 'HasMeta',
             'type' => 'cash',
-            'meta_data' => ['due' => '', 'statement_day' => null],
+            'meta_data' => ['due' => null, 'statement_day' => null],
         ]));
 
         $this->assertDatabaseCount('meta', 0);
@@ -497,13 +580,13 @@ class AccountControllerTest extends TestCase
         // required, so blanking it fails validation and nothing is written.
         // statement_day is supplied so the only error under test is the due day.
         $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01', 'statement_day' => 25]]);
+        $account->meta()->create(['meta' => ['due' => 15, 'statement_day' => 25]]);
 
         $response = $this->put("/accounts/{$account->id}", $this->payload([
             'id' => $account->id,
             'name' => 'Card',
             'type' => 'card',
-            'meta_data' => ['due' => '', 'statement_day' => 25],
+            'meta_data' => ['due' => null, 'statement_day' => 25],
         ]));
 
         $response->assertSessionHasErrors('meta_data.due');
@@ -513,13 +596,13 @@ class AccountControllerTest extends TestCase
     public function test_update_cannot_blank_statement_day_on_a_card_account(): void
     {
         $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01', 'statement_day' => 25]]);
+        $account->meta()->create(['meta' => ['due' => 15, 'statement_day' => 25]]);
 
         $response = $this->put("/accounts/{$account->id}", $this->payload([
             'id' => $account->id,
             'name' => 'Card',
             'type' => 'card',
-            'meta_data' => ['due' => '2026-10-01', 'statement_day' => null],
+            'meta_data' => ['due' => 15, 'statement_day' => null],
         ]));
 
         $response->assertSessionHasErrors('meta_data.statement_day');
@@ -559,7 +642,7 @@ class AccountControllerTest extends TestCase
     public function test_destroy_removes_the_account_and_its_meta(): void
     {
         $account = Account::create(['name' => 'Doomed', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01']]);
+        $account->meta()->create(['meta' => ['due' => 15]]);
 
         $response = $this->delete("/accounts/{$account->id}");
 
@@ -573,23 +656,23 @@ class AccountControllerTest extends TestCase
     public function test_meta_data_accessor_is_appended_to_array_serialization(): void
     {
         $account = Account::create(['name' => 'Serialized', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01']]);
+        $account->meta()->create(['meta' => ['due' => 15]]);
 
         $array = $account->fresh()->toArray();
 
         // HasMeta overrides getArrayableAppends() to force-append meta_data.
         $this->assertArrayHasKey('meta_data', $array);
-        $this->assertSame(['due' => '2026-10-01'], $array['meta_data']);
+        $this->assertSame(['due' => 15], $array['meta_data']);
     }
 
     public function test_meta_model_stores_json_as_array_object(): void
     {
         $account = Account::create(['name' => 'Casted', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['due' => '2026-10-01']]);
+        $account->meta()->create(['meta' => ['due' => 15]]);
 
         $meta = Meta::firstWhere('model_id', $account->id);
 
         $this->assertNotNull($meta);
-        $this->assertSame('2026-10-01', $meta->meta['due']);
+        $this->assertSame(15, $meta->meta['due']);
     }
 }

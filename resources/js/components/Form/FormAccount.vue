@@ -41,9 +41,12 @@
         <q-input
           v-model="form.meta_data.due"
           class="col-6"
-          label="Due date"
+          label="Due day"
           filled
           type="number"
+          min="1"
+          max="31"
+          hint="Day of the month the card is paid on"
           :error="!!form.errors['meta_data.due']"
           :error-message="form.errors['meta_data.due']"
         />

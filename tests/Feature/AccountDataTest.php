@@ -42,7 +42,7 @@ class AccountDataTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '2026-10-01', 'statement_day' => 25],
+            'meta_data' => ['due' => 15, 'statement_day' => 25],
         ], $overrides));
     }
 
@@ -72,7 +72,7 @@ class AccountDataTest extends TestCase
         $this->assertSame('USD', $data->ccy);
         $this->assertNotNull($data->created_at);
         $this->assertInstanceOf(AccountMetaData::class, $data->meta_data);
-        $this->assertSame('2026-10-01', $data->meta_data->due);
+        $this->assertSame(15, $data->meta_data->due);
         $this->assertSame(25, $data->meta_data->statement_day);
     }
 
@@ -82,7 +82,7 @@ class AccountDataTest extends TestCase
 
         $this->assertSame('Test Account', $array['name']);
         $this->assertSame(
-            ['due' => '2026-10-01', 'statement_day' => 25],
+            ['due' => 15, 'statement_day' => 25],
             $array['meta_data']
         );
     }
@@ -110,8 +110,22 @@ class AccountDataTest extends TestCase
     {
         $rules = AccountMetaData::rules();
 
-        $this->assertSame('required_if:type,card', $rules['due'][0]);
-        $this->assertSame('max:28', $rules['due'][1]);
+        // `nullable` has to lead. A null counts as present to the validator, so
+        // without it the `integer` and `between` below both fire on the null a
+        // blank form field and empty() produce. required_if is implicit and
+        // still runs, so a card with no due day is rejected.
+        $this->assertSame(['nullable', 'required_if:type,card', 'integer', 'between:1,31'], $rules['due']);
+    }
+
+    public function test_meta_data_rules_for_due_and_statement_day_match(): void
+    {
+        // Both are day numbers over the same calendar, so their rules are
+        // identical. They drifted -- `due` carried `max:28`, a string-length
+        // check over a range that disagreed with CardStatementCycle::guardDay's
+        // 1-31 -- and only a test comparing the two would have noticed.
+        $rules = AccountMetaData::rules();
+
+        $this->assertSame($rules['statement_day'], $rules['due']);
     }
 
     public function test_meta_data_attributes_rename_due_for_display(): void
@@ -119,8 +133,12 @@ class AccountDataTest extends TestCase
         // Without this the validation error reads "statement day" already via
         // Laravel's snake->sentence casing, but being explicit keeps it aligned
         // with the `due` entry and avoids depending on that casing.
+        //
+        // "due day", not "due date": the field holds a day of month, and calling
+        // it a date is what let a date-shaped value sit in the fixtures looking
+        // reasonable.
         $this->assertSame(
-            ['due' => 'due date', 'statement_day' => 'statement day'],
+            ['due' => 'due day', 'statement_day' => 'statement day'],
             AccountMetaData::attributes()
         );
     }

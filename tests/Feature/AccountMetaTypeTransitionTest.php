@@ -90,7 +90,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => null],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -133,7 +133,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => null],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -154,7 +154,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => null],
         ]);
 
         $this->assertDatabaseCount('meta', 0);
@@ -165,7 +165,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => ''],
+            'meta_data' => ['due' => null],
         ])->assertSessionHasNoErrors();
 
         $this->assertDatabaseCount('meta', 0);
