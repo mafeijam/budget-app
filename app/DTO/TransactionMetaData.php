@@ -9,44 +9,38 @@ use InvalidArgumentException;
 use Spatie\LaravelData\Data;
 
 /**
- * The fields that only some transaction types have.
+ * The fields only some transaction types have, in the JSON meta bag so that a new
+ * one needs no migration.
  *
- * Stored in the JSON meta bag rather than as columns, so adding a field needs
- * no migration. What makes this a DTO rather than a plain array is that the
- * rules are conditional on the transaction type: a charge has a merchant, a
- * trade has a symbol and a price, and neither is meaningful for the other.
- * The condition is read from the root `type`, so it resolves against the
- * transaction rather than against anything in the meta bag itself.
+ * A DTO rather than a plain array because the rules are conditional on the root
+ * `type`: a charge has a merchant, a trade a symbol and a price, and neither is
+ * meaningful for the other.
  *
- * The rules are also all `nullable`. A blank number field and
- * TransactionData::empty() both produce null, and the validator counts null as
- * "present", so without `nullable` the type and range rules would fire on
- * every field of every row that does not use it. `required_if` is implicit and
- * survives, so a charge still has to name its merchant.
+ * Every rule is `nullable`, because the validator counts null as present and both
+ * a blank number field and TransactionData::empty() produce one -- without it the
+ * type and range rules would fire on every field of every row that does not use
+ * them. `required_if` is implicit and survives, so a charge still has to name its
+ * merchant.
  */
 class TransactionMetaData extends Data
 {
     /**
-     * The scale of the amount column, decimal(12,4).
-     *
-     * Referenced by the arithmetic below rather than repeated as a literal, so
-     * a derived amount cannot drift away from what the column can store.
+     * The amount column's scale, decimal(12,4). Referenced by the arithmetic below
+     * rather than repeated as a literal, so a derived amount cannot drift from
+     * what the column can store.
      */
     public const AMOUNT_SCALE = 4;
 
-    /**
-     * The largest amount decimal(12,4) can hold: eight integer digits, four
-     * decimal places.
-     */
+    /** decimal(12,4) holds eight integer digits and four decimal places. */
     public const MAX_AMOUNT = '99999999.9999';
 
     public function __construct(
-        // Card charges: who was paid. A payment has none -- it settles a
-        // statement rather than buying anything.
+        // Card charges: who was paid. A payment has none -- it settles a statement
+        // rather than buying anything.
         public ?string $merchant,
 
-        // Securities trades. Fractional shares mean quantity needs more places
-        // than money does, so it carries eight where the amount carries four.
+        // Securities trades. Fractional shares need more places than money does,
+        // hence eight against the amount's four.
         public ?string $symbol,
         public ?string $quantity,
         public ?string $unit_price,
@@ -85,20 +79,13 @@ class TransactionMetaData extends Data
     /**
      * Every transaction type except the ones named, as a comma-separated list.
      *
-     * Used to build a "required unless" rule from the enum rather than writing
-     * the types out by hand. Two reasons that matters:
+     * There is no `required_if_in` in this Laravel: it is silently accepted and
+     * then skipped, so a trade could be recorded with no symbol and no quantity
+     * and nothing would complain.
      *
-     * There is no `required_if_in` in this version of Laravel. It was silently
-     * accepted and then skipped, so a trade could be recorded with no symbol
-     * and no quantity and nothing would complain. Stacking two `required_if`
-     * rules would work too, but the exclusion list still has to be spelled out
-     * -- and a hand-written list of the types that do *not* need a field is the
-     * kind that quietly goes stale the moment a type is added.
-     *
-     * Deriving it means a new TransactionType case is reflected here
-     * automatically, and an unrecognised type falls outside the list, which
-     * makes the field required. That is the right way round: the enum rejects
-     * the bad type, and until it does, the stricter field rule applies.
+     * Deriving the list also means a new case is reflected automatically, and an
+     * unrecognised type falls outside it and so has the field required -- the right
+     * way round, since the enum rejects the bad type in any case.
      */
     private static function typesExcept(TransactionType ...$permitted): string
     {
@@ -122,29 +109,24 @@ class TransactionMetaData extends Data
     /**
      * The amount implied by a trade's quantity, price and fee.
      *
-     * Null for every type that is not a trade: a dividend is recorded on a
+     * Null for every type that does not derive: a dividend is recorded on a
      * securities account but its amount is simply stated, so deriving one from
-     * whatever symbol happens to be on the account would be nonsense. The
-     * caller decides which types derive, via TransactionType::derivesAmount().
+     * whatever symbol the account happens to hold would be nonsense.
      *
-     * The fee is folded in net rather than left as a separate transaction,
-     * because it is part of the same trade and does not appear in a balance on
-     * its own. A buy therefore costs price x quantity + fees, and a sell
-     * yields price x quantity - fees: in both cases the magnitude that actually
-     * moves the account. Adding the fee to a sell would overstate the balance
-     * by exactly the brokerage.
+     * The fee is folded in net rather than left as a transaction of its own, since
+     * it is part of this trade and never appears in a balance alone. A buy costs
+     * price x quantity + fees and a sell yields price x quantity - fees; in both
+     * cases the magnitude that actually moves the account. Adding the fee to a sell
+     * would overstate the balance by exactly the brokerage.
      *
-     * Amount is a positive magnitude whose direction comes from the account
-     * type and the transaction type, so a negative result has nowhere to go and
-     * is a data error -- usually a fee entered against the wrong side. Zero is
-     * fine: a sell that nets to nothing closed with nothing left to deposit.
+     * Amount is a positive magnitude whose direction comes from the account type
+     * and the transaction type, so a negative result is a data error -- usually a
+     * fee entered against the wrong side. Zero is fine: a sell netting to nothing
+     * closed with nothing left to deposit.
      *
-     * The arithmetic is decimal, not float. Float64 has no decimal semantics,
-     * so it happens to survive these magnitudes by luck rather than by
-     * guarantee, and a wider quantity or a change of scale would break it
-     * silently. Decimals make the result exact for anything the rules accept,
-     * and make the rounding and the magnitude check explicit rather than
-     * emergent from PHP's `precision` setting.
+     * Decimal, not float: Float64 has no decimal semantics, so it survives these
+     * magnitudes by luck rather than by guarantee, and a wider quantity or a
+     * change of scale would break it silently.
      */
     public function derivedAmount(TransactionType $type): ?string
     {

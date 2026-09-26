@@ -23,9 +23,8 @@ class AccountData extends Data
         public ?Carbon $created_at,
         public ?AccountMetaData $meta_data,
 
-        // Where a securities account settles. Required for one, prohibited for
-        // every other type, and the target must be a cash account -- see
-        // guardSettlementAccount().
+        // Required for a securities account, prohibited for every other type, and
+        // the target must be a cash account -- see guardSettlementAccount().
         public ?int $settlement_account_id,
     ) {
         $this->created_at ??= now();
@@ -40,34 +39,24 @@ class AccountData extends Data
         return [
             'name' => ['required', 'string', $unique],
 
-            // No rule for ccy. Typing the property as Currency makes
-            // spatie/laravel-data derive a membership check, so anything outside
-            // the enum is rejected before the constructor runs.
+            // No rule for ccy: typing it Currency makes spatie/laravel-data derive
+            // the membership check. The `size:3` this replaces was never one -- it
+            // accepted 'ZZZ' and 'hkd' as readily as 'HKD'. The column is
+            // varchar(255) and every case is three characters, so nothing is lost.
             //
-            // The column is varchar(255) and the enum values are 3 characters,
-            // so the length cap the rule used to carry is now redundant -- and it
-            // was only ever half a check anyway: it accepted 'ZZZ' and 'hkd'
-            // just as readily as 'HKD', so a typo became a row that no balance
-            // query could interpret and no dropdown could offer again.
-
-            // `nullable` first because a blank form field and empty() both
-            // produce null, and the validator counts null as "present" -- without
-            // it `integer` and `exists` would fire on every cash and card account
-            // whose form was never touched. required_if and prohibited_unless are
-            // implicit and survive, which is what still rejects a brokerage with
-            // nowhere to settle.
+            // `nullable` first on settlement_account_id because the validator counts
+            // null as present, so `integer` and `exists` would otherwise fire on
+            // every cash and card account whose form was never touched.
+            // required_if and prohibited_unless are implicit and survive.
             //
-            // Together those two say the column is present exactly when the
-            // account is a securities account. The prohibition is doing more work
-            // than it looks: closing the second hop is what makes a settlement
-            // cycle unrepresentable, since a cycle needs a cash account in the
-            // middle and a cash account may not carry the field.
+            // Between them the two say the column is present exactly when the
+            // account is a securities one, and the prohibition is what makes a
+            // settlement cycle unrepresentable: a cycle needs a cash account in the
+            // middle, and a cash account may not carry the field.
             //
-            // `different` is redundant with guardSettlementAccount() -- a
-            // securities account is not cash, so it cannot point at itself. It is
-            // here for the message: without it the user is told the target is not
-            // a cash account, which is true but does not say they pointed the
-            // account at itself.
+            // `different` is redundant with guardSettlementAccount() -- a securities
+            // account is not cash, so it cannot point at itself. It is here for the
+            // message, which would otherwise blame the target.
             'settlement_account_id' => [
                 'nullable',
                 'required_if:type,security',
@@ -82,24 +71,21 @@ class AccountData extends Data
     public static function attributes()
     {
         return [
-            // Without this a rejected currency reads "The selected ccy is
-            // invalid", which is the one field error a user cannot act on. The
-            // form's own label was changed to "Currency" to match, so the message
-            // and the field beside it now use the same word.
+            // Without this a rejected currency reads "The selected ccy is invalid",
+            // the one field error a user cannot act on. The form's label reads
+            // "Currency" to match.
             'ccy' => 'currency',
         ];
     }
 
     /**
-     * Reject a securities account that settles into anything but a cash account
-     * in the same currency.
+     * Reject a securities account that settles into anything but a cash account in
+     * the same currency.
      *
-     * A rule can only see the payload, and what the target *is* is only knowable
-     * from the database, so this runs in the constructor. That means it holds
-     * whether or not the caller remembered to call validate().
-     *
-     * Reported as a ValidationException so it reaches the form as a field error
-     * rather than a 500.
+     * A constructor check rather than a rule, because a rule sees only the payload
+     * and what the target *is* is knowable only from the database -- so it holds
+     * whether or not the caller remembered to call validate(). Thrown as a
+     * ValidationException so it reaches the form as a field error, not a 500.
      */
     private function guardSettlementAccount(): void
     {
@@ -124,23 +110,17 @@ class AccountData extends Data
             ]);
         }
 
-        // Same currency, checked after the type because a target that is the
-        // wrong type is the more fundamental mismatch: naming its currency would
-        // imply the pairing could be fixed by converting, and it cannot -- a card
-        // account is not somewhere a brokerage settles at all.
+        // Checked after the type, because a wrong-type target is the more
+        // fundamental mismatch: naming its currency would imply the pairing could
+        // be fixed by converting, and it cannot.
         //
-        // Refusing rather than converting. The money leaving a brokerage is
-        // already denominated in the brokerage's currency, and converting it
-        // would need a rate at a moment neither account can see, then a second
-        // conversion on the way back with the proceeds. transactions.fx_rate
-        // exists and is wired to nothing, so the honest answer today is that
-        // this pairing cannot be recorded rather than a guess at what it means.
-        // A brokerage holding one currency settling into a bank in another is
-        // real, and when the rate lands this becomes a conversion; until then
-        // the account is unusable rather than silently miscounted.
+        // Refuse rather than convert. transactions.fx_rate exists and is wired to
+        // nothing, so there is no rate to convert at, and the proceeds would need
+        // converting back again. The pairing is real and cannot be recorded until
+        // that lands; today the account is unusable rather than silently
+        // miscounted.
         //
-        // Both currencies are named because there are two accounts to change and
-        // the message should not make the user go looking for which one is wrong.
+        // Both currencies named, because there are two accounts to change.
         if ($target->ccy !== $this->ccy->value) {
             throw ValidationException::withMessages([
                 'settlement_account_id' => sprintf(

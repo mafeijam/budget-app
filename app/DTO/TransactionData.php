@@ -14,27 +14,16 @@ use Spatie\LaravelData\Data;
 use Throwable;
 
 /**
- * One row of the shared transactions table.
+ * One row of the shared transactions table, which holds cash, card and trade rows
+ * alike -- hence conditional rather than uniform. Three consequences, each handled
+ * where it can be: the type must be legal on the owning account's type (the
+ * constructor, since only the database knows the account), a trade's amount and a
+ * charge's due date are derived (the constructor), and the payload constraints are
+ * declared in rules().
  *
- * The table holds cash, credit card and stock trading rows, which is what makes
- * this DTO conditional rather than uniform. Three things follow from that, and
- * each is handled in a different place because no single mechanism covers all of
- * them:
- *
- *  - The transaction type must be legal on the owning account's type. That needs
- *    the account row, which only the database knows, so it is checked in the
- *    constructor rather than in rules() -- see guardAccountType().
- *
- *  - The amount is derived for a trade and supplied for everything else. The
- *    constructor derives it and rules() states which is which, so a caller that
- *    skips validate() still cannot set its own trade amount.
- *
- *  - A charge's due date comes from the account's statement terms. Also derived
- *    in the constructor, for the same reason.
- *
- * amount is a positive magnitude in every case. Which way it moves the balance
- * is decided by the account type and the transaction type together, not by a
- * sign, so there is no way to record a negative and no need to.
+ * amount is a positive magnitude throughout. Which way it moves the balance comes
+ * from the account type and the transaction type together, so a negative cannot be
+ * recorded and need not be.
  */
 class TransactionData extends Data
 {
@@ -46,22 +35,22 @@ class TransactionData extends Data
         public TransactionType $type,
         public string $description,
 
-        // Nullable only because a trade derives its own. Rules make it required
-        // for every other type and prohibited for the trades.
+        // Null only because a trade derives its own; rules() require it for
+        // everything else and prohibit it for trades.
         public ?string $amount,
         public Currency $ccy,
 
-        // Defaults to posted below; that is the only state a plain cash expense
-        // is ever in, so a client that does not care should not have to say.
+        // Defaults to posted, the only state a plain cash expense is ever in.
         public ?TransactionStatus $status,
 
-        // Converts amount, which is denominated in ccy, into the account's own
-        // currency. NULL means "already in the account's currency".
+        // Converts amount, denominated in ccy, into the account's own currency;
+        // NULL means already in the account's currency. Nothing converts with it
+        // yet -- see AccountData::guardSettlementAccount().
         public ?string $fx_rate,
 
         // The statement period a charge rolls up into, and so the day it is
         // payable. Derived for a charge; a payment supplies it to say which
-        // statement it settles. NULL for everything else.
+        // statement it settles. NULL otherwise.
         public ?string $due_date,
 
         public ?TransactionMetaData $meta_data,
@@ -79,50 +68,39 @@ class TransactionData extends Data
     }
 
     /**
-     * Only the constraints the property types cannot express are declared here.
-     * spatie/laravel-data already derives `required` and the type checks from
-     * the constructor signature, the same way AccountData does it.
+     * Only the constraints the property types cannot express. spatie/laravel-data
+     * derives `required` and the type checks from the constructor signature.
      */
     public static function rules()
     {
         return [
             'account_id' => ['exists:accounts,id'],
 
-            // Required only for the types that are categorised spending. A
-            // payment and a trade may leave it null; a payment may also be
-            // labelled, since the rule below is required_unless rather than
-            // prohibited_unless. Nothing in the settlement arithmetic reads this
-            // column, so a label on a payment is inert to the balance and worth
-            // keeping for the rows a payment actually refers to.
+            // Required only for the types that are categorised spending. A payment
+            // may still be labelled, which is why this is required_unless rather
+            // than prohibited_unless; the settlement arithmetic never reads the
+            // column, so a label on a payment is inert to the balance.
             'category_id' => [
                 'nullable',
                 'exists:categories,id',
                 'required_unless:type,'.self::typesWhere(fn (TransactionType $t) => ! $t->requiresCategory()),
             ],
 
-            // The column is a `date`, so only the ISO calendar date is
+            // The column is a `date`, so the ISO calendar date is all that is
             // meaningful. No time component, no locale formats.
             'date' => ['date_format:Y-m-d'],
 
-            // The column is decimal(12,4). Note that Laravel's `decimal` rule
-            // counts *decimal places*, not integer digits, so `decimal:0,4`
-            // caps the scale at four; `max` then caps the magnitude using the
-            // eight digits the precision leaves for the integer part.
+            // decimal counts *decimal places*, not integer digits, so this caps the
+            // scale at four; `max` then caps the magnitude with the eight digits the
+            // precision leaves. A string because this is money and a float would
+            // bring binary rounding in -- widen the rules rather than retyping it.
             //
-            // Amount is deliberately a string. It is money, and a float would
-            // introduce binary rounding errors. Do not "fix" it to a numeric
-            // type; widen the rules instead.
-            //
-            // Amount is required for everything that is not a trade, and
-            // prohibited for a trade -- two rules over two *different* lists, one
-            // naming the trades and one naming everything else. Sharing a single
-            // list between them is a trap: `required_unless:<non-trades>` reads
-            // as "required unless it is not a trade", which is a trade, so it
-            // demands an amount on exactly the rows that must not have one.
-            //
-            // There is no `required_if_in` or `prohibited_if_in` in this version
-            // of Laravel. Both are accepted into the rule array and then never
-            // run, which fails silently.
+            // Two rules over two *different* lists, and sharing one is a trap:
+            // `required_unless:<non-trades>` reads as "required unless it is not a
+            // trade", which is a trade, so it demands an amount on exactly the rows
+            // that must not have one. There is no `required_if_in` or
+            // `prohibited_if_in` in this Laravel either -- both are accepted into
+            // the array and then never run, failing silently.
             'amount' => [
                 'nullable',
                 'required_unless:type,'.self::typesWhere(fn (TransactionType $t) => $t->derivesAmount()),
@@ -134,25 +112,17 @@ class TransactionData extends Data
 
             'description' => ['max:255'],
 
-            // No rule, for the reason AccountData's has none: the property is
-            // typed as Currency, so spatie/laravel-data derives the membership
-            // check. The old `size:3` was the same half-measure as the account
-            // one -- it accepted 'ZZZ' and 'hkd' as readily as 'HKD'.
-            //
-            // The same enum as the account's currency, and deliberately not a
-            // wider one. A transaction may be denominated in something other than
-            // its account's currency -- that is what fx_rate is for -- so this
-            // cannot be narrowed to "the account's ccy". It could be widened to
-            // all of ISO 4217, and that is the day a transaction records a code
-            // no account can hold and no dropdown anywhere offers.
+            // No membership rule is needed -- Currency is the type, so spatie
+            // derives it. Not narrowed to the account's ccy, since accommodating a
+            // difference is this column's whole purpose; not widened to all of ISO
+            // 4217, which would let a transaction record a code no account can
+            // hold and no dropdown anywhere offers.
             'fx_rate' => ['nullable', 'decimal:0,8', 'gt:0'],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
-            // A trade must bring its meta. Without this a buy with no meta_data
-            // at all passes: the nested rules for symbol, quantity and unit
-            // price never run when the key is missing, so nothing asks for the
-            // numbers the amount is derived from, and the row arrives with a
-            // null amount for a NOT NULL column.
+            // Without this a trade with no meta_data at all passes: the nested
+            // rules never run on a missing key, so nothing asks for the numbers the
+            // amount is derived from and the row reaches a NOT NULL column null.
             'meta_data' => [
                 'required_unless:type,'.self::typesWhere(fn (TransactionType $t) => ! $t->derivesAmount()),
             ],
@@ -171,11 +141,8 @@ class TransactionData extends Data
     /**
      * The transaction types matching a predicate, as a comma-separated list.
      *
-     * Built from the enum so the conditional rules cannot go stale when a type is
-     * added. A hand-written list of the types that do *not* need a category, or
-     * do *not* derive an amount, is exactly the kind that quietly stops matching
-     * the enum -- and a stale list here fails open, admitting rows that should
-     * have been rejected.
+     * Derived from the enum so the rules cannot go stale when a type is added: a
+     * hand-written exclusion list quietly stops matching, and here that fails open.
      */
     private static function typesWhere(callable $predicate): string
     {
@@ -188,12 +155,10 @@ class TransactionData extends Data
     /**
      * Reject a transaction type that does not belong on the account's type.
      *
-     * This is a constructor check rather than a rule because a rule can only see
-     * the payload, and what is legal depends on the account row. Doing it here
-     * means it holds whether or not the caller remembered to call validate().
-     *
-     * Reported as a ValidationException so it reaches the form as a field error
-     * rather than a 500.
+     * A constructor check rather than a rule, because a rule sees only the payload
+     * and what is legal depends on the account row -- so it holds whether or not
+     * the caller remembered to call validate(). A ValidationException so it reaches
+     * the form as a field error rather than a 500.
      */
     private function guardAccountType(?Account $account): void
     {
@@ -211,11 +176,10 @@ class TransactionData extends Data
     }
 
     /**
-     * Fill in a trade's amount, or clear any amount a client tried to supply.
+     * Fill in a trade's amount, or clear any a client tried to supply.
      *
-     * Assignment rather than `??=` on purpose: for a trade the derived figure is
-     * the only correct one, so a supplied amount is overwritten even if the
-     * caller never validates. The prohibited rule still tells the client off.
+     * Assignment rather than `??=`: for a trade the derived figure is the only
+     * correct one, so a supplied amount is overwritten even unvalidated.
      */
     private function deriveAmount(): void
     {
@@ -229,12 +193,10 @@ class TransactionData extends Data
     /**
      * Place a charge in the statement period its date falls in.
      *
-     * Only a charge. A payment's due date names the statement it settles, which
-     * is normally the earliest unpaid -- a question about outstanding balances
-     * that belongs in the controller, not here.
-     *
-     * A card whose meta has no statement day yields no due date rather than one
-     * guessed from the due day alone, which would be a whole cycle out.
+     * Only a charge. A payment's due date names the statement it settles, normally
+     * the earliest unpaid -- a question about outstanding balances that belongs in
+     * the controller. A card with no statement day yields no due date rather than
+     * one guessed from the due day alone, which would be a whole cycle out.
      */
     private function deriveDueDate(?Account $account): void
     {
@@ -251,8 +213,8 @@ class TransactionData extends Data
         try {
             $charge = Carbon::createFromFormat('Y-m-d', $this->date);
         } catch (Throwable) {
-            // The date rule reports the bad format. Throwing a parse error on
-            // the way past would show the user an exception instead.
+            // The date rule reports the bad format. Throwing a parse error on the
+            // way past would show the user an exception instead.
             return;
         }
 
