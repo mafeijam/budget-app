@@ -7,6 +7,7 @@ use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
+use App\Models\Transaction;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -180,6 +181,26 @@ class AccountController extends Controller
 
     public function destroy(Account $account)
     {
+        // The transactions_account_id_foreign refuses this delete, and while the
+        // table was empty the refusal could never fire -- so there was no guard for
+        // it and the first row written would turn deleting an account with history
+        // into a QueryException and a 500, from a button on the account list.
+        //
+        // Checked before the settlement guard because it is the more fundamental
+        // one: a bank with a client's spending in it is not deletable at all,
+        // whichever way the money is described, and naming only the settlement link
+        // would report an account with two problems as having one.
+        $transactions = Transaction::where('account_id', $account->id)->count();
+
+        if ($transactions > 0) {
+            return back()->with('message', sprintf(
+                'Account [%s] has %s transaction%s and cannot be deleted',
+                $account->name,
+                $transactions,
+                $transactions === 1 ? '' : 's'
+            ));
+        }
+
         // The referential check the foreign key used to do, done here because the
         // link is in the meta bag and a JSON value carries no constraint. Refuse
         // rather than cascade or clear: cascading would delete a user's securities

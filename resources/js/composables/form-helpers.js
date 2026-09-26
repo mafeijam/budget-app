@@ -81,28 +81,13 @@ export function useCloneForm(object) {
 }
 
 export function useWatchTarget(target, schema, form) {
+  // Only the target/schema reset lives here. What has to happen when a *field*
+  // changes is form-specific -- a securities account carries a settlement link and
+  // a transaction carries a bag of type-specific fields -- so those watchers sit
+  // with the form that owns the fields rather than in a shared helper that has to
+  // know about all of them.
   watch(target, val => {
     form.defaults(val || schema)
     form.reset()
   })
-
-  watch(
-    () => form.type,
-    (val, oldVal) => {
-      if (oldVal && form.isDirty) {
-        form.meta_data = useCloneForm(schema.meta_data)
-
-        // Leaving the securities type makes a settlement link invalid, and
-        // AccountMetaData prohibits the field on every other type rather than
-        // ignoring it -- so a stale value would fail the save over a field the
-        // user can no longer see. Not cleared on the way in: a non-securities
-        // account can never have held one, so there is nothing stale to drop,
-        // and clearing unconditionally would wipe the link off an account
-        // toggled away from security and back.
-        if (val !== 'security') {
-          form.meta_data.settlement_account_id = null
-        }
-      }
-    },
-  )
 }

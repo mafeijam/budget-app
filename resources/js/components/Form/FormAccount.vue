@@ -126,5 +126,24 @@ const title = computed(() => {
 
 useWatchTarget(target, schema, form)
 
+// Leaving the securities type makes a settlement link invalid, and
+// AccountMetaData prohibits the field on every other type rather than ignoring it
+// -- so a stale value would fail the save over a field the user can no longer see.
+// Not cleared on the way in: a non-securities account can never have held one, so
+// there is nothing stale to drop, and clearing unconditionally would wipe the
+// link off an account toggled away from security and back.
+watch(
+  () => form.type,
+  (val, oldVal) => {
+    if (oldVal && form.isDirty) {
+      form.meta_data = useCloneForm(schema.meta_data)
+
+      if (val !== 'security') {
+        form.meta_data.settlement_account_id = null
+      }
+    }
+  },
+)
+
 provide('form', form)
 </script>

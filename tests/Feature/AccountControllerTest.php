@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Meta;
 use App\Support\CardStatementCycle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -829,6 +830,79 @@ class AccountControllerTest extends TestCase
         $response->assertStatus(302);
         $response->assertSessionHas('message', 'Account [Slim Renamed] updated');
         $this->assertSame('Slim Renamed', $account->fresh()->name);
+    }
+
+    public function test_destroy_refuses_an_account_that_has_transactions(): void
+    {
+        // The transactions_account_id_foreign is restrict-on-delete, and while the
+        // table was empty the restriction could never fire -- so destroy() had no
+        // guard for it and the first row written would turn deleting an account
+        // with history into a QueryException and a 500. The account list is the
+        // natural place to delete one, so this is reachable by accident.
+        //
+        // Refused rather than cascaded, for the reason the settlement guard gives:
+        // deleting a user's financial history because they tidied up a dormant
+        // account is not a thing to do, and no amount of theming it better makes
+        // it right.
+        $account = Account::create(['name' => 'Active', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        DB::table('transactions')->insert([
+            'account_id' => $account->id,
+            'date' => '2026-01-10',
+            'type' => 'expense',
+            'description' => 'Lunch',
+            'amount' => '42.5000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $response = $this->delete("/accounts/{$account->id}");
+
+        $response->assertStatus(302);
+        $response->assertSessionHas('message', 'Account [Active] has 1 transaction and cannot be deleted');
+        $response->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('accounts', ['id' => $account->id]);
+        $this->assertDatabaseCount('transactions', 1);
+    }
+
+    public function test_destroy_allows_an_account_whose_transactions_are_gone(): void
+    {
+        // The other half, so the guard is not simply refusing everything: an
+        // account with no history is deletable exactly as before.
+        $account = Account::create(['name' => 'Spent', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $response = $this->delete("/accounts/{$account->id}");
+
+        $response->assertStatus(302);
+        $response->assertSessionHas('message', 'Account [Spent] deleted');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_destroy_prefers_the_transaction_refusal_over_the_settlement_one(): void
+    {
+        // Both guards can fire at once: a bank that a brokerage settles into and
+        // that also holds a client's spending. One message has to be chosen, and
+        // naming only the settlement link would report a bank with two problems as
+        // having one -- leaving the user to fix it and hit the other.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $bank->id]]);
+
+        DB::table('transactions')->insert([
+            'account_id' => $bank->id,
+            'date' => '2026-01-10',
+            'type' => 'expense',
+            'description' => 'Lunch',
+            'amount' => '42.5000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->delete("/accounts/{$bank->id}")
+            ->assertSessionHas('message', 'Account [Bank] has 1 transaction and cannot be deleted');
+
+        $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
     }
 
     public function test_destroy_removes_the_account_and_its_meta(): void

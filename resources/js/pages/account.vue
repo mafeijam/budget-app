@@ -77,7 +77,15 @@ const columns = reactive([
     // uses it, so a card would read {"term_days":15,"statement_day":25,
     // "settlement_account_id":null} and a brokerage would carry two card fields
     // it has no use for. Which keys appear is the whole content of this column.
-    field: val => JSON.stringify(stripNulls(val.meta_data)),
+    //
+    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is
+    // the four-character string "null" and an account with no bag at all -- a
+    // plain cash account -- would read as though it carried a value called null.
+    field: val => {
+      const kept = stripNulls(val.meta_data)
+
+      return kept ? JSON.stringify(kept) : ''
+    },
     sortable: false,
   },
   {
