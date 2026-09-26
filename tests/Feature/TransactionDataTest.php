@@ -62,7 +62,7 @@ class TransactionDataTest extends TestCase
             'type' => 'card',
             'ccy' => 'HKD',
         ]);
-        $card->meta()->create(['meta' => ['due' => 15, 'statement_day' => 25]]);
+        $card->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
         $this->cardId = $card->id;
 
         $this->securityId = Account::create([
@@ -725,7 +725,7 @@ class TransactionDataTest extends TestCase
             'type' => 'card',
             'ccy' => 'HKD',
         ]);
-        $card->meta()->create(['meta' => ['due' => 15]]);
+        $card->meta()->create(['meta' => ['term_days' => 15]]);
 
         $data = TransactionData::from($this->postRequest([
             'account_id' => $card->id,

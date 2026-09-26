@@ -36,7 +36,7 @@ class BudgetSeederTest extends TestCase
         $this->assertSame(1, DB::table('meta')->count());
     }
 
-    public function test_the_card_account_ships_with_a_due_day_and_the_cash_one_does_not(): void
+    public function test_the_card_account_ships_with_a_term_and_the_cash_one_does_not(): void
     {
         $this->seed(BudgetSeeder::class);
 
@@ -47,7 +47,7 @@ class BudgetSeederTest extends TestCase
         // `statement_day`, so a card seeded without them cannot be saved when it
         // is later edited.
         $this->assertNotNull($card->meta);
-        $this->assertNotEmpty($card->meta->meta['due']);
+        $this->assertNotEmpty($card->meta->meta['term_days']);
         $this->assertNotEmpty($card->meta->meta['statement_day']);
 
         $this->assertNull($cash->fresh()->meta);
@@ -77,7 +77,7 @@ class BudgetSeederTest extends TestCase
         $this->seed(BudgetSeeder::class);
 
         $card = Account::where('type', 'card')->firstOrFail();
-        $due = $card->meta->meta['due'];
+        $due = $card->meta->meta['term_days'];
 
         $this->assertNotEmpty($due, 'Seeded payment term must be truthy or it vanishes on the next save.');
         $this->assertLessThanOrEqual(28, mb_strlen((string) $due));
@@ -122,14 +122,14 @@ class BudgetSeederTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => '20', 'statement_day' => 25],
+            'meta_data' => ['term_days' => '20', 'statement_day' => 25],
         ]);
 
         $response->assertSessionHasNoErrors();
         $response->assertSessionHas('message', "Account [{$card->name}] updated");
 
         $this->assertSame('USD', $card->fresh()->ccy);
-        $this->assertSame('20', (string) $card->fresh()->meta->meta['due']);
+        $this->assertSame('20', (string) $card->fresh()->meta->meta['term_days']);
     }
 
     public function test_a_seeded_category_can_be_updated_through_the_real_endpoint(): void

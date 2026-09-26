@@ -194,7 +194,7 @@ class FormContractTest extends TestCase
         //
         // A control can exist in the template and still be unreachable. A v-if
         // gates it, and the v-if is a second, hand-maintained copy of a decision
-        // the validation rules already make: meta_data.due carries
+        // the validation rules already make: meta_data.term_days carries
         // required_if:type,card, and the template hides the control behind
         // form.type === 'card'. Agreement today is two places agreeing by hand.
         //
@@ -326,8 +326,8 @@ class FormContractTest extends TestCase
      * The leaf paths a form is expected to bind, derived from the DTO.
      *
      * Dotted rather than nested, because that is how the error bag keys them
-     * (`meta_data.due`) even though the form binds them nested
-     * (`form.meta_data.due`). One spelling on both sides of every comparison.
+     * (`meta_data.term_days`) even though the form binds them nested
+     * (`form.meta_data.term_days`). One spelling on both sides of every comparison.
      *
      * @return string[]
      */
@@ -351,7 +351,7 @@ class FormContractTest extends TestCase
      *
      * Recursion into nested Data objects is what turns AccountData's single
      * meta_data property into the two things the form actually edits,
-     * meta_data.due and meta_data.statement_day. Stopping at the top level would
+     * meta_data.term_days and meta_data.statement_day. Stopping at the top level would
      * expect one control for a JSON bag the form has no single control for.
      *
      * A union or intersection type is treated as a leaf rather than descended
@@ -359,7 +359,7 @@ class FormContractTest extends TestCase
      * DTOs use one; if one appears it will show up as a field the form has no
      * control for, which is the safe direction to fail.
      *
-     * Rules are read off the class that owns the property, so meta_data.due's
+     * Rules are read off the class that owns the property, so meta_data.term_days's
      * rules come from AccountMetaData rather than from AccountData. A DTO with
      * no rules() of its own contributes paths with no rules, which is the same
      * thing for every assertion here.

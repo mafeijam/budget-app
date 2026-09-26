@@ -46,7 +46,7 @@ class AccountMetaTypeTransitionTest extends TestCase
         ]);
 
         if ($withMeta) {
-            $account->meta()->create(['meta' => ['due' => '5', 'statement_day' => 5]]);
+            $account->meta()->create(['meta' => ['term_days' => '5', 'statement_day' => 5]]);
         }
 
         return $account;
@@ -62,7 +62,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => '20', 'statement_day' => 20],
+            'meta_data' => ['term_days' => '20', 'statement_day' => 20],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -72,7 +72,7 @@ class AccountMetaTypeTransitionTest extends TestCase
 
         $this->assertSame('card', $fresh->type);
         $this->assertDatabaseCount('meta', 1);
-        $this->assertSame('20', (string) $fresh->meta->meta['due']);
+        $this->assertSame('20', (string) $fresh->meta->meta['term_days']);
 
         // The row must have been given a real primary key by MySQL, not left null.
         $this->assertNotNull($fresh->meta->id);
@@ -90,7 +90,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => null],
+            'meta_data' => ['term_days' => null],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -113,14 +113,14 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => '25', 'statement_day' => 25],
+            'meta_data' => ['term_days' => '25', 'statement_day' => 25],
         ]);
 
         $response->assertSessionHasNoErrors();
 
         $this->assertDatabaseCount('meta', 1);
         $this->assertSame($originalId, $account->fresh()->meta->id, 'Meta row must be updated, not replaced.');
-        $this->assertSame('25', (string) $account->fresh()->meta->meta['due']);
+        $this->assertSame('25', (string) $account->fresh()->meta->meta['term_days']);
     }
 
     public function test_cash_to_cash_with_no_meta_stays_empty(): void
@@ -133,7 +133,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => null],
+            'meta_data' => ['term_days' => null],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -154,7 +154,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => null],
+            'meta_data' => ['term_days' => null],
         ]);
 
         $this->assertDatabaseCount('meta', 0);
@@ -165,7 +165,7 @@ class AccountMetaTypeTransitionTest extends TestCase
             'status' => 'active',
             'type' => 'cash',
             'ccy' => 'HKD',
-            'meta_data' => ['due' => null],
+            'meta_data' => ['term_days' => null],
         ])->assertSessionHasNoErrors();
 
         $this->assertDatabaseCount('meta', 0);

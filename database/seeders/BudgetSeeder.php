@@ -68,7 +68,7 @@ class BudgetSeeder extends Seeder
                 //
                 // Closing on the 25th and payable 15 days later, so this
                 // statement falls due on 9 October.
-                'meta' => ['due' => 15, 'statement_day' => 25],
+                'meta' => ['term_days' => 15, 'statement_day' => 25],
             ],
         ] as $attributes) {
             $meta = $attributes['meta'];

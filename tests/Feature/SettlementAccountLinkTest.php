@@ -274,7 +274,7 @@ class SettlementAccountLinkTest extends TestCase
         // strict about: a cash account pointing at a securities account is the
         // second hop a cycle would need, and closing it here means no cycle can
         // be constructed at all rather than needing to be detected.
-        $meta = $type === 'card' ? ['due' => '15', 'statement_day' => 25] : [];
+        $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
 
         $this->assertFieldRejected([
             'name' => "Probe {$type}",
@@ -289,7 +289,7 @@ class SettlementAccountLinkTest extends TestCase
     {
         // The mirror, so the pair of rules is pinned as "present iff securities"
         // rather than "prohibited for cash" with nothing said about card.
-        $meta = $type === 'card' ? ['due' => '15', 'statement_day' => 25] : [];
+        $meta = $type === 'card' ? ['term_days' => '15', 'statement_day' => 25] : [];
 
         $data = AccountData::from($this->accountRequest([
             'name' => "Probe {$type}",

@@ -49,7 +49,7 @@ class CardStatementCycle
         }
 
         $statementDay = $meta['statement_day'] ?? null;
-        $termDays = $meta['due'] ?? null;
+        $termDays = $meta['term_days'] ?? null;
 
         if (! is_numeric($statementDay) || ! is_numeric($termDays)) {
             return null;

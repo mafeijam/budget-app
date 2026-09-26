@@ -247,7 +247,7 @@ class CardStatementCycleTest extends TestCase
 
     public function test_it_is_built_from_account_meta(): void
     {
-        $cycle = CardStatementCycle::fromMeta(['due' => '15', 'statement_day' => 25]);
+        $cycle = CardStatementCycle::fromMeta(['term_days' => '15', 'statement_day' => 25]);
 
         $this->assertInstanceOf(CardStatementCycle::class, $cycle);
         $this->assertSame(25, $cycle->statementDay());
@@ -259,7 +259,7 @@ class CardStatementCycleTest extends TestCase
         // Meta casts its JSON column to an ArrayObject, so this -- not a plain
         // array -- is what a caller reading $account->meta->meta actually holds.
         $cycle = CardStatementCycle::fromMeta(
-            new ArrayObject(['due' => '15', 'statement_day' => 25])
+            new ArrayObject(['term_days' => '15', 'statement_day' => 25])
         );
 
         $this->assertNotNull($cycle);
@@ -274,7 +274,7 @@ class CardStatementCycleTest extends TestCase
         // of account-type branching.
         $this->assertNull(CardStatementCycle::fromMeta(null));
         $this->assertNull(CardStatementCycle::fromMeta([]));
-        $this->assertNull(CardStatementCycle::fromMeta(['due' => '15']));
+        $this->assertNull(CardStatementCycle::fromMeta(['term_days' => '15']));
         $this->assertNull(CardStatementCycle::fromMeta(['statement_day' => 25]));
     }
 

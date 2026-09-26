@@ -23,7 +23,7 @@ class MetaRelationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function accountWithMeta(array $meta = ['due' => 15]): Account
+    private function accountWithMeta(array $meta = ['term_days' => 15]): Account
     {
         $account = Account::create([
             'name' => 'Alpha',
@@ -86,10 +86,10 @@ class MetaRelationTest extends TestCase
 
     public function test_several_accounts_each_resolve_their_own_metadata(): void
     {
-        $alpha = $this->accountWithMeta(['due' => 15]);
+        $alpha = $this->accountWithMeta(['term_days' => 15]);
 
         $beta = Account::create(['name' => 'Beta', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        Meta::create(['model_id' => $beta->id, 'model_type' => Account::class, 'meta' => ['due' => 20]]);
+        Meta::create(['model_id' => $beta->id, 'model_type' => Account::class, 'meta' => ['term_days' => 20]]);
 
         $owners = Meta::with('metable')->get()->map(fn (Meta $m) => $m->metable->name);
 
@@ -102,7 +102,7 @@ class MetaRelationTest extends TestCase
         // Orphans cannot be produced through the models -- the morphOne is not
         // configured to cascade -- so this documents the boundary case
         // directly rather than through normal app usage.
-        Meta::create(['model_id' => 999999, 'model_type' => Account::class, 'meta' => ['due' => null]]);
+        Meta::create(['model_id' => 999999, 'model_type' => Account::class, 'meta' => ['term_days' => null]]);
 
         $this->assertNull(Meta::firstOrFail()->metable);
     }

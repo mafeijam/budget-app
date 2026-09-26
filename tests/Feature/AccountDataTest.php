@@ -43,7 +43,7 @@ class AccountDataTest extends TestCase
             'status' => 'active',
             'type' => 'card',
             'ccy' => 'USD',
-            'meta_data' => ['due' => 15, 'statement_day' => 25],
+            'meta_data' => ['term_days' => 15, 'statement_day' => 25],
         ], $overrides));
     }
 
@@ -64,7 +64,7 @@ class AccountDataTest extends TestCase
         // chosen when it did not -- and the empty form is what the create
         // button shows.
         $this->assertNull($empty['ccy']);
-        $this->assertSame(['due' => null, 'statement_day' => null], $empty['meta_data']);
+        $this->assertSame(['term_days' => null, 'statement_day' => null], $empty['meta_data']);
     }
 
     public function test_from_request_populates_every_property(): void
@@ -78,7 +78,7 @@ class AccountDataTest extends TestCase
         $this->assertSame(Currency::Usd, $data->ccy);
         $this->assertNotNull($data->created_at);
         $this->assertInstanceOf(AccountMetaData::class, $data->meta_data);
-        $this->assertSame(15, $data->meta_data->due);
+        $this->assertSame(15, $data->meta_data->term_days);
         $this->assertSame(25, $data->meta_data->statement_day);
     }
 
@@ -88,7 +88,7 @@ class AccountDataTest extends TestCase
 
         $this->assertSame('Test Account', $array['name']);
         $this->assertSame(
-            ['due' => 15, 'statement_day' => 25],
+            ['term_days' => 15, 'statement_day' => 25],
             $array['meta_data']
         );
     }
@@ -112,7 +112,7 @@ class AccountDataTest extends TestCase
         $this->assertInstanceOf(Unique::class, $rules['name'][2]);
     }
 
-    public function test_meta_data_rules_require_due_when_type_is_card(): void
+    public function test_meta_data_rules_require_a_term_when_type_is_card(): void
     {
         $rules = AccountMetaData::rules();
 
@@ -120,10 +120,10 @@ class AccountDataTest extends TestCase
         // without it the `integer` and `between` below both fire on the null a
         // blank form field and empty() produce. required_if is implicit and
         // still runs, so a card with no payment term is rejected.
-        $this->assertSame(['nullable', 'required_if:type,card', 'integer', 'between:1,31'], $rules['due']);
+        $this->assertSame(['nullable', 'required_if:type,card', 'integer', 'between:1,31'], $rules['term_days']);
     }
 
-    public function test_meta_data_rules_for_due_and_statement_day_match(): void
+    public function test_meta_data_rules_for_term_days_and_statement_day_match(): void
     {
         // Both are day numbers over the same calendar, so their rules are
         // identical. They drifted -- `due` carried `max:28`, a string-length
@@ -131,10 +131,10 @@ class AccountDataTest extends TestCase
         // 1-31 -- and only a test comparing the two would have noticed.
         $rules = AccountMetaData::rules();
 
-        $this->assertSame($rules['statement_day'], $rules['due']);
+        $this->assertSame($rules['statement_day'], $rules['term_days']);
     }
 
-    public function test_meta_data_attributes_rename_due_for_display(): void
+    public function test_meta_data_attributes_rename_term_days_for_display(): void
     {
         // Without this the validation error reads "statement day" already via
         // Laravel's snake->sentence casing, but being explicit keeps it aligned
@@ -144,12 +144,12 @@ class AccountDataTest extends TestCase
         // label reading as a day of the month would send a user looking for the
         // wrong field. `statement_day` keeps its name because it really is one.
         $this->assertSame(
-            ['due' => 'payment term', 'statement_day' => 'statement day'],
+            ['term_days' => 'payment term', 'statement_day' => 'statement day'],
             AccountMetaData::attributes()
         );
     }
 
-    public function test_meta_data_requires_both_card_days_not_just_the_due_day(): void
+    public function test_meta_data_requires_both_card_numbers_not_just_the_term(): void
     {
         // A term alone cannot place a charge in a statement period: it is an
         // interval counted from the closing day, so it says nothing about when
@@ -307,7 +307,7 @@ class AccountDataTest extends TestCase
         // otherwise every card account can be saved with no due date.
         $this->assertFieldRejected(
             ['type' => 'card', 'meta_data' => []],
-            'meta_data.due'
+            'meta_data.term_days'
         );
     }
 
@@ -320,6 +320,6 @@ class AccountDataTest extends TestCase
             'meta_data' => [],
         ]));
 
-        $this->assertNull($data->meta_data->due);
+        $this->assertNull($data->meta_data->term_days);
     }
 }

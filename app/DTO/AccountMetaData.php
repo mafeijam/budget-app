@@ -11,15 +11,7 @@ use Spatie\LaravelData\Data;
 class AccountMetaData extends Data
 {
     public function __construct(
-        // Days between the statement closing and its falling due, not a day of
-        // the month -- so a card closing on the 25th with a 15-day term is paid
-        // in the middle of the following month. Typed ?int, which a day of month
-        // also is; the two are told apart by statement_day below.
-        public ?int $due,
-
-        // Day of month the statement closes. Required alongside `due`, because a
-        // term is only an interval and says nothing about the day it runs from.
-        // See App\Support\CardStatementCycle.
+        public ?int $term_days,
         public ?int $statement_day,
     ) {}
 
@@ -31,11 +23,15 @@ class AccountMetaData extends Data
             // `between` fire on the null a blank field produces. `required_if` is
             // implicit and still runs.
             //
-            // 1-31 for both, but for different reasons and to match two different
-            // guards, so they must not be collapsed into one: a statement day is a
-            // day of month and a term is a number of days. Both guards reject
-            // rather than clamp, since a 0 or a 32 is a data entry error either way.
-            'due' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
+            // Both required for a card, because neither alone can place a charge
+            // in a statement period: a term is an interval and says nothing about
+            // the day its statement closes. See App\Support\CardStatementCycle.
+            //
+            // 1-31 for both, and not interchangeably -- one is a day of the month
+            // and one a count of days. Each matches its own guard in
+            // CardStatementCycle, which rejects a value outside the range rather
+            // than clamping it, since 0 or 32 is a data entry error either way.
+            'term_days' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
             'statement_day' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
         ];
     }
@@ -43,10 +39,10 @@ class AccountMetaData extends Data
     public static function attributes()
     {
         return [
-            // "payment term" rather than "due day", which now reads as a day of
-            // the month: the message is the only thing a user sees when the
-            // number they typed is out of range.
-            'due' => 'payment term',
+            // Both entries needed: the rules message is the only thing a user
+            // sees, and Laravel's snake->sentence casing would render
+            // `term_days` as "term days" on its own.
+            'term_days' => 'payment term',
             'statement_day' => 'statement day',
         ];
     }

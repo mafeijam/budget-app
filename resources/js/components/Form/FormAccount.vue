@@ -42,7 +42,7 @@
 
       <template v-if="form.type === 'card'">
         <q-input
-          v-model="form.meta_data.due"
+          v-model="form.meta_data.term_days"
           class="col-6"
           label="Payment term (days)"
           filled
@@ -50,8 +50,8 @@
           min="1"
           max="31"
           hint="Days after the statement closes before it is due"
-          :error="!!form.errors['meta_data.due']"
-          :error-message="form.errors['meta_data.due']"
+          :error="!!form.errors['meta_data.term_days']"
+          :error-message="form.errors['meta_data.term_days']"
         />
         <q-input
           v-model="form.meta_data.statement_day"
