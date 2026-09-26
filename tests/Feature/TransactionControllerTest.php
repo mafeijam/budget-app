@@ -8,6 +8,7 @@ use App\Enums\TransactionStatus;
 use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
+use App\Support\CardStatement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -265,6 +266,81 @@ class TransactionControllerTest extends TestCase
     // The options the form is built from
     // ---------------------------------------------------------------------
 
+    public function test_index_reports_what_each_card_still_owes(): void
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('statements', 1)
+            ->where('statements.0.card.id', $this->card->id)
+            ->where('statements.0.card.name', 'Card')
+            ->where('statements.0.card.ccy', 'HKD')
+            ->has('statements.0.periods', 1)
+            // Derived on the way in, so the panel and the row below it agree.
+            ->where('statements.0.periods.0.due_date', '2026-02-09')
+            ->where('statements.0.periods.0.charge_count', 1)
+            ->where('statements.0.periods.0.charged', '120.0000')
+            ->where('statements.0.periods.0.paid', '0.0000')
+            ->where('statements.0.periods.0.owed', '120.0000')
+            ->where('statements.0.periods.0.pending_count', 0)
+        );
+    }
+
+    public function test_index_omits_a_card_whose_only_period_is_settled(): void
+    {
+        // A heading for a card owing nothing is noise, and a card whose period has
+        // been paid off would otherwise sit on the page looking like it needs action.
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ])->assertSessionHasNoErrors();
+
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => null,
+            'date' => '2026-02-01',
+            'type' => 'payment',
+            'description' => 'Payment',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ])->assertSessionHasNoErrors();
+
+        // The period is still there, and still in the class's own answer -- the page
+        // filters it out, it is not gone.
+        $this->assertTrue(CardStatement::forAccount($this->card)->sole()->isSettled());
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements', [])
+        );
+    }
+
+    public function test_index_does_not_list_a_non_card_as_a_statement_group(): void
+    {
+        // The cash and securities accounts in setUp have no card terms, and a
+        // brokerage's trades must not appear as though a bank were owed something.
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements', [])
+        );
+    }
+
     public function test_index_renders_the_transaction_inertia_page(): void
     {
         $response = $this->get('/transactions');
@@ -277,6 +353,7 @@ class TransactionControllerTest extends TestCase
             ->has('options')
             ->has('data')
             ->has('params')
+            ->has('statements')
             ->where('meta.form', 'transaction-form')
             ->where('meta.path', '/transactions')
         );

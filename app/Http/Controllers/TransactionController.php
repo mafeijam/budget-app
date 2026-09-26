@@ -10,6 +10,7 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Transaction;
+use App\Support\CardStatement;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,45 @@ class TransactionController extends Controller
             ])
             ->values();
 
+        // What each card still owes, period by period.
+        //
+        // The second consumer of the query transactions_account_due_index used to
+        // serve and no longer has an index for -- see create_transactions_table and
+        // App\Support\CardStatement. One query per card rather than one for all of
+        // them: grouping is by due_date, which is a fact about a single card's
+        // statements, and merging the accounts first would total a figure across
+        // cards that are separately owed and separately paid.
+        //
+        // Outstanding periods only, so a card with years of settled history does not
+        // push the ones needing attention down the page. The payments that closed
+        // them are in the list below.
+        $statements = Account::query()
+            ->where('type', AccountType::Card->value)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Account $card) => [
+                'card' => [
+                    'id' => $card->id,
+                    'name' => $card->name,
+                    'ccy' => $card->ccy,
+                ],
+                'periods' => CardStatement::outstandingFor($card)
+                    ->map(fn (CardStatement $statement) => [
+                        'due_date' => $statement->dueDate,
+                        'charge_count' => $statement->chargeCount,
+                        'payment_count' => $statement->paymentCount,
+                        'pending_count' => $statement->pendingCount,
+                        'charged' => $statement->charged,
+                        'paid' => $statement->paid,
+                        'owed' => $statement->owed(),
+                    ])
+                    ->all(),
+            ])
+            // A card with nothing outstanding is not worth a heading.
+            ->filter(fn (array $group) => $group['periods'] !== [])
+            ->values();
+
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
         $meta = [
@@ -109,6 +149,7 @@ class TransactionController extends Controller
             'params',
             'meta',
             'options',
+            'statements',
             'typeOptions',
             'statusOptions',
             'currencyOptions',

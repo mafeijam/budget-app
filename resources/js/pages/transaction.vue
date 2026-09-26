@@ -2,6 +2,8 @@
   <div class="column q-gutter-md">
     <FormTransaction :options="options" />
 
+    <CardStatements :groups="statements" />
+
     <AppTable :rows="data.data" :columns="columns" title="Transaction">
       <template #top>
         <div class="row full-width">
@@ -24,6 +26,10 @@ const props = defineProps({
   // renders with no options at all and clicking it opens nothing. Declared as an
   // Object because the controller sends {accounts, categories}.
   options: { type: Object, default: Object },
+  // What each card still owes, period by period. Outstanding periods only -- a
+  // card with nothing due gets no heading, and the payments that closed the rest
+  // are in the table below.
+  statements: { type: Array, default: Array },
 })
 
 const pagination = usePagination()

@@ -149,6 +149,7 @@
     "useBroadcastChannel": true,
     "useBrowserLocation": true,
     "useCached": true,
+    "useCalendarDay": true,
     "useClipboard": true,
     "useClipboardItems": true,
     "useCloneForm": true,

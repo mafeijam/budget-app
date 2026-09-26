@@ -140,6 +140,7 @@ declare global {
   const useBroadcastChannel: typeof import('@vueuse/core').useBroadcastChannel
   const useBrowserLocation: typeof import('@vueuse/core').useBrowserLocation
   const useCached: typeof import('@vueuse/core').useCached
+  const useCalendarDay: typeof import('./resources/js/composables/date.js').useCalendarDay
   const useClipboard: typeof import('@vueuse/core').useClipboard
   const useClipboardItems: typeof import('@vueuse/core').useClipboardItems
   const useCloneForm: typeof import('./resources/js/composables/form-helpers.js').useCloneForm

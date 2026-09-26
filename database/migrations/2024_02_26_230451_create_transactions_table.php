@@ -32,17 +32,35 @@ use Illuminate\Support\Facades\Schema;
  * did not hold still. `fx_rate` is a pure attribute and moved to the bag. So did
  * `due_date`, which is a grouping key, against the argument below -- the price
  * being that settling a card is a GROUP BY and the composite index is what makes
- * it cheap. That price is real and the index is gone; the query is
+ * it cheap. That price is real, the index is gone, and it is now paid rather than
+ * predicted: App\Support\CardStatement is that query.
  *
- *   SELECT due_date,
- *          SUM(CASE WHEN type = 'charge'  THEN amount ELSE 0 END)
- *        - SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END) AS owed
- *     FROM transactions WHERE account_id = ? GROUP BY due_date
+ * Measured on 180 transactions over 20 periods, the plan it gets is worse than
+ * "scans the account's transactions", which is what an earlier version of this
+ * comment claimed. The optimizer drives from `meta` and does a full table scan of
+ * it -- type ALL, key NULL -- once per card, because the JSON path is unindexable
+ * and every bag in the database becomes a candidate. Since `meta` grows in step
+ * with `transactions`, that choice does not improve with scale.
  *
- * and it now scans the account's transactions and sorts. Nobody wrote it yet and
- * no row is persisted, so the cost is a comment today. When it is written, the
- * fix is a MySQL generated column projecting the JSON path and an index on that,
- * which buys the fast path without putting the field back where it was.
+ * The way out, also measured, and the first attempt at it does not work. A
+ * generated column cannot contain a subquery, so projecting the path onto
+ * `transactions` is refused outright (ERROR 3102). The column has to go on `meta`,
+ * which already holds the JSON:
+ *
+ *   ALTER TABLE meta
+ *     ADD COLUMN due_date varchar(10)
+ *       GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(meta, '$.due_date'))) STORED,
+ *     ADD INDEX meta_model_due_index (model_type, model_id, due_date);
+ *
+ * which turns the plan into type ref on that index with "Using index" -- a
+ * covering read, no table lookups. The cheaper alternative is the column with no
+ * new index plus a STRAIGHT_JOIN, which drives from transactions_account_id_date_index
+ * instead and looks `meta` up by its existing (model_id, model_type) unique. Both
+ * read this account's rows; only the index gets the optimizer there on its own.
+ *
+ * None of that is done here, because doing it is a decision about how many cards
+ * and how much history this app is expected to hold, and none of that is known
+ * yet. It is recorded here rather than left to be rediscovered.
  */
 return new class extends Migration
 {
