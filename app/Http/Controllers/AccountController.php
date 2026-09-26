@@ -41,10 +41,12 @@ class AccountController extends Controller
             ->where('type', AccountType::Cash->value)
             ->orderBy('name')
             ->get(['id', 'name', 'ccy'])
-            // ccy in the label because nothing stops a brokerage settling into a
-            // bank holding a different currency, and the rate that covers the
-            // difference is not wired up yet. Showing it surfaces the choice
-            // rather than hiding a conversion the user is not making.
+            // ccy in the label because AccountData now refuses a brokerage that
+            // settles into a differently-denominated bank, so the label is what
+            // makes an incompatible target recognisable before the form refuses
+            // it. Were the label just the name, a user would pick a bank, submit,
+            // and be told the pairing is wrong without being told which two
+            // currencies clashed.
             ->map(fn (Account $account) => [
                 'label' => "{$account->name} ({$account->ccy})",
                 'value' => $account->id,

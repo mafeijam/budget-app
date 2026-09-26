@@ -439,6 +439,11 @@ class AccountControllerTest extends TestCase
         $this->post('/accounts', $this->payload([
             'name' => 'Broker',
             'type' => 'security',
+            // The bank is HKD, so the brokerage has to be HKD too. Left to the
+            // payload default of USD this account is refused, and the test would
+            // fail for the currency rather than for the settlement link it is
+            // named for.
+            'ccy' => 'HKD',
             'meta_data' => [],
             'settlement_account_id' => $bank->id,
         ]));
@@ -463,6 +468,53 @@ class AccountControllerTest extends TestCase
 
         $response->assertSessionHasErrors('settlement_account_id');
         $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_store_rejects_a_securities_account_settling_into_another_currency(): void
+    {
+        // The end-to-end consequence of the parity guard. Asserted here as well
+        // as at the DTO level because this is the shape a user meets: the payload
+        // is otherwise working, so the currency is the only thing that can fail,
+        // and the row must not appear.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'JPY']);
+
+        $response = $this->post('/accounts', $this->payload([
+            'name' => 'Broker',
+            'type' => 'security',
+            'ccy' => 'HKD',
+            'meta_data' => [],
+            'settlement_account_id' => $bank->id,
+        ]));
+
+        $response->assertSessionHasErrors([
+            'settlement_account_id' => 'A HKD brokerage cannot settle into a JPY account.',
+        ]);
+        $this->assertDatabaseMissing('accounts', ['name' => 'Broker']);
+    }
+
+    public function test_update_rejects_moving_a_brokerage_into_another_currency(): void
+    {
+        // The same pairing, arrived at by editing rather than creating: a brokerage
+        // that is valid today can be made invalid by moving its settlement link,
+        // and that is the more likely way to meet this since the change is a
+        // one-field edit to an account the user already has.
+        $bank = Account::create(['name' => 'Yen Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'JPY']);
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $response = $this->put("/accounts/{$broker->id}", $this->payload([
+            'id' => $broker->id,
+            'name' => 'Broker',
+            'type' => 'security',
+            'ccy' => 'HKD',
+            'meta_data' => [],
+            'settlement_account_id' => $bank->id,
+        ]));
+
+        $response->assertSessionHasErrors('settlement_account_id');
+
+        // Unchanged, not just rejected: a refused update that still moved the link
+        // would report an error and save anyway.
+        $this->assertNull($broker->fresh()->settlement_account_id);
     }
 
     public function test_store_rejects_a_securities_account_settling_into_a_card(): void
@@ -511,6 +563,10 @@ class AccountControllerTest extends TestCase
             'id' => $broker->id,
             'name' => 'Broker',
             'type' => 'security',
+            // Restated, because this is a full replace rather than a patch: the
+            // payload's USD default would move the brokerage out of HKD and out
+            // of both banks' currency at once, and the update would be refused.
+            'ccy' => 'HKD',
             'meta_data' => [],
             'settlement_account_id' => $two->id,
         ]))->assertSessionHasNoErrors();

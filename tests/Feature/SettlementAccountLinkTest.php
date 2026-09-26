@@ -464,4 +464,158 @@ class SettlementAccountLinkTest extends TestCase
 
         $this->assertNull($cash->settlementAccount);
     }
+
+    // ---------------------------------------------------------------------
+    // Currency parity
+    // ---------------------------------------------------------------------
+
+    public function test_a_brokerage_cannot_settle_into_a_bank_in_another_currency(): void
+    {
+        // The pairing is refused rather than converted. Converting would need a
+        // rate at a moment neither account can see, and then a second conversion
+        // on the way back with the proceeds; transactions.fx_rate exists and is
+        // wired to nothing, so the honest answer is that this cannot be recorded
+        // rather than a guess at what it means.
+        $yen = Account::create([
+            'name' => 'Yen Bank',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'JPY',
+        ]);
+
+        $this->assertFieldRejected(['settlement_account_id' => $yen->id], 'settlement_account_id');
+    }
+
+    public function test_the_mismatch_message_names_both_currencies(): void
+    {
+        // There are two accounts to change and the message should not send the
+        // user off to work out which one is wrong. Spelled out here because the
+        // phrasing is a product decision: naming only the brokerage's currency
+        // reads as "this brokerage is the problem", which is not necessarily so.
+        $usd = Account::create([
+            'name' => 'Dollar Bank',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'USD',
+        ]);
+
+        try {
+            AccountData::from($this->accountRequest([
+                'ccy' => 'HKD',
+                'settlement_account_id' => $usd->id,
+            ]));
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                ['A HKD brokerage cannot settle into a USD account.'],
+                $e->errors()['settlement_account_id']
+            );
+
+            return;
+        }
+
+        $this->fail('Expected a currency mismatch to be rejected, but the payload validated.');
+    }
+
+    public function test_every_currency_settles_into_its_own(): void
+    {
+        // All six, not a sample, so trimming the enum cannot quietly strand a
+        // currency a user has an account in. Each gets its own bank because
+        // accounts.name is unique and a shared one would fail for the wrong
+        // reason.
+        foreach (Currency::cases() as $currency) {
+            $bank = Account::create([
+                'name' => "Bank {$currency->value}",
+                'status' => 'active',
+                'type' => 'cash',
+                'ccy' => $currency->value,
+            ]);
+
+            $data = AccountData::from($this->accountRequest([
+                'ccy' => $currency->value,
+                'settlement_account_id' => $bank->id,
+            ]));
+
+            $this->assertSame($currency, $data->ccy, "{$currency->value} would not settle into its own bank");
+            $this->assertSame($bank->id, $data->settlement_account_id);
+        }
+    }
+
+    public function test_the_currency_mismatch_is_checked_even_without_validating(): void
+    {
+        // Same reasoning as the cash-type check beside it: the target's currency
+        // is only knowable from the database, so a client that skips validation
+        // must not be able to record a pairing the validated path refuses.
+        $yen = Account::create([
+            'name' => 'Yen Bank',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'JPY',
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        new AccountData(
+            id: null,
+            name: 'Broker',
+            status: AccountStatus::Active,
+            type: AccountType::Security,
+            ccy: Currency::Hkd,
+            created_at: null,
+            meta_data: null,
+            settlement_account_id: $yen->id,
+        );
+    }
+
+    public function test_a_cash_account_outranks_a_currency_mismatch_in_the_message(): void
+    {
+        // Order is load-bearing, and this pins it. A card account in another
+        // currency is both the wrong type and the wrong currency, and naming the
+        // currency would imply the pairing could be fixed by converting. It
+        // cannot: a card account is not somewhere a brokerage settles at all, so
+        // the type is the more fundamental problem and the one to report.
+        $card = Account::create([
+            'name' => 'Yen Card',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'JPY',
+        ]);
+
+        try {
+            AccountData::from($this->accountRequest([
+                'ccy' => 'HKD',
+                'settlement_account_id' => $card->id,
+            ]));
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                ['A securities account settles into a cash account, not a card account.'],
+                $e->errors()['settlement_account_id']
+            );
+
+            return;
+        }
+
+        $this->fail('Expected a card target to be rejected, but the payload validated.');
+    }
+
+    public function test_matching_the_bank_currency_is_what_unblocks_the_pairing(): void
+    {
+        // The message says two accounts can change; this proves the other one is
+        // reachable, so the refusal is a question and not a dead end. A guard
+        // that also refused the corrected payload would leave the user with a
+        // brokerage they cannot save at all.
+        $yen = Account::create([
+            'name' => 'Yen Bank',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'JPY',
+        ]);
+
+        $data = AccountData::from($this->accountRequest([
+            'ccy' => 'JPY',
+            'settlement_account_id' => $yen->id,
+        ]));
+
+        $this->assertSame(Currency::Jpy, $data->ccy);
+        $this->assertSame($yen->id, $data->settlement_account_id);
+    }
 }

@@ -258,6 +258,9 @@ class AccountDataTest extends TestCase
                 // rules.
                 if ($type === AccountType::Security) {
                     $overrides['settlement_account_id'] = $this->cashId;
+                    // And it has to be in the bank's currency, or this fails on
+                    // the currency and the type coverage it is named for is lost.
+                    $overrides['ccy'] = 'HKD';
                 }
 
                 $data = AccountData::from($this->postRequest($overrides));

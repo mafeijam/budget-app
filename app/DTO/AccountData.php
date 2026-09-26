@@ -91,7 +91,8 @@ class AccountData extends Data
     }
 
     /**
-     * Reject a securities account that settles into anything but a cash account.
+     * Reject a securities account that settles into anything but a cash account
+     * in the same currency.
      *
      * A rule can only see the payload, and what the target *is* is only knowable
      * from the database, so this runs in the constructor. That means it holds
@@ -119,6 +120,33 @@ class AccountData extends Data
                 'settlement_account_id' => sprintf(
                     'A securities account settles into a cash account, not a %s account.',
                     $target->type
+                ),
+            ]);
+        }
+
+        // Same currency, checked after the type because a target that is the
+        // wrong type is the more fundamental mismatch: naming its currency would
+        // imply the pairing could be fixed by converting, and it cannot -- a card
+        // account is not somewhere a brokerage settles at all.
+        //
+        // Refusing rather than converting. The money leaving a brokerage is
+        // already denominated in the brokerage's currency, and converting it
+        // would need a rate at a moment neither account can see, then a second
+        // conversion on the way back with the proceeds. transactions.fx_rate
+        // exists and is wired to nothing, so the honest answer today is that
+        // this pairing cannot be recorded rather than a guess at what it means.
+        // A brokerage holding one currency settling into a bank in another is
+        // real, and when the rate lands this becomes a conversion; until then
+        // the account is unusable rather than silently miscounted.
+        //
+        // Both currencies are named because there are two accounts to change and
+        // the message should not make the user go looking for which one is wrong.
+        if ($target->ccy !== $this->ccy->value) {
+            throw ValidationException::withMessages([
+                'settlement_account_id' => sprintf(
+                    'A %s brokerage cannot settle into a %s account.',
+                    $this->ccy->value,
+                    $target->ccy
                 ),
             ]);
         }
