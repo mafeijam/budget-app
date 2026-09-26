@@ -51,20 +51,29 @@ class TransactionMetaData extends Data
     public function __construct(
         // Card charges: who was paid. A payment has none -- it settles a statement
         // rather than buying anything.
-        public ?string $merchant,
+        public ?string $merchant = null,
 
         // Securities trades. Fractional shares need more places than money does,
         // hence eight against the amount's four.
-        public ?string $symbol,
-        public ?string $quantity,
-        public ?string $unit_price,
-        public ?string $fees,
+        public ?string $symbol = null,
+        public ?string $quantity = null,
+        public ?string $unit_price = null,
+        public ?string $fees = null,
 
         // Converts amount, denominated in the transaction's own ccy, into the
         // owning account's currency. NULL means already in the account's currency,
         // which is the common case and is never forced to a literal 1. Nothing
         // converts with it yet -- see AccountData::guardSettlementAccount().
-        public ?string $fx_rate,
+        public ?string $fx_rate = null,
+
+        // The statement period a charge rolls up into, and so the day it is
+        // payable. Derived for a charge and supplied by a payment, which names
+        // the statement it settles. NULL for every other type, and a card row
+        // with no statement day.
+        //
+        // A column while MySQL could index it, and a bag now that it cannot --
+        // see create_transactions_table for the reasoning.
+        public ?string $due_date = null,
     ) {}
 
     public static function rules()
@@ -104,6 +113,16 @@ class TransactionMetaData extends Data
                 'gt:0',
                 'max:'.self::MAX_FX_RATE,
             ],
+
+            // `nullable` first, for the same reason as every other key here: a
+            // blank field and TransactionData's derivations both produce a null,
+            // and the validator counts null as present.
+            //
+            // Not required for a charge even though the constructor always fills
+            // it in, because it is filled in after validation has run. A charge
+            // on a card with no statement day has none, and requiring it would
+            // reject a row the schema permits.
+            'due_date' => ['nullable', 'date_format:Y-m-d'],
         ];
     }
 
@@ -135,6 +154,7 @@ class TransactionMetaData extends Data
             'unit_price' => 'unit price',
             'fees' => 'fees',
             'fx_rate' => 'exchange rate',
+            'due_date' => 'due date',
         ];
     }
 

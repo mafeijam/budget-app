@@ -26,11 +26,23 @@ use Illuminate\Support\Facades\Schema;
  * What is a column and what is in the meta bag is not decided by how often a
  * field is used but by what it is asked to do. An attribute you display goes in
  * the bag, so that adding one needs no migration. A key you group and filter on
- * stays a column, because MySQL cannot index a JSON path and the settlement
- * query below is a GROUP BY. `fx_rate` moved to the bag on that first count and
- * `due_date` is held back on the second; the ceiling the fx_rate column used to
- * impose is now a rule in TransactionMetaData, since a bag is not what refuses
- * an over-wide number.
+ * would stay a column, because MySQL cannot index a JSON path.
+ *
+ * That line was drawn in both directions while both fields were columns, and it
+ * did not hold still. `fx_rate` is a pure attribute and moved to the bag. So did
+ * `due_date`, which is a grouping key, against the argument below -- the price
+ * being that settling a card is a GROUP BY and the composite index is what makes
+ * it cheap. That price is real and the index is gone; the query is
+ *
+ *   SELECT due_date,
+ *          SUM(CASE WHEN type = 'charge'  THEN amount ELSE 0 END)
+ *        - SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END) AS owed
+ *     FROM transactions WHERE account_id = ? GROUP BY due_date
+ *
+ * and it now scans the account's transactions and sorts. Nobody wrote it yet and
+ * no row is persisted, so the cost is a comment today. When it is written, the
+ * fix is a MySQL generated column projecting the JSON path and an index on that,
+ * which buys the fast path without putting the field back where it was.
  */
 return new class extends Migration
 {
@@ -75,36 +87,10 @@ return new class extends Migration
             // default for the cash rows that predate the concept.
             $table->string('status')->default('posted');
 
-            // The statement cycle a charge rolls up into, and therefore the day
-            // that cycle falls due. NULL for every cash, payment, trade and
-            // dividend row; the concept is card-specific. A plain date, not a
-            // timestamp: a statement falls due on a calendar day, and a time
-            // would imply a settlement deadline that does not exist.
-            //
-            // A column and not a meta entry, unlike the trade fields beside it,
-            // because it is a grouping key rather than an attribute: settling a
-            // card is a GROUP BY over it, which is what the index below is for,
-            // and MySQL cannot index a JSON path. The reversal that took fx_rate
-            // out of this table and the argument that put due_date's predecessor
-            // in it are both in the class docblock.
-            $table->date('due_date')->nullable();
-
             $table->timestamps();
 
             // The balance query: always scoped to one account, ordered by date.
             $table->index(['account_id', 'date']);
-
-            // The settlement query:
-            //
-            //   SELECT due_date,
-            //          SUM(CASE WHEN type = 'charge'  THEN amount ELSE 0 END)
-            //        - SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END) AS owed
-            //     FROM transactions WHERE account_id = ? GROUP BY due_date
-            //
-            // Leading with account_id keeps it scoped; trailing due_date lets
-            // MySQL take the groups off the index in order instead of sorting
-            // them.
-            $table->index(['account_id', 'due_date'], 'transactions_account_due_index');
 
             // The category_id foreign key needs one, and independently it is the
             // lookup behind "everything filed under this category" -- the

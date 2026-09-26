@@ -623,8 +623,11 @@ class TransactionDataTest extends TestCase
             amount: '1.00',
             ccy: Currency::Hkd,
             status: null,
-            due_date: null,
-            meta_data: new TransactionMetaData(null, '0700.HK', '100', '150.50', null, null),
+            meta_data: new TransactionMetaData(
+                symbol: '0700.HK',
+                quantity: '100',
+                unit_price: '150.50',
+            ),
             created_at: null,
         );
 
@@ -644,7 +647,6 @@ class TransactionDataTest extends TestCase
             amount: '4.5000',
             ccy: Currency::Hkd,
             status: null,
-            due_date: null,
             meta_data: null,
             created_at: null,
         );
@@ -716,9 +718,46 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->cardId,
             'type' => 'charge',
             'date' => '2026-01-01',
+            'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
-        $this->assertSame('2026-02-09', $data->due_date);
+        $this->assertSame('2026-02-09', $data->meta_data->due_date);
+    }
+
+    public function test_the_derived_due_date_joins_the_bag_rather_than_replacing_it(): void
+    {
+        // The derivation writes into a bag the client already sent, so the
+        // fields that came with it have to still be there afterwards. A
+        // reconstruct-and-replace would quietly drop the merchant, and the row
+        // would persist complete-looking and incomplete.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => '2026-01-01',
+            'meta_data' => ['merchant' => 'Cafe', 'fx_rate' => '7.8'],
+        ]));
+
+        $this->assertSame('Cafe', $data->meta_data->merchant);
+        $this->assertSame('7.8', $data->meta_data->fx_rate);
+        $this->assertSame('2026-02-09', $data->meta_data->due_date);
+    }
+
+    public function test_a_charge_with_no_meta_bag_at_all_still_gets_a_due_date(): void
+    {
+        // The trap in moving a derived field into an optional bag. meta_data is
+        // required for a trade and optional for everything else, so a charge
+        // that sends no bag is perfectly valid -- and a `?->` on the derivation
+        // would leave it with no due date at all. Silent, and wrong: the charge
+        // would fall out of its statement's settlement figure without any error
+        // anywhere. So the bag is created rather than skipped.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'charge',
+            'date' => '2026-01-01',
+        ]));
+
+        $this->assertNotNull($data->meta_data);
+        $this->assertSame('2026-02-09', $data->meta_data->due_date);
     }
 
     public function test_a_charge_after_the_closing_day_moves_to_the_next_period(): void
@@ -727,9 +766,10 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->cardId,
             'type' => 'charge',
             'date' => '2026-01-26',
+            'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
-        $this->assertSame('2026-03-12', $data->due_date);
+        $this->assertSame('2026-03-12', $data->meta_data->due_date);
     }
 
     public function test_a_charge_on_the_closing_day_belongs_to_that_statement(): void
@@ -738,9 +778,10 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->cardId,
             'type' => 'charge',
             'date' => '2026-01-25',
+            'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
-        $this->assertSame('2026-02-09', $data->due_date);
+        $this->assertSame('2026-02-09', $data->meta_data->due_date);
     }
 
     public function test_a_charge_on_a_card_with_no_statement_day_has_no_due_date(): void
@@ -761,9 +802,10 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $card->id,
             'type' => 'charge',
+            'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
-        $this->assertNull($data->due_date);
+        $this->assertNull($data->meta_data->due_date);
     }
 
     public function test_a_charge_keeps_a_due_date_the_client_supplied(): void
@@ -773,18 +815,24 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
-            'due_date' => '2026-04-15',
+            'meta_data' => ['merchant' => 'Cafe', 'due_date' => '2026-04-15'],
         ]));
 
-        $this->assertSame('2026-04-15', $data->due_date);
+        $this->assertSame('2026-04-15', $data->meta_data->due_date);
     }
 
     public function test_only_a_charge_derives_a_due_date(): void
     {
+        // A bag sent but no due date in it, so the nullish read below is
+        // reading the property rather than short-circuiting on a missing bag.
         foreach (['expense', 'income'] as $type) {
-            $data = TransactionData::from($this->postRequest(['type' => $type]));
+            $data = TransactionData::from($this->postRequest([
+                'type' => $type,
+                'meta_data' => ['merchant' => 'Cafe'],
+            ]));
 
-            $this->assertNull($data->due_date, "A {$type} should have no due date.");
+            $this->assertNotNull($data->meta_data, "A {$type} should still carry the bag it was sent.");
+            $this->assertNull($data->meta_data->due_date, "A {$type} should have no due date.");
         }
     }
 
@@ -799,19 +847,21 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->cardId,
             'type' => 'payment',
             'category_id' => null,
-            'due_date' => '2026-02-15',
+            'meta_data' => ['due_date' => '2026-02-15'],
         ]));
 
-        $this->assertSame('2026-02-15', $data->due_date);
+        $this->assertSame('2026-02-15', $data->meta_data->due_date);
     }
 
     public function test_a_due_date_must_be_iso_formatted(): void
     {
+        // The rule now lives on the nested key, so the error is keyed there too.
+        // A client reading `due_date` out of the bag would see nothing at all.
         $this->assertFieldRejected([
             'account_id' => $this->cardId,
             'type' => 'charge',
-            'due_date' => '15/02/2026',
-        ], 'due_date');
+            'meta_data' => ['merchant' => 'Cafe', 'due_date' => '15/02/2026'],
+        ], 'meta_data.due_date');
     }
 
     public function test_a_malformed_date_does_not_explode_the_due_date_derivation(): void
@@ -921,11 +971,11 @@ class TransactionDataTest extends TestCase
         $this->assertSame(['exists:accounts,id'], $rules['account_id']);
         $this->assertSame(['date_format:Y-m-d'], $rules['date']);
         $this->assertSame(['max:255'], $rules['description']);
-        $this->assertSame(['nullable', 'date_format:Y-m-d'], $rules['due_date']);
 
-        // fx_rate is not here: it is type-specific, so it is declared in
-        // TransactionMetaData alongside the merchant and the trade fields.
+        // fx_rate and due_date are not here: both are type-specific, so they are
+        // declared in TransactionMetaData with the merchant and the trade fields.
         $this->assertArrayNotHasKey('fx_rate', $rules);
+        $this->assertArrayNotHasKey('due_date', $rules);
 
         // ccy is an enum, so spatie derives its membership and the `size:3` that
         // stood in for it is gone -- it never checked membership anyway, so what

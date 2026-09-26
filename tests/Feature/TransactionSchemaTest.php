@@ -157,16 +157,13 @@ class TransactionSchemaTest extends TestCase
         );
     }
 
-    public function test_due_date_is_an_optional_plain_date(): void
+    public function test_due_date_is_not_a_column(): void
     {
-        // Only a card charge rolls up into a statement period, so this is NULL
-        // for every cash, payment, trade and dividend row. It is a plain date
-        // and not a timestamp: a statement falls due on a calendar day, and
-        // storing a time would imply a settlement deadline that does not exist.
-        $due = $this->column('due_date');
-
-        $this->assertSame('date', $due->col_type);
-        $this->assertSame('YES', $due->col_nullable);
+        $this->assertArrayNotHasKey(
+            'due_date',
+            $this->columns(),
+            'transactions.due_date is still a column; found: '.implode(', ', array_keys($this->columns()))
+        );
     }
 
     public function test_amount_stays_not_null(): void
@@ -191,24 +188,54 @@ class TransactionSchemaTest extends TestCase
         );
     }
 
-    public function test_account_and_due_date_are_indexed_together(): void
+    public function test_nothing_is_indexed_over_due_date_any_more(): void
     {
-        // How much a card statement owes is a GROUP BY due_date scoped to one
-        // account:
+        // The cost of the move, asserted rather than left in a commit message.
+        //
+        // How much a card statement owes was a GROUP BY due_date scoped to one
+        // account, and this index was the only thing letting MySQL take the
+        // groups in order instead of sorting them:
         //
         //   SELECT due_date, SUM(charge) - SUM(payment) FROM transactions
         //    WHERE account_id = ? GROUP BY due_date
         //
-        // Leading with account_id keeps it scoped; trailing due_date lets MySQL
-        // take the groups off the index in order instead of sorting them.
+        // In the JSON bag that becomes a full scan of the account's transactions
+        // plus a temp table. MySQL cannot index a JSON path, so keeping the index
+        // would have meant reintroducing a real column purely to hang it off --
+        // which is the thing being removed. Note this is the opposite reasoning
+        // to fx_rate's move, and deliberately so: an attribute you display goes in
+        // the bag, a key you group on does not.
         //
-        // due_date is the period key, which is why there is no statements table
-        // to join for this.
-        $this->assertContains(
-            ['account_id', 'due_date'],
-            array_values($this->indexes()),
-            'Expected a composite index on (account_id, due_date); found: '
-                .json_encode($this->indexes())
+        // The cost is deferred, not avoided: no query groups by it yet, and
+        // transactions are never persisted, so nothing is slower today.
+        $overDueDate = array_filter(
+            $this->indexes(),
+            fn (array $columns) => in_array('due_date', $columns, true),
+            ARRAY_FILTER_USE_BOTH
+        );
+
+        $this->assertSame(
+            [],
+            $overDueDate,
+            'Still indexed over due_date: '.json_encode(array_values($overDueDate))
+        );
+    }
+
+    public function test_the_settlement_index_is_gone_entirely_and_not_left_shrunk(): void
+    {
+        // Dropping a column does not drop an index that merely included it: MySQL
+        // rebuilds transactions_account_due_index over its surviving column and
+        // leaves a bare (account_id) behind, named for an index that no longer
+        // exists. That is a dead name and a redundant index -- (account_id) is
+        // already the leading column of (account_id, date), so it buys no lookup
+        // and costs a write on every insert and update.
+        //
+        // Caught on the live database, where the DDL did exactly this, so the
+        // assertion is on the name and not merely on the absence of due_date.
+        $this->assertArrayNotHasKey(
+            'transactions_account_due_index',
+            $this->indexes(),
+            'The settlement index survived the column drop. Indexes: '.json_encode($this->indexes())
         );
     }
 

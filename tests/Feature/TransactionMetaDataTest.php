@@ -189,7 +189,11 @@ class TransactionMetaDataTest extends TestCase
         // vacuously and a trade could be saved with no symbol and no quantity.
         // A rule that does not exist fails silently, so its absence has to be
         // asserted rather than discovered.
-        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min'];
+        //
+        // This is a whitelist rather than a lookup, so a rule new to this bag
+        // has to be added here deliberately -- which is the point. `date_format`
+        // arrived with due_date; the rest predate it.
+        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {

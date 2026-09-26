@@ -43,11 +43,6 @@ class TransactionData extends Data
         // Defaults to posted, the only state a plain cash expense is ever in.
         public ?TransactionStatus $status,
 
-        // The statement period a charge rolls up into, and so the day it is
-        // payable. Derived for a charge; a payment supplies it to say which
-        // statement it settles. NULL otherwise.
-        public ?string $due_date,
-
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
     ) {
@@ -113,10 +108,12 @@ class TransactionData extends Data
             // to all of ISO 4217, which would let a transaction record a code no
             // account can hold and no dropdown anywhere offers.
             //
-            // fx_rate itself is declared in TransactionMetaData: it is
-            // type-specific, so it belongs with the merchant and the trade fields.
-            'due_date' => ['nullable', 'date_format:Y-m-d'],
-
+            // fx_rate and due_date are declared in TransactionMetaData rather
+            // than here: both are type-specific, so they belong with the merchant
+            // and the trade fields. A payment supplies a due date to name the
+            // statement it settles, which is why the top-level key it used to
+            // sit on was not a payment's field either.
+            //
             // Without this a trade with no meta_data at all passes: the nested
             // rules never run on a missing key, so nothing asks for the numbers the
             // amount is derived from and the row reaches a NOT NULL column null.
@@ -130,7 +127,6 @@ class TransactionData extends Data
     {
         return [
             'ccy' => 'currency',
-            'due_date' => 'due date',
         ];
     }
 
@@ -193,10 +189,22 @@ class TransactionData extends Data
      * the earliest unpaid -- a question about outstanding balances that belongs in
      * the controller. A card with no statement day yields no due date rather than
      * one counted from the payment term alone, which would be a whole cycle out.
+     *
+     * The date lives in the meta bag, which is created if the payload did not
+     * carry one. That is not tidiness: meta_data is required for a trade and
+     * optional for everything else, so a charge that sends no bag is a valid
+     * payload, and skipping the derivation for it would drop the charge out of
+     * its statement's settlement figure with nothing anywhere reporting a
+     * problem. The one asymmetry this introduces is a non-charge arriving with no
+     * bag still gets none, since nothing would be written into it.
      */
     private function deriveDueDate(?Account $account): void
     {
-        if ($this->due_date !== null || $this->type !== TransactionType::Charge) {
+        if ($this->type !== TransactionType::Charge) {
+            return;
+        }
+
+        if ($this->meta_data?->due_date !== null) {
             return;
         }
 
@@ -214,6 +222,7 @@ class TransactionData extends Data
             return;
         }
 
-        $this->due_date = $cycle->dueDateFor($charge)->toDateString();
+        $this->meta_data ??= new TransactionMetaData;
+        $this->meta_data->due_date = $cycle->dueDateFor($charge)->toDateString();
     }
 }
