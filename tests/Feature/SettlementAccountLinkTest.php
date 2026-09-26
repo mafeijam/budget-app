@@ -138,10 +138,10 @@ class SettlementAccountLinkTest extends TestCase
     private function indexes(string $table): array
     {
         $rows = DB::select(
-            "SELECT index_name AS idx_name, column_name AS col_name, seq_in_index AS col_seq
+            'SELECT index_name AS idx_name, column_name AS col_name, seq_in_index AS col_seq
                FROM information_schema.statistics
               WHERE table_schema = DATABASE() AND table_name = ?
-              ORDER BY index_name, seq_in_index",
+              ORDER BY index_name, seq_in_index',
             [$table]
         );
 

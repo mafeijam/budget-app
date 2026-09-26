@@ -166,6 +166,6 @@ class TransactionSchemaTest extends TestCase
         // unused.
         $indexed = array_merge(...array_values($this->indexes()));
 
-        $this->assertContains('category_id', $indexed, 'Found: ' . json_encode($this->indexes()));
+        $this->assertContains('category_id', $indexed, 'Found: '.json_encode($this->indexes()));
     }
 }
