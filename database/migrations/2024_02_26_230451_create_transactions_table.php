@@ -29,7 +29,9 @@ use Illuminate\Support\Facades\Schema;
  * would stay a column, because MySQL cannot index a JSON path.
  *
  * That line was drawn in both directions while both fields were columns, and it
- * did not hold still. `fx_rate` is a pure attribute and moved to the bag. So did
+ * did not hold still. `fx_rate` was a pure attribute and moved to the bag, then
+ * was removed outright once card_amount made it redundant -- a rate converts
+ * nothing, and a stated figure is the figure someone meant. So did
  * `due_date`, which is a grouping key, against the argument below -- the price
  * being that settling a card is a GROUP BY and the composite index is what makes
  * it cheap. That price is real, the index is gone, and it is now paid rather than

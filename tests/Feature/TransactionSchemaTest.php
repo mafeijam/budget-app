@@ -143,20 +143,6 @@ class TransactionSchemaTest extends TestCase
         $this->assertSame('posted', $status->col_default);
     }
 
-    public function test_fx_rate_is_not_a_column(): void
-    {
-        // Asserted rather than assumed, because the column was the only thing
-        // capping the integer digits: decimal(16,8) tops out at 99999999.99999999
-        // and the DTO's `decimal:0,8` counts decimal places only. In the bag
-        // there is no column left to refuse a wider value, so TransactionMetaData
-        // states the maximum itself.
-        $this->assertArrayNotHasKey(
-            'fx_rate',
-            $this->columns(),
-            'transactions.fx_rate is still a column; found: '.implode(', ', array_keys($this->columns()))
-        );
-    }
-
     public function test_due_date_is_not_a_column(): void
     {
         $this->assertArrayNotHasKey(
@@ -203,7 +189,7 @@ class TransactionSchemaTest extends TestCase
         // plus a temp table. MySQL cannot index a JSON path, so keeping the index
         // would have meant reintroducing a real column purely to hang it off --
         // which is the thing being removed. Note this is the opposite reasoning
-        // to fx_rate's move, and deliberately so: an attribute you display goes in
+        // to what the other moves were, and deliberately so: an attribute you display goes in
         // the bag, a key you group on does not.
         //
         // The cost is deferred, not avoided: no query groups by it yet, and

@@ -503,9 +503,9 @@ class TransactionControllerTest extends TestCase
         $formEmpty = $this->get('/transactions')->viewData('page')['props']['formEmpty'];
 
         $this->assertArrayNotHasKey('due_date', $formEmpty);
-        $this->assertArrayNotHasKey('fx_rate', $formEmpty);
+        $this->assertArrayNotHasKey('card_amount', $formEmpty);
         $this->assertArrayHasKey('due_date', $formEmpty['meta_data']);
-        $this->assertArrayHasKey('fx_rate', $formEmpty['meta_data']);
+        $this->assertArrayHasKey('card_amount', $formEmpty['meta_data']);
     }
 
     public function test_the_form_offers_an_account_of_every_type(): void
@@ -563,13 +563,13 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe', 'fx_rate' => '7.8'],
+            'meta_data' => ['merchant' => 'Cafe'],
         ])->assertSessionHasNoErrors();
 
         $transaction = Transaction::with('meta')->firstOrFail();
 
         $this->assertSame('Cafe', $transaction->meta_data['merchant']);
-        $this->assertSame('7.8', $transaction->meta_data['fx_rate']);
+
         $this->assertSame('2026-02-09', $transaction->meta_data['due_date']);
         $this->assertSame($this->card->id, $transaction->account->id);
         $this->assertSame($this->category, $transaction->category->id);

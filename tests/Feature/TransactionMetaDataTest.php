@@ -218,7 +218,6 @@ class TransactionMetaDataTest extends TestCase
             'quantity' => '100',
             'unit_price' => '150.50',
             'fees' => null,
-            'fx_rate' => null,
         ], $overrides));
     }
 
@@ -351,56 +350,6 @@ class TransactionMetaDataTest extends TestCase
     // ---------------------------------------------------------------------
     // The exchange rate
     // ---------------------------------------------------------------------
-
-    public function test_a_rate_is_optional_whatever_the_type(): void
-    {
-        // NULL means "already in the account's own currency", which is the common
-        // case. It must never be required, and must never be forced to a literal 1.
-        foreach (TransactionType::cases() as $type) {
-            $this->assertFalse(
-                $this->rejects('fx_rate', ['fx_rate' => null], ['type' => $type->value]),
-                "{$type->value} should not require an exchange rate"
-            );
-        }
-    }
-
-    public function test_a_rate_of_zero_or_less_is_refused(): void
-    {
-        // A rate of zero would divide an account's balance to nothing, and a
-        // negative rate is meaningless. NULL is how you say "no conversion".
-        $this->assertTrue($this->rejects('fx_rate', ['fx_rate' => '0'], ['type' => 'expense']));
-        $this->assertTrue($this->rejects('fx_rate', ['fx_rate' => '-7.8'], ['type' => 'expense']));
-    }
-
-    public function test_a_rate_may_not_carry_more_than_eight_decimal_places(): void
-    {
-        // Eight because a rate needs more precision than money does: HKD per USD
-        // is 7.8-something, and four places would not survive a conversion.
-        $this->assertTrue($this->rejects('fx_rate', ['fx_rate' => '7.849512345'], ['type' => 'expense']));
-    }
-
-    public function test_a_rate_at_the_old_column_maximum_is_allowed(): void
-    {
-        // This was decimal(16,8): sixteen digits, eight after the point, so
-        // 99999999.99999999 was exactly representable and must stay so. An
-        // off-by-one in the guard would refuse the largest rate the schema used
-        // to hold, which is a narrowing nobody asked for.
-        $this->assertFalse(
-            $this->rejects('fx_rate', ['fx_rate' => '99999999.99999999'], ['type' => 'expense'])
-        );
-    }
-
-    public function test_a_rate_wider_than_the_old_column_is_refused(): void
-    {
-        // The one guard this move has to add rather than inherit. `decimal:0,8`
-        // counts decimal places and says nothing about integer digits, so it let
-        // a thirty-digit rate through; the column then refused it at insert time,
-        // or rounded it down. With no column there is nothing left to refuse it,
-        // and the DTO is the only gate -- so the max has to be stated here.
-        $this->assertTrue(
-            $this->rejects('fx_rate', ['fx_rate' => '100000000'], ['type' => 'expense'])
-        );
-    }
 
     public function test_a_sell_whose_fees_exceed_the_proceeds_is_rejected(): void
     {

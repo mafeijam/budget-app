@@ -24,6 +24,13 @@
         :error-message="form.errors.type"
       />
 
+      <!--
+        A native control, not a Quasar picker. q-date needs a mask to parse its own
+        value and this build carries no mask runtime, so it renders a month grid with
+        no month label and no navigation; a mask attribute here would be silently
+        inert and hand back its own text. Check parseMask is in the bundle before
+        re-trying either.
+      -->
       <q-input
         v-model="form.date"
         class="col-4"
@@ -170,18 +177,6 @@
           :error-message="form.errors['meta_data.fees']"
         />
       </template>
-
-      <q-input
-        v-model="form.meta_data.fx_rate"
-        class="col-6"
-        label="Exchange rate"
-        filled
-        type="number"
-        step="0.00000001"
-        hint="Only if the transaction's currency is not the account's"
-        :error="!!form.errors['meta_data.fx_rate']"
-        :error-message="form.errors['meta_data.fx_rate']"
-      />
     </q-form>
   </FormDialog>
 </template>
@@ -291,7 +286,9 @@ watch(
     clearBag()
 
     // Default the currency to the account's own, which is right almost every time
-    // and saves re-picking it. fx_rate covers the case where it is not.
+    // and saves re-picking it. A charge that was in another currency needs the
+    // card-currency figure below, and that is what covers the case where this
+    // default is not the answer.
     const ccy = accountOptions.value.find(a => a.value === accountId)?.ccy
 
     if (ccy) form.ccy = ccy

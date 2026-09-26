@@ -17,9 +17,11 @@ use Tests\TestCase;
  * that had to change.
  *
  * What does not change is the ccy requirement, and that is the load-bearing part. A
- * card may only be paid from a bank in its own currency, so a settlement writes two
- * rows of the same amount with no conversion between them -- which is what lets the
- * paired transfer skip fx_rate entirely.
+ * card may only be paid from a bank in its own currency, so the settlement and the
+ * paired transfer are the same figure in the same currency and neither needs a
+ * conversion of its own. A *charge* may be in another currency -- card_amount states
+ * what it came to -- but that solves the spending side only, and this rule covers the
+ * other one.
  */
 class CardSettlementAccountTest extends TestCase
 {
@@ -98,9 +100,10 @@ class CardSettlementAccountTest extends TestCase
 
     public function test_a_card_may_only_be_paid_from_a_bank_in_its_own_currency(): void
     {
-        // The rule the paired transfer depends on. A USD card paid from an HKD bank
-        // means the two rows of a settlement would be different amounts, and there is
-        // no rate to convert with: fx_rate is declared and wired to nothing.
+        // The rule the paired transfer depends on. An HKD card paid from a USD bank
+        // means the settlement and the transfer would be different figures, and
+        // nothing here can state the second one: the card's statement total is not an
+        // amount in the bank's currency.
         $this->post('/accounts', $this->cardPayload([
             'name' => 'Card D',
             'meta_data' => [

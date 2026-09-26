@@ -34,20 +34,6 @@ class TransactionMetaData extends Data
     /** decimal(12,4) holds eight integer digits and four decimal places. */
     public const MAX_AMOUNT = '99999999.9999';
 
-    /**
-     * The exchange rate's scale and ceiling.
-     *
-     * These were decimal(16,8) on the column and are stated here instead, because
-     * there is no column to state them now. The scale was always in the rules; the
-     * ceiling was not, because `decimal:0,8` counts decimal places and says
-     * nothing about integer digits -- so a thirty-digit rate passed the DTO and
-     * was refused by the database, or rounded down. With the column gone the DTO
-     * is the only gate, and it has to be one that closes.
-     */
-    public const FX_SCALE = 8;
-
-    public const MAX_FX_RATE = '99999999.99999999';
-
     public function __construct(
         // Card charges: who was paid. A payment has none -- it settles a statement
         // rather than buying anything.
@@ -59,19 +45,6 @@ class TransactionMetaData extends Data
         public ?string $quantity = null,
         public ?string $unit_price = null,
         public ?string $fees = null,
-
-        // A rate for converting amount, denominated in the transaction's own ccy, into
-        // the owning account's currency. NULL means already in the account's currency,
-        // which is the common case and is never forced to a literal 1.
-        //
-        // Still converts nothing. Where a cross-currency amount actually has to be
-        // expressed in the account's own currency, the app asks for the result rather
-        // than a rate and multiplies nothing: card_amount on a card charge, which is
-        // what CardStatement sums. Two ways to do the same job is worse than one, and
-        // the one that cannot be silently misapplied is the one kept -- a rate applied
-        // to the wrong amount is wrong with nothing to detect it, whereas a stated
-        // figure is at least the figure someone meant.
-        public ?string $fx_rate = null,
 
         // The statement period a charge rolls up into, and so the day it is
         // payable. Derived for a charge and supplied by a payment, which names
@@ -119,17 +92,6 @@ class TransactionMetaData extends Data
                 'gt:0',
             ],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
-
-            // Optional for every type, because whether a rate is needed depends on
-            // the pairing of the transaction's currency with its account's, and
-            // neither is knowable from the payload alone. `max` is the half that
-            // used to be the column's job; see MAX_FX_RATE.
-            'fx_rate' => [
-                'nullable',
-                'decimal:0,'.self::FX_SCALE,
-                'gt:0',
-                'max:'.self::MAX_FX_RATE,
-            ],
 
             // `nullable` first, for the same reason as every other key here: a
             // blank field and TransactionData's derivations both produce a null,
@@ -208,7 +170,6 @@ class TransactionMetaData extends Data
             'quantity' => 'quantity',
             'unit_price' => 'unit price',
             'fees' => 'fees',
-            'fx_rate' => 'exchange rate',
             'due_date' => 'due date',
             'card_amount' => 'amount in the card\'s currency',
             'paired_transaction_id' => 'paired transaction',

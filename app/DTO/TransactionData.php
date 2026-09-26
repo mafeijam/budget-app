@@ -109,11 +109,11 @@ class TransactionData extends Data
             // of ISO 4217, which would let a transaction record a code no account can
             // hold and no dropdown anywhere offers.
             //
-            // fx_rate and due_date are declared in TransactionMetaData rather
+            // card_amount and due_date are declared in TransactionMetaData rather
             // than here: both are type-specific, so they belong with the merchant
             // and the trade fields. A payment supplies a due date to name the
-            // statement it settles, which is why the top-level key it used to
-            // sit on was not a payment's field either.
+            // statement it settles, which is why the top-level key it used to sit on
+            // was not a payment's field either.
             //
             // Without this a trade with no meta_data at all passes: the nested
             // rules never run on a missing key, so nothing asks for the numbers the

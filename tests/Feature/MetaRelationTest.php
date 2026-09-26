@@ -21,7 +21,7 @@ use Tests\TestCase;
  * defines the morphTo inverse.
  *
  * Both Account and Transaction carry a bag, so both are covered. A transaction's
- * bag is where its fx_rate and due date live, and without the trait on the model
+ * bag is where its due date and card amount live, and without the trait on the model
  * those fields would have nowhere to be read from or written to.
  */
 class MetaRelationTest extends TestCase
@@ -67,11 +67,11 @@ class MetaRelationTest extends TestCase
             'status' => 'posted',
         ]);
 
-        $transaction->meta()->create(['meta' => ['merchant' => 'Cafe', 'fx_rate' => '7.8495']]);
+        $transaction->meta()->create(['meta' => ['merchant' => 'Cafe', 'card_amount' => '780.0000']]);
 
         $fresh = $transaction->fresh();
 
-        $this->assertSame('7.8495', $fresh->meta->meta['fx_rate']);
+        $this->assertSame('780.0000', $fresh->meta->meta['card_amount']);
         // The appended accessor, which is what a page or a seeder would read.
         $this->assertSame('Cafe', $fresh->meta_data['merchant']);
         $this->assertTrue($fresh->meta->metable->is($transaction));
@@ -103,7 +103,7 @@ class MetaRelationTest extends TestCase
 
         // Force the collision: the transaction's id is made to equal the
         // account's, so a morph that ignored model_type would match the row.
-        $transaction->meta()->create(['meta' => ['fx_rate' => '7.8']]);
+        $transaction->meta()->create(['meta' => ['card_amount' => '780.0000']]);
         DB::table('meta')->where('model_id', $transaction->id)
             ->where('model_type', Transaction::class)->update(['model_id' => $account->id]);
 

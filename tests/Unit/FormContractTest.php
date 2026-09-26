@@ -90,6 +90,41 @@ class FormContractTest extends TestCase
         ];
     }
 
+    public function test_no_field_declares_a_mask(): void
+    {
+        // Masks are silently inert in this build -- no mask runtime in the bundle, so a
+        // mask attribute hands back its own text as the value without warning. A q-date
+        // is the same failure one step on: no month label, no navigation. See the date
+        // field's comment in FormTransaction.vue.
+        $vue = (string) file_get_contents(resource_path('js/components/Form/FormTransaction.vue'));
+
+        // Comments stripped, because the field's own comment quotes mask= while
+        // explaining why there is not one.
+        $markup = (string) preg_replace('/<!--.*?-->/s', '', $vue);
+
+        $this->assertStringNotContainsString(
+            'mask=',
+            $markup,
+            'FormTransaction.vue declares a mask. It is inert in this build, so the field '
+                .'will hold the mask text rather than the value the user typed.'
+        );
+
+        $this->assertStringNotContainsString(
+            'q-date',
+            $markup,
+            'FormTransaction.vue uses a Quasar calendar. Without the mask runtime it cannot '
+                .'parse its own value, so it renders with no month label and no navigation.'
+        );
+
+        // The format contract itself, which is what actually matters and has not moved:
+        // the form sends a bare calendar day and the DTO demands one.
+        $this->assertContains(
+            'date_format:Y-m-d',
+            TransactionData::rules()['date'],
+            'The DTO no longer demands Y-m-d, so whatever the date field sends is unchecked.'
+        );
+    }
+
     #[DataProvider('forms')]
     public function test_every_editable_field_has_a_control(string $vue, string $dto): void
     {

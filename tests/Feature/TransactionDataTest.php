@@ -245,8 +245,8 @@ class TransactionDataTest extends TestCase
     {
         // The one thing the enum must not do here: narrow ccy to the account's own
         // currency. A foreign purchase is denominated in the merchant's currency
-        // and fx_rate is what brings it home, so requiring the two to match would
-        // make fx_rate unreachable and quietly forbid the only case it exists for.
+        // and card_amount is what brings it home, so requiring the two to match would
+        // make card_amount unreachable and quietly forbid the only case it exists for.
         //
         // setUp's account is HKD and the request default is already USD, so this
         // asserts the pairing rather than the accident of which code came first.
@@ -314,59 +314,6 @@ class TransactionDataTest extends TestCase
     public function test_an_unknown_status_is_rejected(): void
     {
         $this->assertFieldRejected(['status' => 'banana'], 'status');
-    }
-
-    public function test_fx_rate_is_optional(): void
-    {
-        // NULL means "already in the account's currency", which is the common
-        // case and must not be forced to a literal 1.
-        //
-        // meta_data is present but the rate absent, rather than the whole bag
-        // missing: with no bag at all the nullish read below short-circuits and
-        // passes whatever the property is, so the test would assert nothing.
-        $data = TransactionData::from($this->postRequest([
-            'meta_data' => ['merchant' => 'Cafe'],
-        ]));
-
-        $this->assertNotNull($data->meta_data);
-        $this->assertNull($data->meta_data->fx_rate);
-    }
-
-    public function test_fx_rate_is_read_out_of_the_meta_bag(): void
-    {
-        // The whole move in one assertion: a foreign purchase carries its rate
-        // with its other type-specific fields, and the DTO hands it back from
-        // there rather than from a top-level key.
-        $data = TransactionData::from($this->postRequest([
-            'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'fx_rate' => '7.84950000'],
-        ]));
-
-        $this->assertSame('7.84950000', $data->meta_data->fx_rate);
-    }
-
-    public function test_fx_rate_may_not_be_zero_or_negative(): void
-    {
-        // A rate of zero would divide an account's balance to nothing; a
-        // negative rate is meaningless. NULL is how you say "no conversion".
-        // The rules themselves are covered in TransactionMetaDataTest; what is
-        // asserted here is only that the nested key is the one that refuses.
-        $this->assertFieldRejected(
-            ['meta_data' => ['fx_rate' => '0']],
-            'meta_data.fx_rate'
-        );
-        $this->assertFieldRejected(
-            ['meta_data' => ['fx_rate' => '-7.8']],
-            'meta_data.fx_rate'
-        );
-    }
-
-    public function test_fx_rate_may_not_carry_more_than_eight_decimal_places(): void
-    {
-        $this->assertFieldRejected(
-            ['meta_data' => ['fx_rate' => '7.849512345']],
-            'meta_data.fx_rate'
-        );
     }
 
     // ---------------------------------------------------------------------
@@ -740,11 +687,11 @@ class TransactionDataTest extends TestCase
             'type' => 'charge',
             'ccy' => 'HKD',
             'date' => '2026-01-01',
-            'meta_data' => ['merchant' => 'Cafe', 'fx_rate' => '7.8'],
+            'meta_data' => ['merchant' => 'Cafe'],
         ]));
 
         $this->assertSame('Cafe', $data->meta_data->merchant);
-        $this->assertSame('7.8', $data->meta_data->fx_rate);
+
         $this->assertSame('2026-02-09', $data->meta_data->due_date);
     }
 
@@ -983,9 +930,9 @@ class TransactionDataTest extends TestCase
         $this->assertSame(['date_format:Y-m-d'], $rules['date']);
         $this->assertSame(['max:255'], $rules['description']);
 
-        // fx_rate and due_date are not here: both are type-specific, so they are
+        // card_amount and due_date are not here: both are type-specific, so they are
         // declared in TransactionMetaData with the merchant and the trade fields.
-        $this->assertArrayNotHasKey('fx_rate', $rules);
+        $this->assertArrayNotHasKey('card_amount', $rules);
         $this->assertArrayNotHasKey('due_date', $rules);
 
         // ccy is an enum, so spatie derives its membership and the `size:3` that

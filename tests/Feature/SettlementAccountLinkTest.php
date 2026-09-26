@@ -492,11 +492,11 @@ class SettlementAccountLinkTest extends TestCase
 
     public function test_a_brokerage_cannot_settle_into_a_bank_in_another_currency(): void
     {
-        // The pairing is refused rather than converted. Converting would need a
-        // rate at a moment neither account can see, and then a second conversion
-        // on the way back with the proceeds; a transaction's fx_rate exists and is
-        // wired to nothing, so the honest answer is that this cannot be recorded
-        // rather than a guess at what it means.
+        // The pairing is refused rather than converted. A charge in another currency
+        // is fine -- card_amount states what it came to in the card's own -- but the
+        // proceeds leaving a foreign bank is the other direction, and the card's
+        // statement total is not a figure in that bank's currency. So the honest
+        // answer is that this cannot be recorded rather than a guess at what it means.
         $yen = Account::create([
             'name' => 'Yen Bank',
             'status' => 'active',
