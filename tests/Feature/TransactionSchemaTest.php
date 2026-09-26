@@ -143,17 +143,18 @@ class TransactionSchemaTest extends TestCase
         $this->assertSame('posted', $status->col_default);
     }
 
-    public function test_fx_rate_is_an_optional_high_precision_decimal(): void
+    public function test_fx_rate_is_not_a_column(): void
     {
-        // Converts `amount`, which is denominated in `ccy`, into the owning
-        // account's currency. NULL means "already in the account's currency",
-        // i.e. a rate of 1. 16.8 comfortably holds a rate such as 7.8495.
-        $rate = $this->column('fx_rate');
-
-        $this->assertSame('decimal', $rate->col_type);
-        $this->assertSame('YES', $rate->col_nullable);
-        $this->assertSame(16, (int) $rate->col_precision);
-        $this->assertSame(8, (int) $rate->col_scale);
+        // Asserted rather than assumed, because the column was the only thing
+        // capping the integer digits: decimal(16,8) tops out at 99999999.99999999
+        // and the DTO's `decimal:0,8` counts decimal places only. In the bag
+        // there is no column left to refuse a wider value, so TransactionMetaData
+        // states the maximum itself.
+        $this->assertArrayNotHasKey(
+            'fx_rate',
+            $this->columns(),
+            'transactions.fx_rate is still a column; found: '.implode(', ', array_keys($this->columns()))
+        );
     }
 
     public function test_due_date_is_an_optional_plain_date(): void

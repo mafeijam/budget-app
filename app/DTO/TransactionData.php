@@ -43,11 +43,6 @@ class TransactionData extends Data
         // Defaults to posted, the only state a plain cash expense is ever in.
         public ?TransactionStatus $status,
 
-        // Converts amount, denominated in ccy, into the account's own currency;
-        // NULL means already in the account's currency. Nothing converts with it
-        // yet -- see AccountData::guardSettlementAccount().
-        public ?string $fx_rate,
-
         // The statement period a charge rolls up into, and so the day it is
         // payable. Derived for a charge; a payment supplies it to say which
         // statement it settles. NULL otherwise.
@@ -114,10 +109,12 @@ class TransactionData extends Data
 
             // No membership rule is needed -- Currency is the type, so spatie
             // derives it. Not narrowed to the account's ccy, since accommodating a
-            // difference is this column's whole purpose; not widened to all of ISO
-            // 4217, which would let a transaction record a code no account can
-            // hold and no dropdown anywhere offers.
-            'fx_rate' => ['nullable', 'decimal:0,8', 'gt:0'],
+            // difference is the transaction's fx_rate's whole purpose; not widened
+            // to all of ISO 4217, which would let a transaction record a code no
+            // account can hold and no dropdown anywhere offers.
+            //
+            // fx_rate itself is declared in TransactionMetaData: it is
+            // type-specific, so it belongs with the merchant and the trade fields.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
             // Without this a trade with no meta_data at all passes: the nested
@@ -133,7 +130,6 @@ class TransactionData extends Data
     {
         return [
             'ccy' => 'currency',
-            'fx_rate' => 'exchange rate',
             'due_date' => 'due date',
         ];
     }

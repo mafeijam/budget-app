@@ -22,6 +22,15 @@ use Illuminate\Support\Facades\Schema;
  * `amount` is a positive magnitude. Its direction comes from the account type
  * and the transaction type, so an expense and a payment are told apart by what
  * they are, not by a sign that could be entered the wrong way round.
+ *
+ * What is a column and what is in the meta bag is not decided by how often a
+ * field is used but by what it is asked to do. An attribute you display goes in
+ * the bag, so that adding one needs no migration. A key you group and filter on
+ * stays a column, because MySQL cannot index a JSON path and the settlement
+ * query below is a GROUP BY. `fx_rate` moved to the bag on that first count and
+ * `due_date` is held back on the second; the ceiling the fx_rate column used to
+ * impose is now a rule in TransactionMetaData, since a bag is not what refuses
+ * an over-wide number.
  */
 return new class extends Migration
 {
@@ -66,20 +75,18 @@ return new class extends Migration
             // default for the cash rows that predate the concept.
             $table->string('status')->default('posted');
 
-            // Converts `amount`, denominated in `ccy`, into the owning account's
-            // currency. NULL means "already in the account's currency", i.e. a
-            // rate of 1. 16.8 holds a rate such as 7.8495 with room to spare.
-            $table->decimal('fx_rate', 16, 8)->nullable();
-
             // The statement cycle a charge rolls up into, and therefore the day
             // that cycle falls due. NULL for every cash, payment, trade and
             // dividend row; the concept is card-specific. A plain date, not a
             // timestamp: a statement falls due on a calendar day, and a time
             // would imply a settlement deadline that does not exist.
             //
-            // It is also the period key, so settling a card is a GROUP BY rather
-            // than a join against a statements table that would then have to be
-            // kept in step with these rows.
+            // A column and not a meta entry, unlike the trade fields beside it,
+            // because it is a grouping key rather than an attribute: settling a
+            // card is a GROUP BY over it, which is what the index below is for,
+            // and MySQL cannot index a JSON path. The reversal that took fx_rate
+            // out of this table and the argument that put due_date's predecessor
+            // in it are both in the class docblock.
             $table->date('due_date')->nullable();
 
             $table->timestamps();

@@ -4,13 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Meta;
+use App\Models\Transaction;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Covers the Meta <-> Account polymorphic relation.
+ * Covers the Meta <-> owner polymorphic relation.
  *
  * Meta::metable() shipped without a `return` statement, so it always evaluated
  * to null. Nothing called it, so the bug was invisible -- but the relation was
@@ -18,6 +19,10 @@ use Tests\TestCase;
  * because the relation is the only place the two halves of HasMeta are joined
  * up: HasMeta::meta() defines the morphOne forward direction, metable()
  * defines the morphTo inverse.
+ *
+ * Both Account and Transaction carry a bag, so both are covered. A transaction's
+ * bag is where its fx_rate and due date live, and without the trait on the model
+ * those fields would have nowhere to be read from or written to.
  */
 class MetaRelationTest extends TestCase
 {
@@ -39,6 +44,70 @@ class MetaRelationTest extends TestCase
         ]);
 
         return $account;
+    }
+
+    public function test_a_transaction_carries_and_reads_its_own_bag(): void
+    {
+        $account = Account::create([
+            'name' => 'Payer',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'HKD',
+        ]);
+
+        $transaction = Transaction::create([
+            'account_id' => $account->id,
+            'category_id' => null,
+            'amount' => 10,
+            'type' => 'expense',
+            'description' => 'Foreign lunch',
+            'ccy' => 'USD',
+            'date' => '2026-01-01',
+            'status' => 'posted',
+        ]);
+
+        $transaction->meta()->create(['meta' => ['merchant' => 'Cafe', 'fx_rate' => '7.8495']]);
+
+        $fresh = $transaction->fresh();
+
+        $this->assertSame('7.8495', $fresh->meta->meta['fx_rate']);
+        // The appended accessor, which is what a page or a seeder would read.
+        $this->assertSame('Cafe', $fresh->meta_data['merchant']);
+        $this->assertTrue($fresh->meta->metable->is($transaction));
+    }
+
+    public function test_a_transaction_and_an_account_do_not_see_each_others_bags(): void
+    {
+        // Same table, same id space, different model_type. If the morph ever
+        // stopped discriminating, a transaction would read an account's card terms
+        // and a brokerage would settle into a transaction.
+        $account = Account::create([
+            'name' => 'Shared Ids',
+            'status' => 'active',
+            'type' => 'card',
+            'ccy' => 'HKD',
+        ]);
+        $account->meta()->create(['meta' => ['term_days' => 20, 'statement_day' => 5]]);
+
+        $transaction = Transaction::create([
+            'account_id' => $account->id,
+            'category_id' => null,
+            'amount' => 10,
+            'type' => 'charge',
+            'description' => 'Lunch',
+            'ccy' => 'HKD',
+            'date' => '2026-01-01',
+            'status' => 'posted',
+        ]);
+
+        // Force the collision: the transaction's id is made to equal the
+        // account's, so a morph that ignored model_type would match the row.
+        $transaction->meta()->create(['meta' => ['fx_rate' => '7.8']]);
+        DB::table('meta')->where('model_id', $transaction->id)
+            ->where('model_type', Transaction::class)->update(['model_id' => $account->id]);
+
+        $this->assertNull($transaction->fresh()->meta);
+        $this->assertSame(20, $account->fresh()->meta->meta['term_days']);
     }
 
     public function test_metable_returns_a_relation_and_not_null(): void

@@ -34,6 +34,20 @@ class TransactionMetaData extends Data
     /** decimal(12,4) holds eight integer digits and four decimal places. */
     public const MAX_AMOUNT = '99999999.9999';
 
+    /**
+     * The exchange rate's scale and ceiling.
+     *
+     * These were decimal(16,8) on the column and are stated here instead, because
+     * there is no column to state them now. The scale was always in the rules; the
+     * ceiling was not, because `decimal:0,8` counts decimal places and says
+     * nothing about integer digits -- so a thirty-digit rate passed the DTO and
+     * was refused by the database, or rounded down. With the column gone the DTO
+     * is the only gate, and it has to be one that closes.
+     */
+    public const FX_SCALE = 8;
+
+    public const MAX_FX_RATE = '99999999.99999999';
+
     public function __construct(
         // Card charges: who was paid. A payment has none -- it settles a statement
         // rather than buying anything.
@@ -45,6 +59,12 @@ class TransactionMetaData extends Data
         public ?string $quantity,
         public ?string $unit_price,
         public ?string $fees,
+
+        // Converts amount, denominated in the transaction's own ccy, into the
+        // owning account's currency. NULL means already in the account's currency,
+        // which is the common case and is never forced to a literal 1. Nothing
+        // converts with it yet -- see AccountData::guardSettlementAccount().
+        public ?string $fx_rate,
     ) {}
 
     public static function rules()
@@ -73,6 +93,17 @@ class TransactionMetaData extends Data
                 'gt:0',
             ],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
+
+            // Optional for every type, because whether a rate is needed depends on
+            // the pairing of the transaction's currency with its account's, and
+            // neither is knowable from the payload alone. `max` is the half that
+            // used to be the column's job; see MAX_FX_RATE.
+            'fx_rate' => [
+                'nullable',
+                'decimal:0,'.self::FX_SCALE,
+                'gt:0',
+                'max:'.self::MAX_FX_RATE,
+            ],
         ];
     }
 
@@ -103,6 +134,7 @@ class TransactionMetaData extends Data
             'quantity' => 'quantity',
             'unit_price' => 'unit price',
             'fees' => 'fees',
+            'fx_rate' => 'exchange rate',
         ];
     }
 
