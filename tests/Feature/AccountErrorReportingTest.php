@@ -48,17 +48,20 @@ class AccountErrorReportingTest extends TestCase
 
     public function test_a_failed_update_is_reported(): void
     {
-        // AppServiceProvider calls Model::unguard() globally, so omitting "id"
-        // from the payload compiles `update accounts set id = NULL` and trips
-        // the primary key. The Vue client always sends it, so this is the
-        // shape of failure a user hits only by way of a stale client or a
-        // hand-crafted request -- exactly the kind that must be diagnosable.
+        // Triggered by an over-long name, the same way test_a_failed_store_is_reported
+        // is: accounts.name is varchar(255) and AccountData::rules() only asks for
+        // a string, so it passes validation and fails at the database. This used to
+        // be triggered by omitting "id", which compiled `update accounts set id =
+        // NULL` and tripped the primary key -- but that hole is closed now, so a
+        // payload missing the id is simply a smaller payload and no longer a
+        // failure at all.
         Exceptions::fake();
 
         $account = Account::create(['name' => 'Fragile', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
 
         $response = $this->put("/accounts/{$account->id}", $this->payload([
-            'name' => 'Fragile',
+            'id' => $account->id,
+            'name' => str_repeat('x', 300),
         ]));
 
         // Unchanged user-facing behaviour.
@@ -128,7 +131,8 @@ class AccountErrorReportingTest extends TestCase
         $account = Account::create(['name' => 'Logged', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
 
         $this->put("/accounts/{$account->id}", $this->payload([
-            'name' => 'Logged',
+            'id' => $account->id,
+            'name' => str_repeat('x', 300),
         ]))->assertSessionHas('message', 'error db...');
 
         $this->assertFileExists($log, 'The swallowed exception produced no log file at all.');
@@ -136,9 +140,11 @@ class AccountErrorReportingTest extends TestCase
         $contents = file_get_contents($log);
 
         $this->assertStringContainsString('QueryException', $contents);
-        // The database-level cause, not just the wrapper.
+        // The database-level cause, not just the wrapper. Named for the column that
+        // overflowed rather than the old "Column 'id' cannot be null", because the
+        // trigger changed when the id hole closed.
         $this->assertMatchesRegularExpression(
-            '/(Column .id. cannot be null|Integrity constraint violation|SQLSTATE)/i',
+            '/(Data too long for column .name.|SQLSTATE)/i',
             $contents,
             'The log entry should identify the underlying SQL error.'
         );

@@ -37,11 +37,12 @@ class MetaRelationTest extends TestCase
             'ccy' => 'USD',
         ]);
 
-        Meta::create([
-            'model_id' => $account->id,
-            'model_type' => Account::class,
-            'meta' => $meta,
-        ]);
+        // Through the relation, not Meta::create(). Production writes bags that
+        // way and the relation is what assigns the morph columns -- past fill(),
+        // so they are absent from Meta::$fillable. Naming them here would have
+        // stopped working, and rightly so: this test is about the relation, so it
+        // should exercise the relation.
+        $account->meta()->create(['meta' => $meta]);
 
         return $account;
     }
@@ -158,7 +159,7 @@ class MetaRelationTest extends TestCase
         $alpha = $this->accountWithMeta(['term_days' => 15]);
 
         $beta = Account::create(['name' => 'Beta', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        Meta::create(['model_id' => $beta->id, 'model_type' => Account::class, 'meta' => ['term_days' => 20]]);
+        $beta->meta()->create(['meta' => ['term_days' => 20]]);
 
         $owners = Meta::with('metable')->get()->map(fn (Meta $m) => $m->metable->name);
 
@@ -169,9 +170,18 @@ class MetaRelationTest extends TestCase
     public function test_metable_is_null_when_the_parent_row_is_missing(): void
     {
         // Orphans cannot be produced through the models -- the morphOne is not
-        // configured to cascade -- so this documents the boundary case
-        // directly rather than through normal app usage.
-        Meta::create(['model_id' => 999999, 'model_type' => Account::class, 'meta' => ['term_days' => null]]);
+        // configured to cascade, and Meta::$fillable deliberately omits the morph
+        // columns so a client cannot forge one either -- so this documents the
+        // boundary case by going around the model, which is the only way left to
+        // produce it.
+        //
+        // Meta::create() would strip model_id and then be refused by its NOT NULL,
+        // which is the allowlist working rather than a bug.
+        DB::table('meta')->insert([
+            'model_id' => 999999,
+            'model_type' => Account::class,
+            'meta' => json_encode(['term_days' => null]),
+        ]);
 
         $this->assertNull(Meta::firstOrFail()->metable);
     }

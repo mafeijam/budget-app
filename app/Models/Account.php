@@ -11,6 +11,32 @@ class Account extends Model
     use HasMeta;
 
     /**
+     * The attributes a client may set: the table's columns less `id` and the two
+     * timestamps, which are the database's to assign.
+     *
+     * `id` is here by omission rather than by accident. AccountData carries one,
+     * because the edit form round-trips the whole table row, and the controller
+     * hands that DTO straight to create() and update() -- so the id in the payload
+     * is a number the client chose. Listing the rest and not this is what stops a
+     * row being renumbered onto a free id, which would move it with nothing
+     * recording that it had. Timestamps are set by Eloquent on save, which assigns
+     * them through setAttribute rather than through fill(), so leaving them out
+     * costs nothing and keeps a client from backdating created_at.
+     *
+     * MassAssignmentTest asserts this list against the accounts table, so a column
+     * added to the migration and forgotten here fails rather than silently
+     * ceasing to be written.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'name',
+        'status',
+        'type',
+        'ccy',
+    ];
+
+    /**
      * The cash account a securities account settles through.
      *
      * A method rather than a belongsTo, because the link lives in the meta bag

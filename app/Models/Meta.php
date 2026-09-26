@@ -13,6 +13,23 @@ class Meta extends Model
 
     protected $table = 'meta';
 
+    /**
+     * Only the bag. The morph columns are deliberately not here.
+     *
+     * A meta row is always written through the relation -- $account->meta()->create() --
+     * and the relation assigns model_id and model_type itself, past fill(), via
+     * MorphOneOrMany::setForeignAttributesForCreate. Naming them in the allowlist
+     * would be permission a client could use to attach a bag to a row that is not
+     * its own; leaving them out costs nothing, because the relation sets them
+     * either way.
+     *
+     * See Account::$fillable for the general rule and MassAssignmentTest for what
+     * keeps the two in step.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = ['meta'];
+
     protected $casts = [
         'meta' => AsArrayObject::class,
     ];

@@ -752,32 +752,83 @@ class AccountControllerTest extends TestCase
         $this->assertSame(25, $account->fresh()->meta->meta['statement_day']);
     }
 
-    public function test_update_requires_id_in_the_payload(): void
+    public function test_update_ignores_an_id_in_the_payload(): void
     {
-        // Documents a real fragility rather than desired behaviour.
-        //
-        // AppServiceProvider calls Model::unguard() globally, so every attribute
-        // is mass assignable -- including AccountData::$id. An update payload
-        // that omits "id" therefore compiles `update accounts set id = NULL`
-        // and trips the primary key constraint. The Vue frontend happens to
-        // always send it, because useWatchTarget() seeds the form from the
-        // whole table row.
-        //
-        // AccountController wraps its work in DB::beginTransaction() with a
-        // catch-all, so the failure surfaces as a 302 carrying the generic
-        // "error db..." flash rather than a 500 (CategoryController, which has
-        // no such try/catch, returns a 500 for the identical mistake).
-        $account = Account::create(['name' => 'Fragile', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+        // AccountData carries an `id`, because the edit form round-trips the whole
+        // table row, and the controller hands that DTO straight to update(). So
+        // the id in the payload is a number the client chose. Renumbering a row
+        // onto an id another account already holds fails on the primary key, and
+        // renumbering it onto a free one succeeds -- which is a row that has moved
+        // house with nothing recording that it did.
+        $target = Account::create(['name' => 'Target', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+        $account = Account::create(['name' => 'Moving', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
 
         $response = $this->put("/accounts/{$account->id}", $this->payload([
-            'name' => 'Fragile',
+            'id' => $target->id,
+            'name' => 'Renamed',
+        ]));
+
+        // The success flash, not just the absence of errors: a request that threw
+        // would leave the row untouched, which is also what "the id was ignored"
+        // looks like, and the two must not be confused.
+        $response->assertSessionHas('message', 'Account [Renamed] updated');
+
+        $fresh = $account->fresh();
+
+        $this->assertSame('Renamed', $fresh->name);
+        $this->assertNotSame($target->id, $fresh->id, 'The row took the id the payload named.');
+        $this->assertSame($account->id, $fresh->id);
+        $this->assertDatabaseHas('accounts', ['id' => $target->id, 'name' => 'Target']);
+    }
+
+    public function test_update_ignores_a_created_at_in_the_payload(): void
+    {
+        // The DTO also carries created_at and assigns it a default of now(), so it
+        // reads as server-owned; ungated mass assignment let the client overrule
+        // that. Backdating a row files it into the wrong period in every list
+        // sorted by the column, and the form does not even offer the field.
+        $account = Account::create(['name' => 'Stamped', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+
+        $original = $account->created_at;
+
+        // DATE_ATOM, because that is what config/data.php casts with. A payload in
+        // any other format raises CannotCastDate, which AccountController's
+        // catch-all turns into the same generic flash a database failure produces
+        // -- so a malformed value here would leave the row untouched and this test
+        // green, for a reason that has nothing to do with mass assignment.
+        $response = $this->put("/accounts/{$account->id}", $this->payload([
+            'id' => $account->id,
+            'name' => 'Stamped',
+            'created_at' => now()->subYears(5)->toAtomString(),
+        ]));
+
+        // Asserted so the above cannot recur: an error flash means the row was
+        // never written, which is also what "the payload was ignored" looks like.
+        $response->assertSessionHas('message', 'Account [Stamped] updated');
+
+        $this->assertTrue(
+            $account->fresh()->created_at->equalTo($original),
+            'created_at was rewritten from the payload.'
+        );
+    }
+
+    public function test_update_needs_no_id_in_the_payload(): void
+    {
+        // The inverse of the fragility this file used to document. Ungated, an
+        // update payload without an id compiled `update accounts set id = null`
+        // and tripped the primary key, which surfaced as a generic "error db..."
+        // 302 -- and the Vue form only ever avoided it by accident, because
+        // useWatchTarget() seeds the form from the whole table row. Omitting a
+        // field the client may not set is now simply a smaller payload.
+        $account = Account::create(['name' => 'Slim', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+
+        $response = $this->put("/accounts/{$account->id}", $this->payload([
+            'name' => 'Slim Renamed',
         ]));
 
         $response->assertStatus(302);
-        $response->assertSessionHas('message', 'error db...');
-
-        // The transaction was rolled back, so nothing changed.
-        $this->assertSame('Fragile', $account->fresh()->name);
+        $response->assertSessionHas('message', 'Account [Slim Renamed] updated');
+        $this->assertSame('Slim Renamed', $account->fresh()->name);
     }
 
     public function test_destroy_removes_the_account_and_its_meta(): void

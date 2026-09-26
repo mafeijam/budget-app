@@ -85,20 +85,23 @@ class CategoryControllerTest extends TestCase
         $this->assertSame('Same', $category->fresh()->name);
     }
 
-    public function test_update_requires_id_in_the_payload(): void
+    public function test_update_needs_no_id_in_the_payload(): void
     {
-        // See AccountControllerTest::test_update_requires_id_in_the_payload.
+        // The inverse of what this test used to assert. AccountControllerTest has
+        // the same history, in the same direction.
         //
-        // AppServiceProvider calls Model::unguard() globally, so CategoryData::$id
-        // is mass assigned onto the model. Omitting "id" yields
-        // `update categories set id = NULL` and a 500. Unlike AccountController,
-        // CategoryController has no try/catch, so the error is not swallowed.
+        // Ungated, CategoryData::$id was mass assigned onto the model, so omitting
+        // "id" compiled `update categories set id = NULL` and a 500 -- a failure
+        // CategoryController, having no try/catch, showed in full. With a $fillable
+        // allowlist the id is not writable, so the same payload is just a smaller
+        // one and the update succeeds.
         $category = Category::create(['name' => 'Fragile']);
 
-        $response = $this->put("/categories/{$category->id}", ['name' => 'Fragile']);
+        $response = $this->put("/categories/{$category->id}", ['name' => 'Renamed']);
 
-        $response->assertStatus(500);
-        $this->assertSame('Fragile', $category->fresh()->name);
+        $response->assertStatus(302);
+        $response->assertSessionHas('message', 'Category [Renamed] updated');
+        $this->assertSame('Renamed', $category->fresh()->name);
     }
 
     public function test_destroy_removes_the_category(): void
