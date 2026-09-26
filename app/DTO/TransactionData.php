@@ -87,8 +87,12 @@ class TransactionData extends Data
         return [
             'account_id' => ['exists:accounts,id'],
 
-            // Nullable because a payment and a trade have no category, and
-            // required for the types that do.
+            // Required only for the types that are categorised spending. A
+            // payment and a trade may leave it null; a payment may also be
+            // labelled, since the rule below is required_unless rather than
+            // prohibited_unless. Nothing in the settlement arithmetic reads this
+            // column, so a label on a payment is inert to the balance and worth
+            // keeping for the rows a payment actually refers to.
             'category_id' => [
                 'nullable',
                 'exists:categories,id',

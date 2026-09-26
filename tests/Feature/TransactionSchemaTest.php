@@ -15,10 +15,11 @@ use Tests\TestCase;
  *
  * The table is shared by cash, credit card and stock trading rows, so several
  * columns are only meaningful for some of them. These tests exist because that
- * makes the nullability of each column load-bearing: a card payment and a stock
- * trade have no category, a trade's amount is derived rather than supplied, and
- * only a charge carries a due date. Getting any of those wrong does not fail
- * loudly -- it either rejects a valid row or silently admits an invalid one.
+ * makes the nullability of each column load-bearing: a category on a payment or
+ * a trade is optional rather than impossible, a trade's amount is derived
+ * rather than supplied, and only a charge carries a due date. Getting any of
+ * those wrong does not fail loudly -- it either rejects a valid row or silently
+ * admits an invalid one.
  */
 class TransactionSchemaTest extends TestCase
 {
@@ -125,8 +126,11 @@ class TransactionSchemaTest extends TestCase
     public function test_category_id_is_optional(): void
     {
         // A card payment settles a statement rather than buying anything, and a
-        // stock trade is not an expense, so neither can be categorised. The
-        // original column was NOT NULL, which made both impossible to record.
+        // stock trade is not an expense, so neither is obliged to be
+        // categorised. The original column was NOT NULL, which made both
+        // impossible to record. Nullable, not prohibited: a payment may still be
+        // labelled, and that is a rule in TransactionData rather than a
+        // constraint here.
         $this->assertSame('YES', $this->column('category_id')->col_nullable);
     }
 
@@ -301,10 +305,11 @@ class TransactionSchemaTest extends TestCase
 
     public function test_a_null_category_survives_the_constraint(): void
     {
-        // A card payment and a stock trade have no category, so the nullable
-        // column must be genuinely allowed to be null -- a foreign key on a
-        // nullable column is satisfied by NULL and must not be read as a
-        // violation.
+        // The nullable column must be genuinely allowed to be null -- a foreign
+        // key on a nullable column is satisfied by NULL and must not be read as
+        // a violation. A payment is the case that matters: it is uncategorised
+        // by default, so if NULL were treated as a violation every card
+        // statement payment would be unsaveable.
         $account = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
 
         Transaction::create([

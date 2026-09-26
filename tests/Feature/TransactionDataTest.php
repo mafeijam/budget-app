@@ -391,7 +391,8 @@ class TransactionDataTest extends TestCase
     public function test_a_payment_needs_no_category(): void
     {
         // A payment settles a statement rather than buying anything, so it has
-        // nothing to categorise. This is why category_id became nullable.
+        // nothing that *has* to be categorised. This is why category_id became
+        // nullable. "Need not" rather than "must not": see the next test.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'payment',
@@ -399,6 +400,57 @@ class TransactionDataTest extends TestCase
         ]));
 
         $this->assertNull($data->category_id);
+    }
+
+    public function test_a_payment_may_be_labelled_with_a_category(): void
+    {
+        // The flip side of the test above, and a distinction that is easy to get
+        // backwards. The rule is required_unless over the types that are
+        // categorised spending, not prohibited_unless over the rest -- so a
+        // payment may carry a label, and there is no rule here that would reject
+        // one.
+        //
+        // Worth pinning because a payment often *does* refer to a category: it
+        // may settle a single purchase's worth of charges, or reimburse one. A
+        // label on a payment is inert to the balance, since the settlement
+        // arithmetic is a SUM over charge and payment rows and never reads
+        // category_id.
+        $category = Category::create(['name' => 'Reimbursement']);
+
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->cardId,
+            'type' => 'payment',
+            'category_id' => $category->id,
+        ]));
+
+        $this->assertSame($category->id, $data->category_id);
+    }
+
+    public function test_a_category_rule_requires_rather_than_prohibits(): void
+    {
+        // Structural, so the two tests above cannot be broken by swapping one
+        // rule for the other. If this ever reads prohibited_unless over the
+        // non-spending types, the payment label stops being legal and the test
+        // above fails for a reason that is not obvious from the failure alone.
+        $rules = TransactionData::rules()['category_id'];
+
+        // Built from the enum rather than handwritten, and the enum is the thing
+        // that decides. Expense and charge are the only two that are categorised
+        // spending, so those are the only two that may be omitted nowhere.
+        $this->assertContains(
+            'required_unless:type,income,payment,buy,sell,dividend',
+            $rules
+        );
+
+        // Nothing here may forbid a category. Every non-spending type is
+        // permitted one; a payment in particular is expected to be able to.
+        $this->assertSame(
+            [],
+            array_values(array_filter(
+                $rules,
+                fn (string $rule) => str_starts_with($rule, 'prohibited')
+            ))
+        );
     }
 
     public function test_a_trade_needs_no_category(): void

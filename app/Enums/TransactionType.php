@@ -24,7 +24,9 @@ enum TransactionType: string
 
     // Credit card accounts. A charge spends the card's credit and rolls up into
     // a statement period; a payment reduces what is owed and is deliberately
-    // not an expense, so it carries no category.
+    // not an expense, so it need not be categorised -- though a payment may
+    // still be labelled, which is useful when one payment covers several
+    // purchases or is a reimbursement of a specific one.
     case Charge = 'charge';
     case Payment = 'payment';
 
@@ -67,10 +69,15 @@ enum TransactionType: string
     /**
      * Whether a category is mandatory.
      *
-     * Only a genuine expense needs one. A payment settles a statement, and a
-     * trade or dividend is not categorised spending. Income is optional too,
-     * because `categories` has no income/expense discriminator to select from --
-     * see the note in TransactionData.
+     * Only a genuine expense needs one. A payment settles a statement rather
+     * than buying anything, so it is optional rather than forbidden: the
+     * settlement arithmetic is a plain SUM over charge and payment rows and never
+     * looks at category_id, so a label costs nothing and is worth having when
+     * one payment covers several purchases. A trade or dividend is not
+     * categorised spending.
+     *
+     * Income is optional too, because `categories` has no income/expense
+     * discriminator to select from -- see the note in TransactionData.
      */
     public function requiresCategory(): bool
     {
