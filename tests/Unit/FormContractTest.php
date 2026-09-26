@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\DTO\AccountData;
+use App\DTO\TransactionData;
 use App\Enums\AccountType;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -62,7 +63,21 @@ class FormContractTest extends TestCase
      * excluded too. That is the wrong answer for a nested DTO in general; it is
      * right for the two that exist, neither of which has one.
      */
-    private const SERVER_ONLY = ['id', 'created_at'];
+    private const SERVER_ONLY = [
+        'id',
+        'created_at',
+
+        // A charge's due date is derived by the server from the card's statement day
+        // and term, and a payment supplies it to name the statement it settles --
+        // neither is something the user types, and asking for it would be asking for
+        // something the server then overrules.
+        'meta_data.due_date',
+
+        // Written by TransactionController::settle() and prohibited on any payload,
+        // because it links the two rows of a settlement and only that method may
+        // create the link. There is no control that could write it.
+        'meta_data.paired_transaction_id',
+    ];
 
     /**
      * @return array<string, array{0: string, 1: class-string}>
@@ -71,6 +86,7 @@ class FormContractTest extends TestCase
     {
         return [
             'account' => ['FormAccount.vue', AccountData::class],
+            'transaction' => ['FormTransaction.vue', TransactionData::class],
         ];
     }
 
@@ -153,9 +169,16 @@ class FormContractTest extends TestCase
         // the right response is to fail rather than to keep going.
         $template = $this->template($vue);
 
+        // disabled() is counted but not treated as a condition. A disabled control is
+        // on screen, so feeding its expression to conditions() would tell the
+        // visibility assertions that a field is hidden when the server requires it --
+        // the opposite of the truth, and a false pass rather than a false failure.
+        // Counting it is enough: the reference has then been seen, which is all this
+        // assertion is for.
         $seen = count($this->controls($vue, false))
             + count($this->conditions($vue, false))
-            + count($this->errorKeys($vue, false));
+            + count($this->errorKeys($vue, false))
+            + count($this->disabled($vue, false));
 
         $this->assertSame(
             substr_count($template, 'form.'),
@@ -335,7 +358,13 @@ class FormContractTest extends TestCase
     {
         return array_values(array_filter(
             array_keys($this->fields($dto)),
-            fn (string $path) => ! in_array(explode('.', $path)[0], self::SERVER_ONLY, true)
+            // An entry matches either as a whole path or as a top-level name, because
+            // the two cover different cases. `id` is the server's and is top-level;
+            // `meta_data.due_date` is one key inside a nested DTO whose siblings all
+            // have controls, so naming the top level would exclude the whole bag and
+            // stop checking the fields that are reachable.
+            fn (string $path) => ! in_array($path, self::SERVER_ONLY, true)
+                && ! in_array(explode('.', $path)[0], self::SERVER_ONLY, true)
         ));
     }
 
@@ -797,6 +826,20 @@ class FormContractTest extends TestCase
         }
 
         return $unique ? array_values(array_unique($paths)) : $paths;
+    }
+
+    /**
+     * The fields a control is disabled on.
+     *
+     * @return string[]
+     */
+    private function disabled(string $vue, bool $unique = true): array
+    {
+        return $this->match(
+            $this->template($vue),
+            '/:disable="!?form\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/',
+            $unique
+        );
     }
 
     /**
