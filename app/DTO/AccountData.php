@@ -4,6 +4,7 @@ namespace App\DTO;
 
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Models\Account;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ class AccountData extends Data
         public string $name,
         public AccountStatus $status,
         public AccountType $type,
-        public string $ccy,
+        public Currency $ccy,
         public ?Carbon $created_at,
         public ?AccountMetaData $meta_data,
 
@@ -39,10 +40,15 @@ class AccountData extends Data
         return [
             'name' => ['required', 'string', $unique],
 
-            // ISO 4217 alphabetic codes. The column is varchar(255), so without
-            // a cap a long value reaches MySQL and AccountController turns the
-            // failure into a generic "error db" redirect instead of a 422.
-            'ccy' => ['string', 'size:3'],
+            // No rule for ccy. Typing the property as Currency makes
+            // spatie/laravel-data derive a membership check, so anything outside
+            // the enum is rejected before the constructor runs.
+            //
+            // The column is varchar(255) and the enum values are 3 characters,
+            // so the length cap the rule used to carry is now redundant -- and it
+            // was only ever half a check anyway: it accepted 'ZZZ' and 'hkd'
+            // just as readily as 'HKD', so a typo became a row that no balance
+            // query could interpret and no dropdown could offer again.
 
             // `nullable` first because a blank form field and empty() both
             // produce null, and the validator counts null as "present" -- without
@@ -70,6 +76,17 @@ class AccountData extends Data
                 'exists:accounts,id',
                 'different:id',
             ],
+        ];
+    }
+
+    public static function attributes()
+    {
+        return [
+            // Without this a rejected currency reads "The selected ccy is
+            // invalid", which is the one field error a user cannot act on. The
+            // form's own label was changed to "Currency" to match, so the message
+            // and the field beside it now use the same word.
+            'ccy' => 'currency',
         ];
     }
 

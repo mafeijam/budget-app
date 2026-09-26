@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Meta;
 use App\Support\CardStatementCycle;
@@ -50,6 +51,41 @@ class AccountControllerTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page
             ->where('params.sort', 'created_at')
             ->where('params.dir', 'desc')
+        );
+    }
+
+    public function test_index_offers_every_currency_the_app_accepts(): void
+    {
+        // The currency dropdown's whole option list, and the guarantee that it
+        // matches the server rather than a copy of it. The type and status
+        // pickers hardcode their options in the template, which cannot offer
+        // something AccountData rejects but can fall behind the enum with nothing
+        // failing; sending the list closes that second case.
+        //
+        // Derived from the enum rather than written out, so a case added to
+        // Currency fails here instead of quietly appearing in the browser only.
+        $expected = collect(Currency::cases())
+            ->map(fn (Currency $c) => ['label' => $c->label(), 'value' => $c->value])
+            ->all();
+
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->component('account')
+            ->has('currencyOptions', count($expected))
+            ->where('currencyOptions', $expected)
+        );
+    }
+
+    public function test_index_offers_the_same_currency_options_with_no_accounts_in_existence(): void
+    {
+        // The list comes from the enum, not from a query, so it must not depend
+        // on there being anything to show. An empty accounts table is the state
+        // a fresh install is in, and a dropdown that only filled in once an
+        // account existed would be empty exactly when it is first needed.
+        $this->assertDatabaseCount('accounts', 0);
+
+        $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
+            ->has('currencyOptions', count(Currency::cases()))
+            ->where('currencyOptions.0.value', 'HKD')
         );
     }
 
@@ -530,11 +566,13 @@ class AccountControllerTest extends TestCase
         $response = $this->put("/accounts/{$account->id}", $this->payload([
             'id' => $account->id,
             'name' => 'Same',
-            'ccy' => 'EUR',
+            // A different currency to the account's own, so the assertion is
+            // about the Unique rule and not about the value happening to match.
+            'ccy' => 'CNY',
         ]));
 
         $response->assertSessionHasNoErrors();
-        $this->assertSame('EUR', $account->fresh()->ccy);
+        $this->assertSame('CNY', $account->fresh()->ccy);
     }
 
     public function test_update_creates_meta_when_none_existed(): void

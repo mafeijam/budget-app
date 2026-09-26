@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\DTO\AccountData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Models\Account;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -358,7 +359,7 @@ class SettlementAccountLinkTest extends TestCase
             name: 'Broker',
             status: AccountStatus::Active,
             type: AccountType::Security,
-            ccy: 'HKD',
+            ccy: Currency::Hkd,
             created_at: null,
             meta_data: null,
             settlement_account_id: $card->id,

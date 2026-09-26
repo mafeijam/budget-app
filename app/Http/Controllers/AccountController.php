@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTO\AccountData;
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Models\Account;
 use Exception;
 use Illuminate\Http\Request;
@@ -50,6 +51,26 @@ class AccountController extends Controller
             ])
             ->values();
 
+        // The currency dropdown's options.
+        //
+        // Sent from the server rather than written into FormAccount.vue as a
+        // literal, which is what the type and status pickers still do. The
+        // AccountType docblock claims that hardcoding "can no longer drift ahead
+        // of the server" -- true, because the server rejects what the browser
+        // offers -- but it can still drift *behind*: adding a case to the enum
+        // would leave the dropdown short by one with nothing failing. Deriving
+        // the list here removes the second failure mode as well.
+        //
+        // In enum declaration order rather than alphabetical, so the two
+        // currencies the user is most likely to want lead and adding a case
+        // lands where it was written.
+        $currencyOptions = collect(Currency::cases())
+            ->map(fn (Currency $currency) => [
+                'label' => $currency->label(),
+                'value' => $currency->value,
+            ])
+            ->values();
+
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
         $meta = [
@@ -57,7 +78,7 @@ class AccountController extends Controller
             'path' => '/accounts',
         ];
 
-        return inertia('account', compact('formEmpty', 'data', 'params', 'meta', 'settlementOptions'));
+        return inertia('account', compact('formEmpty', 'data', 'params', 'meta', 'settlementOptions', 'currencyOptions'));
     }
 
     public function store(AccountData $data)

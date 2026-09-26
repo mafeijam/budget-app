@@ -10,11 +10,14 @@
         :error-message="form.errors.name"
         autofocus
       />
-      <q-input
+      <q-select
         v-model="form.ccy"
+        :options="currencyOptions"
         class="col-6"
-        label="CCY"
+        label="Currency"
         filled
+        emit-value
+        map-options
         :error="!!form.errors.ccy"
         :error-message="form.errors.ccy"
       />
@@ -100,6 +103,14 @@ const submit = useSubmit(form, pagination)
 // rather than derived here so the options cannot disagree with what AccountData
 // will accept.
 const settlementOptions = computed(() => usePage().props.settlementOptions ?? [])
+
+// Currency options, for the same reason and by the same route: derived from the
+// server so the dropdown cannot offer a currency AccountData would reject, nor
+// fall short of one it accepts. See the comment on the controller.
+//
+// `?? []` rather than a literal fallback, so a missing prop shows an empty
+// dropdown rather than silently offering a stale hardcoded set.
+const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
 const title = computed(() => {
   return target.value ? 'edit account' : 'create new account'

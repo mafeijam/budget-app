@@ -6,6 +6,7 @@ use App\DTO\AccountData;
 use App\DTO\AccountMetaData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
+use App\Enums\Currency;
 use App\Models\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -58,6 +59,11 @@ class AccountDataTest extends TestCase
         $this->assertNull($empty['id']);
         $this->assertNull($empty['created_at']);
         $this->assertNull($empty['settlement_account_id']);
+        // Null, not a default currency. The currency dropdown starts empty, so a
+        // prefilled value here would make the form look like it had a currency
+        // chosen when it did not -- and the empty form is what the create
+        // button shows.
+        $this->assertNull($empty['ccy']);
         $this->assertSame(['due' => null, 'statement_day' => null], $empty['meta_data']);
     }
 
@@ -69,7 +75,7 @@ class AccountDataTest extends TestCase
         $this->assertSame('Test Account', $data->name);
         $this->assertSame(AccountStatus::Active, $data->status);
         $this->assertSame(AccountType::Card, $data->type);
-        $this->assertSame('USD', $data->ccy);
+        $this->assertSame(Currency::Usd, $data->ccy);
         $this->assertNotNull($data->created_at);
         $this->assertInstanceOf(AccountMetaData::class, $data->meta_data);
         $this->assertSame(15, $data->meta_data->due);
@@ -199,9 +205,45 @@ class AccountDataTest extends TestCase
         $this->assertFieldRejected(['status' => 'purple'], 'status');
     }
 
-    public function test_ccy_is_capped_at_three_characters(): void
+    public function test_ccy_must_be_a_currency_the_app_offers(): void
     {
-        $this->assertFieldRejected(['ccy' => 'HK Dollar'], 'ccy');
+        // Previously this was a length cap, so it rejected 'HK Dollar' and
+        // accepted 'ZZZ' and 'hkd' just as readily -- a typo became a row that
+        // no balance query could interpret and no dropdown could offer again.
+        // The enum now decides, and case is part of the value.
+        foreach (['ZZZ', 'hkd', 'HK Dollar', 'HKDD', 'US', ''] as $ccy) {
+            $this->assertFieldRejected(['ccy' => $ccy], 'ccy');
+        }
+    }
+
+    public function test_every_offered_currency_is_accepted(): void
+    {
+        // The mirror, so the two cannot be broken by trimming the enum: a
+        // currency the dropdown offers has to be submittable.
+        foreach (Currency::cases() as $currency) {
+            $data = AccountData::from($this->postRequest(['ccy' => $currency->value]));
+
+            $this->assertSame($currency, $data->ccy);
+        }
+    }
+
+    public function test_a_rejected_currency_is_reported_as_a_currency_not_a_ccy(): void
+    {
+        // "The selected ccy is invalid" is the one field error a user cannot act
+        // on. The attribute name and the form label now say the same word, so
+        // the message and the field beside it match.
+        try {
+            AccountData::from($this->postRequest(['ccy' => 'ZZZ']));
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                ['The selected currency is invalid.'],
+                $e->errors()['ccy']
+            );
+
+            return;
+        }
+
+        $this->fail('Expected a ZZZ currency to be rejected, but the payload validated.');
     }
 
     public function test_every_declared_account_type_and_status_is_accepted(): void
@@ -229,12 +271,15 @@ class AccountDataTest extends TestCase
     public function test_to_array_keeps_enum_properties_as_plain_strings(): void
     {
         // Regression guard. The Vue form and every Inertia response read these
-        // two fields as strings, so if the enums ever leak into the serialised
-        // payload the whole front end breaks while the tests still look green.
+        // fields as strings, and AccountController::store() hands this array
+        // straight to Account::create() -- so if an enum ever leaks into the
+        // serialised payload the INSERT breaks and the whole front end stops
+        // working while the tests still look green.
         $array = AccountData::from($this->postRequest())->toArray();
 
         $this->assertSame('card', $array['type']);
         $this->assertSame('active', $array['status']);
+        $this->assertSame('USD', $array['ccy']);
     }
 
     public function test_collect_hydrates_enum_properties_from_database_strings(): void
