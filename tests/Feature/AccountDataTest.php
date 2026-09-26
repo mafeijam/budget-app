@@ -6,6 +6,8 @@ use App\DTO\AccountData;
 use App\DTO\AccountMetaData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
+use App\Models\Account;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
@@ -13,6 +15,26 @@ use Tests\TestCase;
 
 class AccountDataTest extends TestCase
 {
+    // The settlement link resolves the target account from the database, so this
+    // DTO is no longer a pure function of its payload. The suite used to run
+    // without a database at all, which was a fiction: it held only because no
+    // rule or guard reached one.
+    use RefreshDatabase;
+
+    private int $cashId;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->cashId = Account::create([
+            'name' => 'Bank',
+            'status' => 'active',
+            'type' => 'cash',
+            'ccy' => 'HKD',
+        ])->id;
+    }
+
     private function postRequest(array $overrides = []): Request
     {
         return Request::create('/accounts', 'POST', array_merge([
@@ -35,6 +57,7 @@ class AccountDataTest extends TestCase
         $this->assertNull($empty['name']);
         $this->assertNull($empty['id']);
         $this->assertNull($empty['created_at']);
+        $this->assertNull($empty['settlement_account_id']);
         $this->assertSame(['due' => null, 'statement_day' => null], $empty['meta_data']);
     }
 
@@ -167,10 +190,17 @@ class AccountDataTest extends TestCase
     {
         foreach (AccountType::cases() as $type) {
             foreach (AccountStatus::cases() as $status) {
-                $data = AccountData::from($this->postRequest([
-                    'type' => $type->value,
-                    'status' => $status->value,
-                ]));
+                $overrides = ['type' => $type->value, 'status' => $status->value];
+
+                // A securities account additionally has to say where it settles.
+                // Supplied rather than relaxed, so this test keeps testing the one
+                // thing it is named for instead of drifting into the settlement
+                // rules.
+                if ($type === AccountType::Security) {
+                    $overrides['settlement_account_id'] = $this->cashId;
+                }
+
+                $data = AccountData::from($this->postRequest($overrides));
 
                 $this->assertSame($type, $data->type);
                 $this->assertSame($status, $data->status);

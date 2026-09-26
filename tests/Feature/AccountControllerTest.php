@@ -174,6 +174,117 @@ class AccountControllerTest extends TestCase
         $this->assertDatabaseCount('accounts', 0);
     }
 
+    public function test_store_creates_a_securities_account_that_settles_into_cash(): void
+    {
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->post('/accounts', $this->payload([
+            'name' => 'Broker',
+            'type' => 'security',
+            'meta_data' => [],
+            'settlement_account_id' => $bank->id,
+        ]));
+
+        $broker = Account::firstWhere('name', 'Broker');
+
+        $this->assertNotNull($broker);
+        $this->assertSame($bank->id, $broker->settlement_account_id);
+    }
+
+    public function test_store_requires_a_settlement_account_for_a_securities_account(): void
+    {
+        // The end-to-end consequence of the rule: through the real endpoint, a
+        // securities account with nowhere to settle is refused outright. The
+        // payload is otherwise a working one, so the link is the only thing that
+        // can be failing.
+        $response = $this->post('/accounts', $this->payload([
+            'name' => 'Broker',
+            'type' => 'security',
+            'meta_data' => [],
+        ]));
+
+        $response->assertSessionHasErrors('settlement_account_id');
+        $this->assertDatabaseCount('accounts', 0);
+    }
+
+    public function test_store_rejects_a_securities_account_settling_into_a_card(): void
+    {
+        $card = Account::create(['name' => 'Card B', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+
+        $response = $this->post('/accounts', $this->payload([
+            'name' => 'Broker',
+            'type' => 'security',
+            'meta_data' => [],
+            'settlement_account_id' => $card->id,
+        ]));
+
+        $response->assertSessionHasErrors('settlement_account_id');
+        // Only the card that set up the test exists; the brokerage did not land.
+        $this->assertNull(Account::firstWhere('name', 'Broker'));
+    }
+
+    public function test_store_rejects_a_cash_account_carrying_a_settlement_account(): void
+    {
+        // This is the prohibition that makes a settlement cycle unrepresentable,
+        // so it is worth holding at the endpoint too: it is the hop a cycle would
+        // have to close through.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $response = $this->post('/accounts', $this->payload([
+            'name' => 'Second Bank',
+            'type' => 'cash',
+            'meta_data' => [],
+            'settlement_account_id' => $bank->id,
+        ]));
+
+        $response->assertSessionHasErrors('settlement_account_id');
+        $this->assertDatabaseCount('accounts', 1);
+    }
+
+    public function test_update_can_move_a_securities_account_to_another_bank(): void
+    {
+        $one = Account::create(['name' => 'Bank One', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $two = Account::create(['name' => 'Bank Two', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->update(['settlement_account_id' => $one->id]);
+
+        $this->put("/accounts/{$broker->id}", $this->payload([
+            'id' => $broker->id,
+            'name' => 'Broker',
+            'type' => 'security',
+            'meta_data' => [],
+            'settlement_account_id' => $two->id,
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame($two->id, $broker->fresh()->settlement_account_id);
+    }
+
+    public function test_update_refuses_to_drop_the_settlement_link(): void
+    {
+        // The guard that makes the link safe to require. An absent field
+        // hydrates to null and toArray() passes it to update(), so without
+        // required_if a save from any form that omits the field -- which is
+        // every form today -- would quietly null the link out and leave a
+        // brokerage with no cash story. Refusing the save is the loud option;
+        // the link survives.
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->update(['settlement_account_id' => $bank->id]);
+
+        $response = $this->put("/accounts/{$broker->id}", $this->payload([
+            'id' => $broker->id,
+            'name' => 'Renamed',
+            'type' => 'security',
+            'meta_data' => [],
+        ]));
+
+        $response->assertSessionHasErrors('settlement_account_id');
+        $this->assertSame($bank->id, $broker->fresh()->settlement_account_id);
+        $this->assertSame('Broker', $broker->fresh()->name);
+    }
+
     public function test_update_changes_the_account(): void
     {
         $account = Account::create(['name' => 'Old', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
