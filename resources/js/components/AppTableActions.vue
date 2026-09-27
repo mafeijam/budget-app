@@ -8,7 +8,7 @@
     color="pink-7"
     dense
     :loading="loading === cell.row.id"
-    @click="destroy(cell.row.id)"
+    @click="destroy(cell.row)"
   >
     <q-tooltip :delay="500" :offset="[0, 6]">delete</q-tooltip>
   </q-btn>
