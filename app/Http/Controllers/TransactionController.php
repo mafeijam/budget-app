@@ -23,7 +23,15 @@ class TransactionController extends Controller
 {
     public function index(Request $r)
     {
-        $formEmpty = TransactionData::empty();
+        // Seeded with today, the way AccountController seeds the account form's status.
+        // useWatchTarget() replaces these with the row's own values when editing, so
+        // the seed reaches a new transaction and never an existing one -- which is why
+        // this belongs here rather than in a watcher that would also fire on an edit.
+        //
+        // today() rather than a JS date, so "today" is the one Asia/Hong_Kong the rest
+        // of the app already formats with (config/app.php, useHongKongTime) and not
+        // whatever half-hour the browser thinks it is in.
+        $formEmpty = TransactionData::empty(['date' => today()->toDateString()]);
 
         $meta = [
             'form' => 'transaction-form',

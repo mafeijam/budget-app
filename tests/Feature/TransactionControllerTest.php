@@ -566,6 +566,36 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_seeds_the_form_with_todays_date(): void
+    {
+        // A new transaction is almost always dated today, and an empty calendar is a
+        // click the user makes every time. Seeded through formEmpty rather than a
+        // watcher, because useWatchTarget() replaces formEmpty with the row on an
+        // edit -- a watcher would have to tell those apart, and this cannot.
+        //
+        // today() and not a JS date, so the figure is the Asia/Hong_Kong the rest of
+        // the app formats with.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('formEmpty.date', today()->toDateString())
+        );
+    }
+
+    public function test_the_seeded_date_does_not_survive_into_an_edit(): void
+    {
+        // The other half, and the reason for seeding formEmpty rather than assigning
+        // form.date: a row carries its own date, and useWatchTarget() defaults the
+        // form from the row. A default applied after that would overwrite it.
+        $this->post('/transactions', $this->expense([
+            'date' => '2026-01-15',
+            'description' => 'Lunch',
+        ]))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('formEmpty.date', today()->toDateString())
+            ->where('data.data.0.date', '2026-01-15')
+        );
+    }
+
     public function test_index_offers_type_options_grouped_by_the_account_type_they_are_legal_for(): void
     {
         // Keyed rather than a flat list, so the form can offer only what the chosen
