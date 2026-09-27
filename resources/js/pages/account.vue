@@ -79,6 +79,11 @@ const columns = reactive([
     // securities account, which has none -- a brokerage holds positions, and
     // '0.0000' there would read as an amount of money it does not hold.
     field: row => props.balances[row.id] ?? '',
+    // Two places, rounded here rather than in the query. The amount column is
+    // decimal(12,4) and the sum of it is exact at four, so a tenth of a cent is a
+    // real figure the server holds and this column chooses not to show. Rounding
+    // the query instead would lose it for every reader of the map.
+    format: val => (val === '' ? '' : Number(val).toFixed(2)),
     sortable: false,
   },
   {
