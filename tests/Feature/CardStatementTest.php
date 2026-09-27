@@ -282,13 +282,18 @@ class CardStatementTest extends TestCase
         // what pending_count and its badge are for. Filtering it would report a period
         // as not covering a day it plainly covers, and a period whose only charge is
         // pending as covering nothing at all.
+        //
+        // The 24th rather than the 25th: the 25th is the card's closing day, which is
+        // the boundary between this statement and the next, so a charge on it is
+        // billed by the following one. This is about a pending row staying inside the
+        // period it is in, and which period that is has a test of its own.
         $this->chargeOn($this->card, '2026-01-10', '120.0000');
-        $this->chargeOn($this->card, '2026-01-25', '40.0000', status: 'pending');
+        $this->chargeOn($this->card, '2026-01-24', '40.0000', status: 'pending');
 
         $statement = CardStatement::forAccount($this->card)->sole();
 
         $this->assertSame('2026-01-10', $statement->firstChargeDate);
-        $this->assertSame('2026-01-25', $statement->lastChargeDate);
+        $this->assertSame('2026-01-24', $statement->lastChargeDate);
         $this->assertSame(1, $statement->chargeCount, 'The pending charge is not counted toward the balance.');
     }
 

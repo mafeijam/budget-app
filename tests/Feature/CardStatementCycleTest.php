@@ -40,16 +40,21 @@ class CardStatementCycleTest extends TestCase
     public static function closingOnThe25thPayableIn15DaysProvider(): array
     {
         return [
-            // The statement running 26 Aug to 25 Sep closes on the 25th and is
-            // payable 15 days later.
+            // The statement covering 26 Aug to 24 Sep closes on the 25th and is
+            // payable 15 days later. The closing day is the boundary, so the run
+            // stops the day before it.
             'first day of the period' => ['2026-08-26', '2026-10-10'],
             'charge spanning the month boundary' => ['2026-09-20', '2026-10-10'],
             'charge the day before closing' => ['2026-09-24', '2026-10-10'],
-            'charge on the closing day is in that statement' => ['2026-09-25', '2026-10-10'],
-            // The next statement runs 26 Sep to 25 Oct and is payable 9 Nov.
+            'charge on the closing day falls in the next statement' => ['2026-09-25', '2026-11-09'],
+            // The next statement covers 25 Sep to 24 Oct and is payable 9 Nov.
             'charge the day after closing' => ['2026-09-26', '2026-11-09'],
             'charge early in the next period' => ['2026-10-05', '2026-11-09'],
-            'last day of the next period' => ['2026-10-25', '2026-11-09'],
+            // The closing day again, and the day before it is where the previous
+            // row's period ends: there is no last day of a period that is not the
+            // day before some closing day.
+            'the closing day again' => ['2026-10-25', '2026-12-10'],
+            'last day of the next period' => ['2026-10-24', '2026-11-09'],
         ];
     }
 
@@ -61,6 +66,44 @@ class CardStatementCycleTest extends TestCase
         $due = $this->cycle()->dueDateFor(Carbon::parse($chargeDate));
 
         $this->assertSame($expectedDueDate, $due->toDateString());
+    }
+
+    public function test_a_charge_on_the_closing_day_belongs_to_the_next_statement(): void
+    {
+        // The boundary itself, named rather than left to a row in the provider
+        // above, because the provider cannot say which of its rows is the rule
+        // and which are arithmetic.
+        //
+        // It is the one day that moved. A statement is cut before that day's
+        // activity settles, so a purchase made on the closing day is not on it --
+        // it is billed with the statement that closes a month later, and is
+        // payable 15 days after *that* closing day. Nothing else about the cycle
+        // changes: the term still runs from the closing day rather than from the
+        // charge, and the days either side are unmoved.
+        //
+        // A charge the day before is on the statement closing on the 25th, and one
+        // the day after is on the same statement as the 25th itself, so the three
+        // are pinned together here: the boundary is a single day and it falls
+        // between the 24th and the 25th, not on the 25th.
+        $cycle = $this->cycle();
+
+        $this->assertSame(
+            '2026-10-10',
+            $cycle->dueDateFor(Carbon::parse('2026-09-24'))->toDateString(),
+            'The day before the closing day is not in the statement that closes on it.'
+        );
+
+        $this->assertSame(
+            '2026-11-09',
+            $cycle->dueDateFor(Carbon::parse('2026-09-25'))->toDateString(),
+            'A charge on the closing day was not moved to the statement that closes a month later.'
+        );
+
+        $this->assertSame(
+            '2026-11-09',
+            $cycle->dueDateFor(Carbon::parse('2026-09-26'))->toDateString(),
+            'The day after the closing day is in a different statement from the day before it.'
+        );
     }
 
     /**
@@ -106,10 +149,14 @@ class CardStatementCycleTest extends TestCase
         int $statementDay,
         int $termDays
     ): void {
-        // Two charges either side of a closing day must land in different
-        // periods, and the boundary must be the closing day itself. A rule that
-        // grouped by calendar month instead would agree on most dates and
-        // disagree exactly here.
+        // Two charges either side of a boundary must land in different periods, and
+        // the boundary must be a single day. A rule that grouped by calendar month
+        // instead would agree on most dates and disagree exactly here.
+        //
+        // Which is why this survived the closing day moving out of its own period:
+        // contiguity is the property the cycle rests on, and the flip only shifted
+        // where each run ends. If this ever fails, the periods have started
+        // overlapping or leaving a gap, which no row-level expectation would show.
         $cycle = $this->cycle($statementDay, $termDays);
         $charge = Carbon::parse('2026-01-01');
 
@@ -190,10 +237,16 @@ class CardStatementCycleTest extends TestCase
         // lands in. Under a day-of-month due date these three would have been
         // the 20th each time, and February's would have been pulled back to the
         // 28th -- paying later than agreed, the wrong way to be wrong.
+        //
+        // The charge is made the day *before* the closing day, not on it. What is
+        // under test is the gap from a given closing day to the date its statement
+        // falls due, and the closing day is the boundary: a charge made on it is
+        // billed by the following statement, so passing it here would measure the
+        // next month's term and pass or fail for the wrong reason.
         $closing = Carbon::parse($closingDate);
         $cycle = $this->cycle($statementDay, termDays: 20);
 
-        $due = $cycle->dueDateFor($closing);
+        $due = $cycle->dueDateFor($closing->copy()->subDay());
 
         $this->assertSame(
             20,
@@ -220,9 +273,24 @@ class CardStatementCycleTest extends TestCase
 
     public function test_it_handles_a_leap_day(): void
     {
-        $due = $this->cycle(statementDay: 29, termDays: 15)->dueDateFor(Carbon::parse('2024-02-29'));
+        // Two cases, because a leap day is both a day in February and, on a card
+        // closing on the 29th, the closing day itself. Only the first is about the
+        // leap year: the second is the boundary rule, and would give the same
+        // answer in a non-leap year with the closing day clamped onto it.
+        $cycle = $this->cycle(statementDay: 29, termDays: 15);
 
-        $this->assertSame('2024-03-15', $due->toDateString());
+        $this->assertSame(
+            '2024-03-15',
+            $cycle->dueDateFor(Carbon::parse('2024-02-28'))->toDateString(),
+            'The 29th exists in a leap year, so a charge on the 28th is billed by that statement.'
+        );
+
+        // The 29th is the closing day, so it opens the next statement, which closes
+        // on 29 March and is payable 13 April.
+        $this->assertSame(
+            '2024-04-13',
+            $cycle->dueDateFor(Carbon::parse('2024-02-29'))->toDateString()
+        );
     }
 
     public function test_it_does_not_mutate_the_date_it_is_given(): void

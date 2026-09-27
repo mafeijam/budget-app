@@ -81,31 +81,49 @@ class CardStatementCycle
      */
     public function dueDateFor(Carbon $chargeDate): Carbon
     {
-        return $this->statementClosingOnOrAfter($chargeDate)
+        return $this->statementClosingAfter($chargeDate)
             ->addDays($this->termDays);
     }
 
     /**
-     * The first day-of-month on which a statement closes, on or after the
+     * The first day-of-month on which a statement closes, strictly after the
      * charge.
      *
-     * "On or after", not "before". A charge can only be billed to a statement
-     * that was still open when it was made: a charge on the 20th cannot appear
-     * on a statement that cut on the 5th, or the cardholder would be invoiced
-     * for a purchase before paying for it.
+     * Forwards only, never backwards. A charge can only be billed to a statement
+     * that was still open when it was made: a charge on the 20th cannot appear on
+     * a statement that cut on the 5th, or the cardholder would be invoiced for a
+     * purchase before paying for it.
      *
-     * A charge made on the closing day itself counts as part of that statement.
-     * Issuers cut the statement after that day's activity, so including it is
-     * what real issuers do -- and it makes each period a contiguous run that
-     * ends on its closing day.
+     * "After", not "on or after", and the closing day is the whole of the
+     * difference. An issuer that cuts the statement before that day's activity
+     * settles cannot bill a purchase made on the closing day -- the purchase is
+     * not on the statement when it is cut -- so a charge made on the 25th of a
+     * card closing on the 25th belongs to the statement that closes a month
+     * later. It is an issuer convention rather than a law, and it was the other
+     * way round here for a while, on the reasoning that issuers cut the statement
+     * after the day's activity; that reasoning is what this replaces, so do not
+     * put it back without an issuer to point at.
+     *
+     * A period is therefore the run of days *after* one closing day and up to and
+     * including the next: (25 Aug, 25 Sep] for the statement due 10 Oct. It is
+     * still a contiguous run with no gaps and no overlap -- only its last day has
+     * moved, from the closing day to the one before it. Two charges either side of
+     * a boundary still land in different periods, which is the property the whole
+     * cycle rests on; test_every_period_is_a_contiguous_run_of_days is what holds
+     * it up.
+     *
+     * The comparison is against the clamped closing day, so a card closing on the
+     * 31st has a February statement that closes on the 28th, and a charge on 28
+     * February is a boundary charge: it falls after that statement closed and so
+     * starts the next one. Same rule, same day the statement actually closes.
      */
-    private function statementClosingOnOrAfter(Carbon $chargeDate): Carbon
+    private function statementClosingAfter(Carbon $chargeDate): Carbon
     {
         $thisMonth = $chargeDate->copy()->startOfMonth();
 
         $closed = $this->dayOfMonth($thisMonth, $this->statementDay);
 
-        if ($closed->lt($chargeDate->copy()->startOfDay())) {
+        if ($closed->lte($chargeDate->copy()->startOfDay())) {
             $closed = $this->dayOfMonth(
                 $thisMonth->copy()->addMonthNoOverflow(),
                 $this->statementDay

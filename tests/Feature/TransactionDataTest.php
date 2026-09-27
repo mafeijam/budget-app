@@ -748,8 +748,15 @@ class TransactionDataTest extends TestCase
         $this->assertSame('2026-03-12', $data->meta_data->due_date);
     }
 
-    public function test_a_charge_on_the_closing_day_belongs_to_that_statement(): void
+    public function test_a_charge_on_the_closing_day_belongs_to_the_next_statement(): void
     {
+        // The card closes on the 25th, so the 25th is the boundary and a charge made
+        // on it is not on the statement that closes that day. It is billed by the one
+        // closing on 25 Feb, payable 15 days later.
+        //
+        // The day before, for the same reason it is asserted in
+        // CardStatementCycleTest: if this were passing because the 25th were simply
+        // being treated as any other day, the assertion would be about nothing.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
@@ -758,7 +765,7 @@ class TransactionDataTest extends TestCase
             'meta_data' => [],
         ]));
 
-        $this->assertSame('2026-02-09', $data->meta_data->due_date);
+        $this->assertSame('2026-03-12', $data->meta_data->due_date);
     }
 
     public function test_a_charge_on_a_card_with_no_statement_day_has_no_due_date(): void
