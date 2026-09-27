@@ -50,6 +50,99 @@ class CardSettlementTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // The day the money moved
+    // ---------------------------------------------------------------------
+
+    public function test_the_day_the_money_moved_is_the_users_to_say(): void
+    {
+        // Settling on the day a statement falls due is the exception, not the rule:
+        // people pay on the day they are reminded. And a settlement forgotten last
+        // week is a real thing to want to be able to record rather than date today.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'date' => '2026-01-28',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-01-28', Transaction::where('type', 'payment')->firstOrFail()->date);
+    }
+
+    public function test_both_rows_carry_the_same_day(): void
+    {
+        // A settlement is one act, and the two rows describe it -- the same reasoning
+        // that gives them the same amount. Two dates would be two facts about one
+        // event, and the transfer would claim the money left on a different day than
+        // the card says it came back.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'date' => '2026-01-28',
+        ])->assertSessionHasNoErrors();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        $this->assertSame($payment->date, $transfer->date);
+        $this->assertSame('2026-01-28', $payment->date);
+    }
+
+    public function test_a_settlement_with_no_day_given_is_dated_today(): void
+    {
+        // What every caller did before the day was configurable, and what a direct
+        // POST still does. Pinned because the default is the behaviour, not a
+        // convenience bolted on afterwards: a caller that omits it must not get a
+        // null date, which the NOT NULL column would refuse at the last moment.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            today()->toDateString(),
+            Transaction::where('type', 'payment')->firstOrFail()->date
+        );
+    }
+
+    public function test_a_malformed_day_is_refused_and_writes_nothing(): void
+    {
+        // Validation runs before the transaction opens, so nothing is written at all --
+        // not one row, and not half a pair.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'date' => '28/01/2026',
+        ])->assertSessionHasErrors('date');
+
+        $this->assertDatabaseCount('transactions', 1); // the charge, and no pair
+    }
+
+    public function test_the_day_does_not_move_the_period_it_settles(): void
+    {
+        // The bag's due_date is the statement query's grouping key, and the row's date
+        // is not. Backdating the payment must not re-file it into an earlier period --
+        // a settlement is applied to the period the user named, whatever day they say
+        // they paid.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'date' => '2025-12-01',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            self::PERIOD,
+            Transaction::where('type', 'payment')->firstOrFail()->meta_data['due_date']
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // The two rows
     // ---------------------------------------------------------------------
 

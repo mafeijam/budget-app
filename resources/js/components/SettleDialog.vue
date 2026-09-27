@@ -20,6 +20,10 @@
           otherwise, and would need a bound -- the server would have to accept a
           partial payment or reject one that exceeds the period, which is a different
           feature with different rules.
+
+          The date below is the exception, and it is not one of the figure. That
+          argument is about a value the period decides; the day the money moved is
+          the user's own fact about their life, which is why it gets a control.
         -->
         <div class="text-subtitle2 text-weight-medium">
           {{ group.card.name }} · statement due {{ formatDate(period.due_date) }}
@@ -47,13 +51,50 @@
         </q-markup-table>
 
         <!--
+          The one editable thing here, and the same control the transaction form uses:
+          a q-date in a menu rather than a native input, which would render in the
+          browser's locale while the value is ISO. See FormTransaction.vue for why the
+          mask belongs to the q-date and to nothing else.
+
+          Duplicated rather than extracted, because FormContractTest reads
+          FormTransaction.vue's own text for v-model="form.date" -- moving that binding
+          into a child component would fail the contract, and teaching the test about
+          components is a larger change than the duplication costs.
+        -->
+        <q-input
+          v-model="paidOn"
+          class="q-mb-sm"
+          label="Paid on"
+          filled
+          :error="!!fieldError"
+          :error-message="fieldError"
+        >
+          <template #append>
+            <q-btn flat dense icon="event" rounded>
+              <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+                <q-date
+                  :model-value="paidOn"
+                  mask="YYYY-MM-DD"
+                  minimal
+                  color="green-7"
+                  @update:model-value="pickDate"
+                />
+              </q-menu>
+            </q-btn>
+          </template>
+        </q-input>
+
+        <!--
           The consequence the user cannot see from the figure above, so it is said
           plainly. Settling writes two rows, and the second one takes money out of a
           bank account they may not have had in mind -- or may not have connected to
           this card at all. Cheaper to say now than to discover in the bank list.
+
+          Both rows carry the date above, so the sentence names it once rather than
+          implying the transfer happened whenever.
         -->
         <div class="bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
-          This records a payment on {{ group.card.name }}
+          This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
           <template v-if="bank"> and a transfer of the same amount out of {{ bank }}.</template>
           <template v-else>
             , but this card does not name the bank it is paid from, so it cannot be settled.
@@ -120,6 +161,27 @@ const open = ref(false)
 const settling = ref(false)
 const error = ref(null)
 
+// The day the money moved, and today until the user says otherwise. Seeded from the
+// page's own `today` rather than the browser clock, so it is the same day settle()
+// would have written unprompted -- the two disagree for six hours out of every
+// twenty-four, and the dialog is showing the user what will be recorded.
+const paidOn = ref(usePage().props.today ?? '')
+
+// A field error and a banner error, because a malformed date is the user's own input
+// and belongs beside the field while a refusal is about the whole request. Both are
+// kept apart so a bad date does not read as "that statement could not be settled".
+const fieldError = ref(null)
+
+// The calendar's menu, so a chosen day can close it.
+const dateMenu = ref(null)
+
+// Writing the value and closing the menu together, so they cannot come apart -- the
+// same reason FormTransaction.vue does it in one function.
+const pickDate = value => {
+  paidOn.value = typeof value === 'string' ? value : ''
+  dateMenu.value?.hide()
+}
+
 // `router`, not `useRouter`: that is the name under which @inertiajs/vue3 is listed in
 // vite.config.js's auto-import set, and there is no useRouter to fall back to -- which
 // fails at setup with a ReferenceError and leaves the dialog's button inert.
@@ -144,17 +206,21 @@ const confirm = () =>
   router.post(
     `/accounts/${props.group.card.id}/settle`,
     // The figure the user was shown, sent so the server can notice if it has moved.
-    // Never used as the amount -- see TransactionController::settle().
-    { due_date: props.period.due_date, owed: props.period.owed },
+    // Never used as the amount -- see TransactionController::settle(). The date is not
+    // sent the same way: settle() takes it as given, because unlike the amount it is
+    // not something the server can check.
+    { due_date: props.period.due_date, owed: props.period.owed, date: paidOn.value },
     {
       preserveScroll: true,
       preserveState: true,
       onError: errors => {
-        error.value = errors.due_date ?? 'That statement could not be settled.'
+        fieldError.value = errors.date ?? null
+        error.value = errors.due_date ?? errors.date ?? 'That statement could not be settled.'
       },
       onSuccess: () => {
         open.value = false
         error.value = null
+        fieldError.value = null
       },
       onFinish: () => (settling.value = false),
     },
@@ -162,10 +228,23 @@ const confirm = () =>
 
 watch(
   () => props.period,
-  () => (error.value = null),
+  () => {
+    error.value = null
+    fieldError.value = null
+  },
 )
 
 // Opened by the panel rather than by an event bus, because the thing being settled
 // is a period and the panel is the only place that knows which one.
-defineExpose({ show: () => (open.value = true) })
+//
+// Reseeded on every open rather than on the first: the dialog is reusable, and a date
+// left over from settling one statement would silently date the next.
+defineExpose({
+  show: () => {
+    paidOn.value = usePage().props.today ?? ''
+    error.value = null
+    fieldError.value = null
+    open.value = true
+  },
+})
 </script>

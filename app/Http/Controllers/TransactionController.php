@@ -89,6 +89,12 @@ class TransactionController extends Controller
             ])
             ->all();
 
+        // Today, for the settle dialog's date field. Sent rather than read from the
+        // browser clock so the day the dialog shows and the day settle() writes are the
+        // same Asia/Hong_Kong -- for six hours out of every twenty-four they would not
+        // be, which is the whole of what this avoids.
+        $today = today()->toDateString();
+
         // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
@@ -167,6 +173,7 @@ class TransactionController extends Controller
             'cardBanks',
             'typeOptions',
             'typeDefaults',
+            'today',
             'statusOptions',
             'currencyOptions',
         ));
@@ -254,6 +261,11 @@ class TransactionController extends Controller
         $figures = $r->validate([
             'due_date' => ['required', 'date_format:Y-m-d'],
             'owed' => ['required', 'decimal:0,'.TransactionMetaData::AMOUNT_SCALE],
+
+            // The day the money moved, which is a choice rather than a fact about the
+            // period. Optional because the dialog always sends one and a caller that
+            // sends nothing gets what every caller got before this was configurable.
+            'date' => ['nullable', 'date_format:Y-m-d'],
         ]);
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
@@ -305,13 +317,18 @@ class TransactionController extends Controller
             ));
         }
 
+        // People settle on the day they are reminded, not the day a statement falls
+        // due, and a settlement forgotten last week is a real thing to want recorded.
+        // So the day is theirs to say, and it goes on both rows below.
+        $paidOn = $figures['date'] ?? today()->toDateString();
+
         DB::beginTransaction();
 
         try {
             $payment = Transaction::create([
                 'account_id' => $account->id,
                 'category_id' => null,
-                'date' => today()->toDateString(),
+                'date' => $paidOn,
                 'type' => TransactionType::Payment->value,
                 'description' => sprintf('Statement %s', $figures['due_date']),
                 'amount' => $owed,
@@ -322,7 +339,10 @@ class TransactionController extends Controller
             $transfer = Transaction::create([
                 'account_id' => $bank->id,
                 'category_id' => null,
-                'date' => today()->toDateString(),
+                // The same day as the payment, as the same amount: a settlement is one
+                // act, and two rows describing it differently would be two facts about
+                // one event.
+                'date' => $paidOn,
                 'type' => TransactionType::Transfer->value,
                 'description' => sprintf('Card payment [%s]', $account->name),
                 'amount' => $owed,
