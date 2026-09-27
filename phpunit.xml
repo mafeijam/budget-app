@@ -22,8 +22,25 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
 
         <!--
-            Tests run against a DEDICATED MySQL database so they can never touch
-            live data. DB_USERNAME / DB_PASSWORD are inherited from .env.
+            A DEDICATED database, and deliberately not the one .env names.
+
+            RefreshDatabase runs migrate:fresh, which DROPS every table before the
+            suite starts. While this read budget_v2_testing, the same name .env
+            holds, that made the test suite destroy the development fixtures on
+            every run, so the seeded data was gone by the time anyone looked at it
+            and every run had to be followed by three db:seed commands. The two must
+            differ, and .env is the one that gets repointed, so the test name belongs
+            here where it is committed rather than in .env.testing, which is ignored.
+
+            The name has to carry a test marker: Database\Seeders\Concerns\
+            GuardsAgainstNonTestDatabase refuses to write fixtures into a database
+            whose name looks live, and the seeder tests run the seeder. That is the
+            guard doing its job, and it is why "budget_v2_test" rather than
+            "budget_v2_phpunit", which would read as live and be refused.
+
+            This database is disposable by design. Nothing in it survives a run.
+
+            DB_USERNAME / DB_PASSWORD are inherited from .env.
 
             PREFERRED (once "sudo apt install php8.3-sqlite3" is available):
             replace the two MySQL lines below with
@@ -32,7 +49,7 @@
                 <env name="DB_DATABASE" value=":memory:"/>
         -->
         <env name="DB_CONNECTION" value="mysql"/>
-        <env name="DB_DATABASE" value="budget_v2_testing"/>
+        <env name="DB_DATABASE" value="budget_v2_test"/>
 
         <!--
             CACHE_STORE is the Laravel 11+ name. The pre-L11 CACHE_DRIVER alias
