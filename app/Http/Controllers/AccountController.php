@@ -140,7 +140,6 @@ class AccountController extends Controller
         }
 
         return back()->with('message', "Account [$account->name] updated");
-
     }
 
     public function destroy(Account $account)
@@ -159,9 +158,8 @@ class AccountController extends Controller
         }
 
         // The foreign key's referential check, done here because a JSON value carries
-        // no constraint. Refuse rather than cascade or clear. JSON_UNQUOTE because
-        // the value may be a number or the string a select emits, which MySQL does
-        // not consider equal.
+        // no constraint. JSON_UNQUOTE because the stored value may be a number or the
+        // string a select emits, which MySQL does not consider equal.
         $settledInto = Account::query()
             ->whereHas('meta', fn ($query) => $query->whereRaw(
                 'JSON_UNQUOTE(JSON_EXTRACT(meta.meta, \'$.settlement_account_id\')) = ?',

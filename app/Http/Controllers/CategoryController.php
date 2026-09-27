@@ -47,11 +47,10 @@ class CategoryController extends Controller
     public function destroy(Category $category)
     {
         // Checked here rather than left to the foreign key, which refuses this by
-        // throwing. category_id is restrictOnDelete, so deleting a category anything
-        // is filed under raised a QueryException and came back as a 500 -- the row
-        // still there, and nothing said about why. The same bargain as
-        // AccountController::destroy, for the same reason: the constraint belongs to
-        // the schema and the answer belongs in a message.
+        // throwing: category_id is restrictOnDelete, so deleting a category anything is
+        // filed under came back as a 500 with the row still there and nothing said
+        // about why. As in AccountController::destroy, the constraint belongs to the
+        // schema and the answer belongs in a message.
         $transactions = Transaction::where('category_id', $category->id)->count();
 
         if ($transactions > 0) {
