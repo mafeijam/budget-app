@@ -230,8 +230,6 @@ class AccountController extends Controller
         $account->meta()->delete();
         $account->delete();
 
-        sleep(1);
-
         return back()->with('message', "Account [$account->name] deleted");
     }
 }
