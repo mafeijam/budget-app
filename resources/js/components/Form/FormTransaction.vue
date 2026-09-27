@@ -227,6 +227,7 @@ const target = computed(() => {
 // short of one it accepts. `?? []` rather than a literal fallback, so a missing
 // prop shows an empty dropdown instead of a stale hardcoded set.
 const typeOptionsByAccountType = computed(() => usePage().props.typeOptions ?? {})
+const typeDefaults = computed(() => usePage().props.typeDefaults ?? {})
 const statusOptions = computed(() => usePage().props.statusOptions ?? [])
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
@@ -310,16 +311,24 @@ watch(
     // anything the user changes makes it dirty before the watcher runs.
     if (!form.isDirty || !accountId) return
 
-    form.type = null
+    const account = chosenAccount.value
+
+    // The type the new account most likely wants, and null where the enum has no
+    // opinion -- a securities account accepts a buy, a sell and a dividend, and
+    // pre-filling one hands the user a type they did not choose.
+    //
+    // Resetting rather than keeping the old type is not new: the pairing is what makes
+    // a type legal, so a type chosen for the previous account may be illegal here, and
+    // guardAccountType() would refuse the save over a field the user cannot see.
+    form.type = account?.type ? (typeDefaults.value[account.type] ?? null) : null
+
     clearBag()
 
     // Default the currency to the account's own, which is right almost every time
     // and saves re-picking it. A charge that was in another currency needs the
     // card-currency figure below, and that is what covers the case where this
     // default is not the answer.
-    const ccy = accountOptions.value.find(a => a.value === accountId)?.ccy
-
-    if (ccy) form.ccy = ccy
+    if (account?.ccy) form.ccy = account.ccy
   },
 )
 

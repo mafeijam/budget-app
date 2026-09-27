@@ -622,6 +622,58 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_offers_a_default_type_for_each_account_type(): void
+    {
+        // Derived from the enum rather than listed here, so a fourth account type
+        // makes this fail rather than quietly arriving with no default and an empty
+        // picker nobody would think to report.
+        $expected = collect(AccountType::cases())
+            ->mapWithKeys(fn (AccountType $accountType) => [
+                $accountType->value => $accountType->defaultTransactionType()?->value,
+            ])
+            ->all();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('typeDefaults', $expected)
+        );
+    }
+
+    public function test_every_default_type_is_one_the_account_actually_accepts(): void
+    {
+        // The invariant the form depends on and cannot check. A default is a
+        // convenience; a default the server refuses is a form that pre-fills a value
+        // and then rejects the save over a field the user did not touch and cannot
+        // see why -- guardAccountType() would be reporting a type pairing the picker
+        // itself produced.
+        foreach (AccountType::cases() as $accountType) {
+            $default = $accountType->defaultTransactionType();
+
+            if ($default === null) {
+                continue;
+            }
+
+            $this->assertTrue(
+                $default->isAllowedFor($accountType),
+                "The default for a {$accountType->value} account is '{$default->value}', which "
+                .'that account type does not accept. accountTypes() and '
+                .'defaultTransactionType() have drifted apart.'
+            );
+        }
+    }
+
+    public function test_a_securities_account_is_offered_no_default_type(): void
+    {
+        // Null rather than a guess. Buy, sell and dividend are all ordinary on a
+        // brokerage and none of them is the usual one, so any default hands the user a
+        // type they did not choose -- and an empty picker is something they can reason
+        // about. Asserted so the decision is visible rather than an absence.
+        $this->assertNull(AccountType::Security->defaultTransactionType());
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('typeDefaults.security', null)
+        );
+    }
+
     public function test_index_offers_every_status_and_currency_the_app_accepts(): void
     {
         // Same reason, same route: derived from the enums so the dropdown cannot

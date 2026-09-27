@@ -80,6 +80,15 @@ class TransactionController extends Controller
             ])
             ->all();
 
+        // Which type to pre-fill per account type, from the same enum that decides the
+        // pairing above. Beside typeOptions rather than folded into it, so the list
+        // the picker reads and the list a test asserts both keep the shape they had.
+        $typeDefaults = collect(AccountType::cases())
+            ->mapWithKeys(fn (AccountType $accountType) => [
+                $accountType->value => $accountType->defaultTransactionType()?->value,
+            ])
+            ->all();
+
         // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
@@ -157,6 +166,7 @@ class TransactionController extends Controller
             'statements',
             'cardBanks',
             'typeOptions',
+            'typeDefaults',
             'statusOptions',
             'currencyOptions',
         ));
