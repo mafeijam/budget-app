@@ -17,6 +17,7 @@
     <q-markup-table flat dense>
       <thead>
         <tr class="text-left">
+          <th>Covers</th>
           <th>Due</th>
           <th class="text-right">Charges</th>
           <th class="text-right">Paid</th>
@@ -27,12 +28,13 @@
       <tbody>
         <template v-for="group in groups" :key="group.card.id">
           <tr>
-            <th colspan="5" class="text-left q-py-sm q-pl-none">
+            <th colspan="6" class="text-left q-py-sm q-pl-none">
               <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
               <span class="text-grey-6 text-weight-regular">· {{ group.card.ccy }}</span>
             </th>
           </tr>
           <tr v-for="period in group.periods" :key="`${group.card.id}-${period.due_date}`">
+            <td>{{ covers(period) }}</td>
             <td>
               {{ formatDate(period.due_date) }}
               <!--
@@ -41,7 +43,9 @@
                 trusted it would pay against a statement that grows once the charge
                 posts, and the period would reopen under them having settled it. Said
                 here rather than only in the dialog, because the row is what they would
-                act on.
+                act on. On the due date rather than on Covers, because it is about
+                whether the period can be settled at all and that is a question about
+                when it falls due.
               -->
               <q-badge
                 v-if="period.pending_count"
@@ -120,6 +124,22 @@ const money = value => {
 }
 
 const bankName = card => props.banks[card.id] ?? null
+
+// The dates of the charges in the period, which is what the statement is about --
+// Due says when it is payable, this says what it is for.
+//
+// One date when every charge landed on the same day, because "16 Sep – 16 Sep"
+// says less than "16 Sep" and takes twice the room. Nothing at all for a period
+// with no charge in it, which is honest: it covers nothing, and the null is why
+// this is not a subtraction.
+const covers = period => {
+  const from = period.first_charge_date
+  const to = period.last_charge_date
+
+  if (!from) return ''
+
+  return from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`
+}
 
 // The same two conditions the server refuses on, kept in step with
 // TransactionController::settle(). A copy rather than a derivation, because the

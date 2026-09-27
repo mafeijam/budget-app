@@ -64,6 +64,8 @@ class CardStatement
 
     /**
      * @param  string  $dueDate  the day this period is payable
+     * @param  string|null  $firstChargeDate  the earliest charge date in the period
+     * @param  string|null  $lastChargeDate  the latest charge date in the period
      * @param  int  $chargeCount  charges counted toward the balance, pending excluded
      * @param  int  $paymentCount  payments counted toward the balance, pending excluded
      * @param  int  $pendingCount  rows in the period that do not count, of either kind
@@ -72,6 +74,8 @@ class CardStatement
      */
     public function __construct(
         public readonly string $dueDate,
+        public readonly ?string $firstChargeDate,
+        public readonly ?string $lastChargeDate,
         public readonly int $chargeCount,
         public readonly int $paymentCount,
         public readonly int $pendingCount,
@@ -117,6 +121,8 @@ class CardStatement
             // relying on that would make the answer depend on a decision made three
             // layers up, and this query would then include a "period" with no date.
             "SELECT JSON_UNQUOTE(JSON_EXTRACT(m.meta, '$.due_date'))                  AS due_date,
+                    MIN(CASE WHEN t.type = 'charge' THEN t.date END)                 AS first_charge_date,
+                    MAX(CASE WHEN t.type = 'charge' THEN t.date END)                 AS last_charge_date,
                     COUNT(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN 1 END) AS charge_count,
                     COUNT(CASE WHEN t.type = 'payment' AND t.status IN ('{$counting}') THEN 1 END) AS payment_count,
                     COUNT(CASE WHEN t.status = 'pending' THEN 1 END)                   AS pending_count,
@@ -135,8 +141,17 @@ class CardStatement
             [Transaction::class, $card->id]
         );
 
+        // The charge dates are MIN/MAX over CHARGE rows only, so a payment named
+        // against the period cannot widen the span it covers -- a payment is not
+        // something the statement is for. And they are not filtered by status, unlike
+        // every figure beside them: a pending charge is in this period, it simply is
+        // not billed yet, which is what pending_count and its badge are for. A period
+        // with no charge at all comes back null rather than as the payment's date, and
+        // the caller shows nothing for it, because it covers nothing.
         return collect($rows)->map(fn (object $row) => new self(
             dueDate: (string) $row->due_date,
+            firstChargeDate: $row->first_charge_date,
+            lastChargeDate: $row->last_charge_date,
             chargeCount: (int) $row->charge_count,
             paymentCount: (int) $row->payment_count,
             pendingCount: (int) $row->pending_count,

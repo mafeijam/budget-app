@@ -246,6 +246,65 @@ class CardStatementTest extends TestCase
         $this->assertSame('999.0000', CardStatement::forAccount($this->otherCard)->sole()->owed());
     }
 
+    public function test_a_period_reports_the_charge_dates_it_covers(): void
+    {
+        // What the statement is for, as against when it is payable. Observed from the
+        // rows rather than derived from the cycle, so a charge dated into the wrong
+        // period shows the dates it actually landed on rather than the ones it should
+        // have -- which is the difference worth seeing.
+        $this->chargeOn($this->card, '2026-01-10', '120.0000');
+        $this->chargeOn($this->card, '2026-01-20', '80.5000');
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+
+        $this->assertSame('2026-01-10', $statement->firstChargeDate);
+        $this->assertSame('2026-01-20', $statement->lastChargeDate);
+    }
+
+    public function test_a_payment_does_not_widen_the_span_a_period_covers(): void
+    {
+        // A payment is not something the statement is for. The MIN and MAX are over
+        // charge rows only, so a payment dated outside the charges cannot stretch the
+        // range to cover days that hold nothing.
+        $this->chargeOn($this->card, '2026-01-10', '120.0000');
+        $this->payment('2026-02-20', '120.0000', 'posted', '2026-02-09');
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+
+        $this->assertSame('2026-01-10', $statement->firstChargeDate);
+        $this->assertSame('2026-01-10', $statement->lastChargeDate);
+    }
+
+    public function test_a_pending_charge_is_in_the_period_it_belongs_to(): void
+    {
+        // Not filtered by status, unlike every figure beside it, and deliberately. A
+        // pending charge is in this period -- it simply is not billed yet, which is
+        // what pending_count and its badge are for. Filtering it would report a period
+        // as not covering a day it plainly covers, and a period whose only charge is
+        // pending as covering nothing at all.
+        $this->chargeOn($this->card, '2026-01-10', '120.0000');
+        $this->chargeOn($this->card, '2026-01-25', '40.0000', status: 'pending');
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+
+        $this->assertSame('2026-01-10', $statement->firstChargeDate);
+        $this->assertSame('2026-01-25', $statement->lastChargeDate);
+        $this->assertSame(1, $statement->chargeCount, 'The pending charge is not counted toward the balance.');
+    }
+
+    public function test_a_period_with_no_charge_covers_nothing(): void
+    {
+        // Null rather than the payment's own date. A period can be named by a payment
+        // with nothing charged to it, and reporting that date would say the statement
+        // covers a day it does not.
+        $this->payment('2026-02-20', '120.0000', 'posted', '2026-02-09');
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+
+        $this->assertNull($statement->firstChargeDate);
+        $this->assertNull($statement->lastChargeDate);
+    }
+
     // ---------------------------------------------------------------------
     // The money is decimal, not float
     // ---------------------------------------------------------------------

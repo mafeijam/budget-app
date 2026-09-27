@@ -124,6 +124,8 @@ class TransactionController extends Controller
                 ],
                 'periods' => CardStatement::outstandingFor($card)
                     ->map(fn (CardStatement $statement) => [
+                        'first_charge_date' => $statement->firstChargeDate,
+                        'last_charge_date' => $statement->lastChargeDate,
                         'due_date' => $statement->dueDate,
                         'charge_count' => $statement->chargeCount,
                         'payment_count' => $statement->paymentCount,
