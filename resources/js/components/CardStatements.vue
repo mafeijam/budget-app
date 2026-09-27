@@ -6,24 +6,33 @@
 
     <q-separator />
 
-    <q-card-section v-for="group in groups" :key="group.card.id" class="q-py-sm">
-      <div class="text-subtitle2 text-weight-medium q-mb-sm">
-        {{ group.card.name }}
-        <span class="text-grey-6 text-weight-regular">· {{ group.card.ccy }}</span>
-      </div>
-
-      <q-markup-table flat dense>
-        <thead>
-          <tr class="text-left">
-            <th>Due</th>
-            <th class="text-right">Charges</th>
-            <th class="text-right">Paid</th>
-            <th class="text-right">Owes</th>
-            <th />
+    <!--
+      One table for every card, not one per card. A separate table computes its own
+      column widths, so with two or more cards the Due column of one sat wherever its
+      own figures put it and the header repeated above each -- columns that looked
+      aligned with a single card and visibly were not with two. The card name is a
+      spanning row instead of a heading above the table, so it still separates one
+      card's periods from the next without giving the columns back to the browser.
+    -->
+    <q-markup-table flat dense>
+      <thead>
+        <tr class="text-left">
+          <th>Due</th>
+          <th class="text-right">Charges</th>
+          <th class="text-right">Paid</th>
+          <th class="text-right">Owes</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        <template v-for="group in groups" :key="group.card.id">
+          <tr>
+            <th colspan="5" class="text-left q-py-sm q-pl-none">
+              <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
+              <span class="text-grey-6 text-weight-regular">· {{ group.card.ccy }}</span>
+            </th>
           </tr>
-        </thead>
-        <tbody>
-          <tr v-for="period in group.periods" :key="period.due_date">
+          <tr v-for="period in group.periods" :key="`${group.card.id}-${period.due_date}`">
             <td>
               {{ formatDate(period.due_date) }}
               <!--
@@ -75,9 +84,9 @@
               </q-btn>
             </td>
           </tr>
-        </tbody>
-      </q-markup-table>
-    </q-card-section>
+        </template>
+      </tbody>
+    </q-markup-table>
 
     <SettleDialog
       ref="dialog"
