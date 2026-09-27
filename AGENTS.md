@@ -146,9 +146,20 @@ Diff those templates carefully.
 
 ## Conventions
 
-- **Comments are load-bearing and long.** They state the decision *and* the
-  reason, including the alternatives that were rejected. Match that density; a
-  comment that only restates the code is noise here.
+- **Comments earn their place or go.** A comment stays when the code looks wrong
+  without it — the decision, and the failure that made it one. That failure
+  should be the *silent* kind: a wrong balance, a Laravel rule that is accepted
+  and never run, a value that reaches a NOT NULL column. Naming the silent
+  failure is what makes the comment worth its length.
+  - Cut: how the code got here. "This used to…" belongs in the commit body,
+    which is written at length on purpose, and a reader has `git log`.
+  - Cut: the survey of rejected alternatives. Keep the one a reader would most
+    likely "fix" and let it be a clause; the other two were never going to be
+    tried.
+  - Cut: restating the code, the signature, or a sibling comment three lines
+    up. Say a fact in one place and point at it from the others.
+  - Match the surrounding comment's voice: sentence case, the decision first,
+    prose rather than a list.
 - **Commits: one idea each.** Subject is sentence case, no prefix, no trailing
   period, and states the change and often the why. The body is several paragraphs
   arguing the reasoning and recording what a future reader would otherwise
