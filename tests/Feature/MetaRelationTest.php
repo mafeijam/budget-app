@@ -67,13 +67,13 @@ class MetaRelationTest extends TestCase
             'status' => 'posted',
         ]);
 
-        $transaction->meta()->create(['meta' => ['merchant' => 'Cafe', 'card_amount' => '780.0000']]);
+        $transaction->meta()->create(['meta' => ['card_amount' => '780.0000']]);
 
         $fresh = $transaction->fresh();
 
         $this->assertSame('780.0000', $fresh->meta->meta['card_amount']);
         // The appended accessor, which is what a page or a seeder would read.
-        $this->assertSame('Cafe', $fresh->meta_data['merchant']);
+        $this->assertSame('780.0000', $fresh->meta_data['card_amount']);
         $this->assertTrue($fresh->meta->metable->is($transaction));
     }
 

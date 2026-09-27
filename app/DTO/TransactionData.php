@@ -109,7 +109,11 @@ class TransactionData extends Data
                 'max:'.TransactionMetaData::MAX_AMOUNT,
             ],
 
-            'description' => ['max:255'],
+            // Required for every type, which is why it needs no conditional. A row
+            // nobody can name is a row the list shows as a type and an amount and
+            // nothing else, and `merchant` used to carry that weight for a charge
+            // alone -- see the note on TransactionMetaData for why it is gone.
+            'description' => ['required', 'max:255'],
 
             // No membership rule -- Currency is the type, so spatie derives it. Not
             // narrowed to the account's ccy, since accommodating a difference is

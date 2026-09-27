@@ -7,17 +7,24 @@ use App\Enums\TransactionType;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionClass;
+use ReflectionParameter;
 use Tests\TestCase;
 
 /**
  * Covers the type-specific fields a transaction carries in its meta bag.
  *
  * The transactions table is shared by cash, card and securities rows, so most of
- * what a row needs to mean lives here rather than in columns: a charge has a
- * merchant, a trade has a symbol and a price. That makes the rules conditional
- * on the transaction type, which is the part worth testing -- a merchant
- * required on a dividend, or a unit price required on a card payment, would both
- * reject rows a user is entitled to record.
+ * what a row needs to mean lives here rather than in columns: a trade has a
+ * symbol and a price, a charge a due date and a card-currency figure. That makes
+ * the rules conditional on the transaction type, which is the part worth testing
+ * -- a unit price required on a card payment, or a symbol required on a charge,
+ * would both reject rows a user is entitled to record.
+ *
+ * A charge's merchant is not among these fields and is deliberately untested: it
+ * duplicated `description`, which TransactionData now requires of every type, and
+ * nothing read it. There is a test below asserting the DTO does not declare it, so
+ * that a well-meaning reintroduction is a decision rather than an accident.
  *
  * The trade amount is derived here rather than supplied, because it is a
  * product of two numbers the client sends. See derivedAmount() for why the
@@ -39,33 +46,29 @@ class TransactionMetaDataTest extends TestCase
         )->fails();
     }
 
-    public function test_a_charge_requires_a_merchant(): void
-    {
-        $this->assertTrue($this->rejects('merchant', ['merchant' => null], ['type' => 'charge']));
-    }
-
     /**
-     * @return array<string, array{0: string}>
+     * The property names this DTO declares.
+     *
+     * @return list<string>
      */
-    public static function nonChargeTypeProvider(): array
+    private function declaredFields(): array
     {
-        return [
-            'expense' => ['expense'],
-            'income' => ['income'],
-            'payment' => ['payment'],
-            'buy' => ['buy'],
-            'sell' => ['sell'],
-            'dividend' => ['dividend'],
-        ];
+        $constructor = (new ReflectionClass(TransactionMetaData::class))->getConstructor();
+
+        return array_map(
+            fn (ReflectionParameter $parameter) => $parameter->getName(),
+            $constructor?->getParameters() ?? []
+        );
     }
 
-    #[DataProvider('nonChargeTypeProvider')]
-    public function test_no_other_type_requires_a_merchant(string $type): void
+    public function test_a_charge_no_longer_declares_a_merchant(): void
     {
-        $this->assertFalse(
-            $this->rejects('merchant', ['merchant' => null], ['type' => $type]),
-            "A {$type} should not be asked for a merchant."
-        );
+        // Removed because it duplicated `description` and nothing read it -- the shape
+        // fx_rate had before it went. Asserted rather than merely absent, in both the
+        // rules and the constructor, so putting it back has to be a decision someone
+        // makes on purpose rather than a stray default.
+        $this->assertArrayNotHasKey('merchant', TransactionMetaData::rules());
+        $this->assertNotContains('merchant', $this->declaredFields());
     }
 
     /**
@@ -144,8 +147,13 @@ class TransactionMetaDataTest extends TestCase
     {
         // The "required unless" lists are built from TransactionType, so a new
         // case is picked up automatically. This asserts they still agree with
-        // derivesAmount() and with the one type that needs a merchant, which is
-        // what would fail if someone ever hard-coded the lists again.
+        // derivesAmount(), which is what would fail if someone ever hard-coded the
+        // lists again.
+        //
+        // The card's due date and card-currency figure are the other conditional pair,
+        // and they are NOT required by these rules at all -- a due date is derived
+        // after validation has run, and whether a card_amount is needed depends on the
+        // account row, which a rule cannot see. See the note beside each.
         $rules = TransactionMetaData::rules();
 
         foreach (TransactionType::cases() as $type) {
@@ -159,12 +167,23 @@ class TransactionMetaDataTest extends TestCase
                 );
             }
 
-            $this->assertSame(
-                $type === TransactionType::Charge,
-                $this->rejects('merchant', ['merchant' => null], ['type' => $type->value]),
-                "merchant required for {$type->value} disagrees with it being a charge."
-            );
+            foreach (['due_date', 'card_amount'] as $field) {
+                $this->assertFalse(
+                    $this->rejects($field, [$field => null], ['type' => $type->value]),
+                    "{$field} is not required for any type, so {$type->value} must not demand it."
+                );
+            }
         }
+
+        // And the four keys that do exist, so a field cannot be added to the DTO
+        // without this test noticing that the loop above no longer covers it.
+        $this->assertSame(
+            ['symbol', 'quantity', 'unit_price', 'fees'],
+            array_values(array_intersect(
+                ['symbol', 'quantity', 'unit_price', 'fees'],
+                array_keys($rules)
+            ))
+        );
     }
 
     public function test_an_unrecognised_type_is_treated_as_needing_every_field(): void
@@ -173,7 +192,7 @@ class TransactionMetaDataTest extends TestCase
         // not know falls outside every list and therefore has to supply every
         // field. The enum rejects the type outright; this is the belt to that
         // braces, and it fails closed rather than open.
-        foreach (['symbol', 'quantity', 'unit_price', 'merchant'] as $field) {
+        foreach (['symbol', 'quantity', 'unit_price'] as $field) {
             $this->assertTrue(
                 $this->rejects($field, [$field => null], ['type' => 'banana']),
                 "An unknown type should have to supply {$field}."
@@ -213,7 +232,6 @@ class TransactionMetaDataTest extends TestCase
     private function meta(array $overrides = []): TransactionMetaData
     {
         return TransactionMetaData::from(array_merge([
-            'merchant' => null,
             'symbol' => '0700.HK',
             'quantity' => '100',
             'unit_price' => '150.50',

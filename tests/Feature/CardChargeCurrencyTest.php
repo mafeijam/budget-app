@@ -101,7 +101,7 @@ class CardChargeCurrencyTest extends TestCase
         // stale value is exactly what a client sends when the currency is changed back.
         $this->post('/transactions', $this->charge([
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasErrors([
             'meta_data.card_amount' => 'This charge is already in the card\'s currency (HKD), so it needs no separate amount.',
         ]);
@@ -126,7 +126,7 @@ class CardChargeCurrencyTest extends TestCase
     {
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasNoErrors();
 
         $transaction = Transaction::firstOrFail();
@@ -142,7 +142,7 @@ class CardChargeCurrencyTest extends TestCase
         // it would contribute nothing to the statement while looking recorded.
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '0.0000'],
+            'meta_data' => ['card_amount' => '0.0000'],
         ]))->assertSessionHasErrors('meta_data.card_amount');
 
         $this->assertDatabaseCount('transactions', 0);
@@ -152,7 +152,7 @@ class CardChargeCurrencyTest extends TestCase
     {
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.00001'],
+            'meta_data' => ['card_amount' => '780.00001'],
         ]))->assertSessionHasErrors('meta_data.card_amount');
     }
 
@@ -163,7 +163,7 @@ class CardChargeCurrencyTest extends TestCase
         // rounded by the database rather than refused.
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '999999999.9999'],
+            'meta_data' => ['card_amount' => '999999999.9999'],
         ]))->assertSessionHasErrors('meta_data.card_amount');
     }
 
@@ -210,7 +210,7 @@ class CardChargeCurrencyTest extends TestCase
     {
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasNoErrors();
 
         $statement = CardStatement::forAccount($this->card)->sole();
@@ -231,7 +231,7 @@ class CardChargeCurrencyTest extends TestCase
         $this->post('/transactions', $this->charge([
             'date' => '2026-01-05',
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Books', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasNoErrors();
 
         // 120 HKD + 780 HKD. Reading the raw amounts would give 220, which is 120 HKD
@@ -251,7 +251,7 @@ class CardChargeCurrencyTest extends TestCase
     {
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasNoErrors();
 
         $this->post("/accounts/{$this->card->id}/settle", [
@@ -295,7 +295,7 @@ class CardChargeCurrencyTest extends TestCase
     {
         $this->post('/transactions', $this->charge([
             'ccy' => 'USD',
-            'meta_data' => ['merchant' => 'Cafe', 'card_amount' => '780.0000'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]))->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn ($page) => $page
@@ -317,7 +317,7 @@ class CardChargeCurrencyTest extends TestCase
             'description' => 'Cafe',
             'amount' => '100.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ], $overrides);
     }
 }

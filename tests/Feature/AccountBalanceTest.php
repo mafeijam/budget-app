@@ -388,7 +388,7 @@ class AccountBalanceTest extends TestCase
 
     private function charge(string $date, string $amount, array $extra = [], string $status = 'posted'): void
     {
-        $this->chargeOn($this->card, $date, $amount, $extra + ['merchant' => 'Cafe'], $status);
+        $this->chargeOn($this->card, $date, $amount, $extra, $status);
     }
 
     private function chargeOn(

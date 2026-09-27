@@ -105,13 +105,12 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $transaction = Transaction::firstOrFail();
 
         $this->assertSame('120.0000', $transaction->amount);
-        $this->assertSame('Cafe', $transaction->meta_data['merchant']);
         // Closing on the 25th with a 15-day term, so a charge on 1 Jan is payable
         // on 9 Feb. The same figure TransactionDataTest derives.
         $this->assertSame('2026-02-09', $transaction->meta_data['due_date']);
@@ -278,7 +277,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
@@ -319,7 +318,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
@@ -343,7 +342,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         // The card needs a bank before it can be settled at all. update, not create:
@@ -407,7 +406,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->post('/transactions', [
@@ -469,7 +468,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
@@ -479,7 +478,6 @@ class TransactionControllerTest extends TestCase
             ->where('data.data.0.status', 'posted')
             // The derived date reaches the list through the bag, so the table can
             // show which statement a charge belongs to without a column to join on.
-            ->where('data.data.0.meta_data.merchant', 'Cafe')
             ->where('data.data.0.meta_data.due_date', '2026-02-09')
         );
     }
@@ -505,7 +503,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
@@ -686,12 +684,10 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $transaction = Transaction::with('meta')->firstOrFail();
-
-        $this->assertSame('Cafe', $transaction->meta_data['merchant']);
 
         $this->assertSame('2026-02-09', $transaction->meta_data['due_date']);
         $this->assertSame($this->card->id, $transaction->account->id);
@@ -721,7 +717,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $transaction = Transaction::firstOrFail();
@@ -806,19 +802,34 @@ class TransactionControllerTest extends TestCase
 
     public function test_update_replaces_the_bag_rather_than_accumulating_one(): void
     {
-        // The second write is where a bag goes wrong. Merging would leave a merchant
-        // from the previous save sitting beside the new one, and the row would read
+        // The second write is where a bag goes wrong. Merging would leave a field from
+        // the previous save sitting inside the new bag, and the row would read
         // complete while carrying two contradictory values.
+        //
+        // Asserted by what DISAPPEARS rather than what arrives, because a merge keeps
+        // the old key and a replace drops it. That needs a field a client may write,
+        // which for a charge leaves only card_amount: due_date is derived,
+        // paired_transaction_id is prohibited, and merchant is gone.
         $transaction = $this->storedCharge();
 
         $this->put("/transactions/{$transaction->id}", $this->chargePayload([
-            'meta_data' => ['merchant' => 'Different Shop'],
+            'ccy' => 'USD',
+            'amount' => '100.0000',
+            'meta_data' => ['card_amount' => '780.0000'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('780.0000', $transaction->fresh()->meta_data['card_amount']);
+
+        // Back to the card's own currency with no figure stated, which is legal on its
+        // own -- so the only thing that can remove the old one is the replace.
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'meta_data' => [],
         ]))->assertSessionHasNoErrors();
 
         $fresh = $transaction->fresh();
 
         $this->assertSame(1, Meta::where('model_type', Transaction::class)->count());
-        $this->assertSame('Different Shop', $fresh->meta_data['merchant']);
+        $this->assertArrayNotHasKey('card_amount', $fresh->meta_data->getArrayCopy());
         // Re-derived rather than carried over, so the period is right.
         $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
     }
@@ -839,12 +850,12 @@ class TransactionControllerTest extends TestCase
 
     public function test_update_deletes_the_bag_when_the_new_type_has_none(): void
     {
-        // The only way a transaction's bag goes away, and it took three rules to
+        // The only way a transaction's bag goes away, and it took two rules to
         // establish that. deriveDueDate() fills in a due date for anything with card
-        // terms; TransactionMetaData requires a merchant for a charge regardless of
-        // terms; and a charge is not a type anything else can be. So a charge always
-        // has a bag, and the only reachable empty bag is a row changed to a type that
-        // has none -- a charge reclassified as a cash expense, which is below.
+        // terms; and a charge is not a type anything else can be. So a charge on a
+        // card with terms always has a bag, and the only reachable empty bag is a row
+        // changed to a type that has none -- a charge reclassified as a cash expense,
+        // which is below.
         //
         // Which matters more than it looks. Left behind, the stale due_date keeps the
         // row in a card statement period, and the statement query groups on exactly
@@ -905,7 +916,7 @@ class TransactionControllerTest extends TestCase
         ]))->assertSessionHasErrors('amount');
 
         $this->assertSame('120.0000', $transaction->fresh()->amount);
-        $this->assertSame('Cafe', $transaction->fresh()->meta_data['merchant']);
+        $this->assertSame('2026-02-09', $transaction->fresh()->meta_data['due_date']);
     }
 
     // ---------------------------------------------------------------------
@@ -971,7 +982,7 @@ class TransactionControllerTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ], $overrides);
     }
 

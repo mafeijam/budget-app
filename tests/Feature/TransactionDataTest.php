@@ -230,6 +230,25 @@ class TransactionDataTest extends TestCase
         $this->assertFieldRejected(['description' => str_repeat('x', 256)], 'description');
     }
 
+    public function test_a_transaction_with_no_description_is_rejected(): void
+    {
+        // Required unconditionally, so one case covers every type -- there is no
+        // `required_unless` here to be right for one and wrong for another, which is
+        // the whole of what distinguishes it from the `merchant` rule it replaces.
+        // That rule was required for a charge alone and duplicated this field.
+        $this->assertFieldRejected(['description' => null], 'description');
+    }
+
+    public function test_a_blank_description_is_rejected(): void
+    {
+        // Whitespace counts as blank, and not because this rule says so: Laravel's
+        // `required` trims a string before deciding, so ' ' fails on the framework's
+        // own terms. Worth pinning, because a reader of `['required', 'max:255']`
+        // would not know that, and because it is the difference between a description
+        // and a space someone typed to get past the field.
+        $this->assertFieldRejected(['description' => ' '], 'description');
+    }
+
     public function test_ccy_must_be_a_currency_the_app_offers(): void
     {
         // Previously this was a length cap, so it rejected 'HK Dollar' and
@@ -670,7 +689,7 @@ class TransactionDataTest extends TestCase
             'type' => 'charge',
             'ccy' => 'HKD',
             'date' => '2026-01-01',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ]));
 
         $this->assertSame('2026-02-09', $data->meta_data->due_date);
@@ -678,19 +697,21 @@ class TransactionDataTest extends TestCase
 
     public function test_the_derived_due_date_joins_the_bag_rather_than_replacing_it(): void
     {
-        // The derivation writes into a bag the client already sent, so the
-        // fields that came with it have to still be there afterwards. A
-        // reconstruct-and-replace would quietly drop the merchant, and the row
+        // The derivation writes into a bag the client already sent, so the fields
+        // that came with it have to still be there afterwards. A
+        // reconstruct-and-replace would quietly drop the card_amount, and the row
         // would persist complete-looking and incomplete.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->cardId,
             'type' => 'charge',
-            'ccy' => 'HKD',
+            // USD on an HKD card, because a card-currency figure on a charge already
+            // denominated in the card's own is refused -- see guardCardAmount().
+            'ccy' => 'USD',
             'date' => '2026-01-01',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => ['card_amount' => '780.0000'],
         ]));
 
-        $this->assertSame('Cafe', $data->meta_data->merchant);
+        $this->assertSame('780.0000', $data->meta_data->card_amount);
 
         $this->assertSame('2026-02-09', $data->meta_data->due_date);
     }
@@ -721,7 +742,7 @@ class TransactionDataTest extends TestCase
             'type' => 'charge',
             'ccy' => 'HKD',
             'date' => '2026-01-26',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ]));
 
         $this->assertSame('2026-03-12', $data->meta_data->due_date);
@@ -734,7 +755,7 @@ class TransactionDataTest extends TestCase
             'type' => 'charge',
             'ccy' => 'HKD',
             'date' => '2026-01-25',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ]));
 
         $this->assertSame('2026-02-09', $data->meta_data->due_date);
@@ -759,7 +780,7 @@ class TransactionDataTest extends TestCase
             'account_id' => $card->id,
             'type' => 'charge',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ]));
 
         $this->assertNull($data->meta_data->due_date);
@@ -773,7 +794,7 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->cardId,
             'type' => 'charge',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe', 'due_date' => '2026-04-15'],
+            'meta_data' => ['due_date' => '2026-04-15'],
         ]));
 
         $this->assertSame('2026-04-15', $data->meta_data->due_date);
@@ -786,7 +807,7 @@ class TransactionDataTest extends TestCase
         foreach (['expense', 'income'] as $type) {
             $data = TransactionData::from($this->postRequest([
                 'type' => $type,
-                'meta_data' => ['merchant' => 'Cafe'],
+                'meta_data' => [],
             ]));
 
             $this->assertNotNull($data->meta_data, "A {$type} should still carry the bag it was sent.");
@@ -818,7 +839,7 @@ class TransactionDataTest extends TestCase
         $this->assertFieldRejected([
             'account_id' => $this->cardId,
             'type' => 'charge',
-            'meta_data' => ['merchant' => 'Cafe', 'due_date' => '15/02/2026'],
+            'meta_data' => ['due_date' => '15/02/2026'],
         ], 'meta_data.due_date');
     }
 
@@ -928,10 +949,10 @@ class TransactionDataTest extends TestCase
 
         $this->assertSame(['exists:accounts,id'], $rules['account_id']);
         $this->assertSame(['date_format:Y-m-d'], $rules['date']);
-        $this->assertSame(['max:255'], $rules['description']);
+        $this->assertSame(['required', 'max:255'], $rules['description']);
 
         // card_amount and due_date are not here: both are type-specific, so they are
-        // declared in TransactionMetaData with the merchant and the trade fields.
+        // declared in TransactionMetaData with the trade fields.
         $this->assertArrayNotHasKey('card_amount', $rules);
         $this->assertArrayNotHasKey('due_date', $rules);
 

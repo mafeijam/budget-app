@@ -46,7 +46,7 @@ const formatDate = useHongKongTime()
 
 // The same shape as the account list's Meta column, for the same reason: meta_data
 // arrives as the DTO, so every declared key is present whether or not this row uses
-// it -- which would print "merchant": null and four unused trade fields on a cash
+// it -- which would print "symbol": null and three unused trade fields on a cash
 // expense. Back to null rather than {} so a row with nothing stored reads as having
 // nothing.
 const stripNulls = meta => {
@@ -118,9 +118,9 @@ const columns = reactive([
   {
     name: 'metaData',
     label: 'Meta',
-    // Which keys appear is the whole content of this column. A card charge shows
-    // its merchant and the due date the server derived; a cash expense shows
-    // nothing at all.
+    // Which keys appear is the whole content of this column. A card charge shows the
+    // due date the server derived, or the card-currency figure it was given; a cash
+    // expense shows nothing at all.
     //
     // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is
     // the four-character string "null" and the cell would read as though the row

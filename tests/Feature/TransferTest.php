@@ -126,8 +126,8 @@ class TransferTest extends TestCase
 
     public function test_a_transfer_records_no_bag(): void
     {
-        // No statement period, no merchant, no trade fields. A bag here would be a
-        // row reading "{}" for no information.
+        // No statement period, no card-currency figure, no trade fields. A bag here
+        // would be a row reading "{}" for no information.
         $this->post('/transactions', $this->transferPayload())->assertSessionHasNoErrors();
 
         $this->assertSame(0, Meta::where('model_type', Transaction::class)->count());
@@ -157,7 +157,7 @@ class TransferTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ])->assertSessionHasNoErrors();
 
         $this->post('/transactions', $this->transferPayload(['amount' => '120.0000']))

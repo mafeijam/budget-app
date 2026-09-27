@@ -232,7 +232,7 @@ class CardStatementTest extends TestCase
         $headless = Account::create(['name' => 'NoCycle', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
         $headless->meta()->create(['meta' => ['term_days' => 15]]);
 
-        $this->chargeOn($headless, '2026-01-01', '120.0000', ['merchant' => 'Cafe']);
+        $this->chargeOn($headless, '2026-01-01', '120.0000', []);
 
         $this->assertSame(0, CardStatement::forAccount($headless)->count());
     }
@@ -240,7 +240,7 @@ class CardStatementTest extends TestCase
     public function test_one_cards_periods_are_not_another_cards(): void
     {
         $this->charge('2026-01-01', '120.0000');
-        $this->chargeOn($this->otherCard, '2026-01-01', '999.0000', ['merchant' => 'Cafe']);
+        $this->chargeOn($this->otherCard, '2026-01-01', '999.0000', []);
 
         $this->assertSame('120.0000', CardStatement::forAccount($this->card)->sole()->owed());
         $this->assertSame('999.0000', CardStatement::forAccount($this->otherCard)->sole()->owed());
@@ -299,7 +299,7 @@ class CardStatementTest extends TestCase
 
     private function charge(string $date, string $amount, string $status = 'posted'): void
     {
-        $this->chargeOn($this->card, $date, $amount, ['merchant' => 'Cafe'], $status);
+        $this->chargeOn($this->card, $date, $amount, [], $status);
     }
 
     private function chargeOn(

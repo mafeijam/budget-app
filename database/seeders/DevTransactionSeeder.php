@@ -96,20 +96,24 @@ class DevTransactionSeeder extends Seeder
             'status' => $row['status'],
         ]);
 
-        $meta = array_filter($row['meta'], fn ($value) => $value !== null);
+        $meta = $row['meta'];
 
-        if ($meta === []) {
-            return;
-        }
-
-        // A charge's due date derived from the account's own terms, exactly as
-        // TransactionData does it, rather than written into the fixture. Hardcoding
-        // it would let the fixture and the app disagree about which statement a
-        // charge belongs to, and the seeder would then be pinning a bug.
-        if ($type === TransactionType::Charge && ! array_key_exists('due_date', $row['meta'])) {
+        // Derived BEFORE the emptiness check, not after. A charge's due date is the
+        // thing that makes its bag non-empty, so filtering first and returning early
+        // would skip the derivation and leave a charge that no statement query groups
+        // by -- present in the card's transactions, absent from what the card owes,
+        // with nothing reporting the gap. Nothing else in the bag is load-bearing for
+        // that, so an early return here was only ever safe by accident.
+        if ($type === TransactionType::Charge && ! array_key_exists('due_date', $meta)) {
             $cycle = CardStatementCycle::fromMeta($account->meta?->meta);
 
             $meta['due_date'] = $cycle?->dueDateFor(Carbon::parse($row['date']))->toDateString();
+        }
+
+        $meta = array_filter($meta, fn ($value) => $value !== null);
+
+        if ($meta === []) {
+            return;
         }
 
         $transaction->meta()->create(['meta' => $meta]);
@@ -315,7 +319,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => $hkd,
                 'status' => $posted,
                 'category' => 'FOOD & DRINK',
-                'meta' => ['merchant' => 'Cafe'],
+                'meta' => [],
             ],
 
             // The one row whose amount is not what the card owes. The row is in USD
@@ -331,7 +335,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => Currency::Usd->value,
                 'status' => $posted,
                 'category' => 'OTHER',
-                'meta' => ['merchant' => 'US Store', 'card_amount' => '780.0000'],
+                'meta' => ['card_amount' => '780.0000'],
             ],
 
             // The due date is supplied rather than derived: a payment names the
@@ -366,7 +370,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => $hkd,
                 'status' => $posted,
                 'category' => 'HOME',
-                'meta' => ['merchant' => 'Grocery'],
+                'meta' => [],
             ],
 
             // ------------------------------------------------------------------
@@ -383,7 +387,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => $hkd,
                 'status' => $posted,
                 'category' => 'FOOD & DRINK',
-                'meta' => ['merchant' => 'Bakery'],
+                'meta' => [],
             ],
             [
                 'account' => 'Dev Card Everyday',
@@ -394,7 +398,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => $hkd,
                 'status' => $pending,
                 'category' => 'OTHER',
-                'meta' => ['merchant' => 'Pending Shop'],
+                'meta' => [],
             ],
         ];
     }

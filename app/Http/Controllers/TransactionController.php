@@ -189,7 +189,7 @@ class TransactionController extends Controller
 
     public function update(Transaction $transaction, TransactionData $data)
     {
-        // The bag is replaced rather than added, or a corrected merchant would sit
+        // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
         DB::beginTransaction();
 

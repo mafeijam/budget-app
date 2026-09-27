@@ -11,9 +11,15 @@ use Spatie\LaravelData\Data;
 /**
  * The fields only some transaction types have, in the meta bag so a new one needs
  * no migration. A DTO rather than an array because the rules are conditional on the
- * root `type` -- a charge has a merchant, a trade a symbol. Every rule is
- * `nullable` (the validator counts null as present) while `required_if` survives,
- * so a charge still has to name its merchant.
+ * root `type` -- a trade has a symbol, a charge a due date. Every rule is
+ * `nullable` (the validator counts null as present) while `required_if` survives.
+ *
+ * A charge's merchant is not among them. It duplicated `description`, which every
+ * transaction now has to supply and which says the same thing: the two were set to
+ * the same string in the fixtures, and nothing read the merchant -- not
+ * CardStatement, not AccountBalance, not settle(). Required, validated, displayed
+ * and wired to nothing, which is the shape fx_rate had before it was removed. See
+ * that commit for why that is a defect rather than a preference.
  */
 class TransactionMetaData extends Data
 {
@@ -27,10 +33,6 @@ class TransactionMetaData extends Data
     public const MAX_AMOUNT = '99999999.9999';
 
     public function __construct(
-        // Card charges: who was paid. A payment has none -- it settles a statement
-        // rather than buying anything.
-        public ?string $merchant = null,
-
         // Securities trades. Fractional shares need more places than money does,
         // hence eight against the amount's four.
         public ?string $symbol = null,
@@ -57,11 +59,6 @@ class TransactionMetaData extends Data
     public static function rules()
     {
         return [
-            'merchant' => [
-                'nullable',
-                'required_unless:type,'.self::typesExcept(TransactionType::Charge),
-                'max:255',
-            ],
             'symbol' => [
                 'nullable',
                 'required_unless:type,'.self::typesExcept(TransactionType::Buy, TransactionType::Sell),
@@ -134,7 +131,6 @@ class TransactionMetaData extends Data
     public static function attributes()
     {
         return [
-            'merchant' => 'merchant',
             'symbol' => 'symbol',
             'quantity' => 'quantity',
             'unit_price' => 'unit price',

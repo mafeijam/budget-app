@@ -329,7 +329,7 @@ class CardSettlementTest extends TestCase
         // the field outright -- so a client claiming a pair gets rejected rather than
         // a row that points at somebody else's transaction.
         $this->post('/transactions', $this->chargePayload([
-            'meta_data' => ['merchant' => 'Cafe', 'paired_transaction_id' => $first->id],
+            'meta_data' => ['paired_transaction_id' => $first->id],
         ]))->assertSessionHasErrors('meta_data.paired_transaction_id');
 
         // The charge keeps its own bag -- the due_date the card's terms gave it --
@@ -448,7 +448,7 @@ class CardSettlementTest extends TestCase
             'description' => 'Cafe',
             'amount' => '120.0000',
             'ccy' => 'HKD',
-            'meta_data' => ['merchant' => 'Cafe'],
+            'meta_data' => [],
         ], $overrides);
     }
 }

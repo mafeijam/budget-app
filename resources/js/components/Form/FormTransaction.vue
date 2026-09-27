@@ -125,17 +125,6 @@
         :error-message="form.errors.status"
       />
 
-      <template v-if="form.type === 'charge'">
-        <q-input
-          v-model="form.meta_data.merchant"
-          class="col-6"
-          label="Merchant"
-          filled
-          :error="!!form.errors['meta_data.merchant']"
-          :error-message="form.errors['meta_data.merchant']"
-        />
-      </template>
-
       <!--
         Only when the charge is in a currency the card is not. The card's statement is
         denominated in the card's own currency, so that is the figure the card will
@@ -217,7 +206,7 @@ const { target: row, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
 // A row with no bag hydrates meta_data to null, and the template binds
-// form.meta_data.merchant, so a null bag throws during render and takes the whole
+// form.meta_data.card_amount, so a null bag throws during render and takes the whole
 // form with it -- no fields at all, not just that one. Which rows those are: every
 // cash expense, income, dividend and payment, so most of what anyone would edit.
 //
