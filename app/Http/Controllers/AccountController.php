@@ -8,6 +8,7 @@ use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Transaction;
+use App\Support\AccountBalance;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,10 @@ class AccountController extends Controller
             ->paginate($r->input('per_page', 5));
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
+
+        // One query for the page rather than one per row. A securities account is
+        // absent from the map, which is how the column knows to leave it blank.
+        $balances = AccountBalance::forAccounts($accounts->getCollection());
 
         // Cash only, and including inactive: every other type is refused by
         // AccountData, and a closed bank still holds history a dividend lands in.
@@ -69,6 +74,7 @@ class AccountController extends Controller
             'data',
             'params',
             'meta',
+            'balances',
             'settlementOptions',
             'currencyOptions',
             'typeOptions',

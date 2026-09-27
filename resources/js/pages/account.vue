@@ -25,6 +25,14 @@
 <script setup>
 const props = defineProps({
   ...hasTableProps,
+
+  // Account id => a decimal string, computed server-side for the page. Declared
+  // rather than read off the page props because the column is built in this
+  // script, where only a declared prop is in scope.
+  balances: {
+    type: Object,
+    default: () => ({}),
+  },
 })
 
 const pagination = usePagination()
@@ -61,6 +69,17 @@ const columns = reactive([
     field: 'ccy',
     align: 'left',
     sortable: true,
+  },
+  {
+    name: 'balance',
+    label: 'Balance',
+    align: 'right',
+    // Not sortable: the list orders by whatever `sort` says against the accounts
+    // table, and a balance is a sum rather than a column on it. Blank for a
+    // securities account, which has none -- a brokerage holds positions, and
+    // '0.0000' there would read as an amount of money it does not hold.
+    field: row => props.balances[row.id] ?? '',
+    sortable: false,
   },
   {
     name: 'status',

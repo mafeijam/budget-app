@@ -67,6 +67,42 @@ enum TransactionType: string
     }
 
     /**
+     * Which way a row of this type moves its account's balance: 1, -1, or 0.
+     *
+     * The account type is a parameter because `amount` is a positive magnitude and
+     * its direction comes from the pair. On a cash account an expense is money
+     * leaving; on a card a charge is money owed to an issuer, which is the same
+     * direction of travel as a payment on a bank, so neither the type nor the
+     * account alone settles the sign.
+     *
+     * Zero means the row does not count, which is the answer for a securities
+     * account because it has no balance to move.
+     */
+    public function movesBalanceOn(AccountType $accountType): int
+    {
+        return match ($accountType) {
+            AccountType::Cash => match ($this) {
+                self::Income => 1,
+                self::Expense, self::Transfer => -1,
+
+                // Unreachable -- accountTypes() permits none of these on a cash
+                // account -- but named rather than defaulted, so a case added to
+                // the enum without a decision here fails loudly.
+                self::Charge, self::Payment, self::Buy, self::Sell, self::Dividend => 0,
+            },
+
+            AccountType::Card => match ($this) {
+                self::Charge => 1,
+                self::Payment => -1,
+
+                self::Expense, self::Income, self::Transfer, self::Buy, self::Sell, self::Dividend => 0,
+            },
+
+            AccountType::Security => 0,
+        };
+    }
+
+    /**
      * Whether the amount is computed from the trade meta rather than supplied.
      *
      * A dividend is not a trade: it arrives as a fixed cash amount with no
