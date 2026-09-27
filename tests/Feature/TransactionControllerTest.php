@@ -297,6 +297,73 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    /**
+     * A closed card still owes, so its periods still show.
+     *
+     * The account picker filters inactive accounts and the statement panel does not,
+     * because they answer different questions: a closed account is a poor choice for
+     * a *new* transaction, and a poor choice for nothing at all when there is money
+     * owed on it. settle() has never checked status, so filtering the panel hid a
+     * debt the user could neither see nor discharge -- the one thing the panel is
+     * for.
+     */
+    public function test_a_closed_card_is_still_shown_what_it_owes(): void
+    {
+        $this->card->update(['status' => 'inactive']);
+
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('statements', 1)
+            ->where('statements.0.card.id', $this->card->id)
+            ->has('statements.0.periods', 1)
+            ->where('statements.0.periods.0.owed', '120.0000')
+        );
+    }
+
+    public function test_a_card_with_nothing_outstanding_is_not_in_the_panel(): void
+    {
+        // The other half of the rule. Including every card regardless would fill the
+        // panel with settled periods, and a period owing nothing is not worth a row --
+        // the payment that closed it is in the transaction list below.
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Cafe',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['merchant' => 'Cafe'],
+        ])->assertSessionHasNoErrors();
+
+        // The card needs a bank before it can be settled at all. update, not create:
+        // setUp already gave it its terms, and the bag is one row per model.
+        $this->card->meta()->update(['meta' => [
+            'term_days' => 15,
+            'statement_day' => 25,
+            'settlement_account_id' => $this->bank->id,
+        ]]);
+
+        $this->post('/accounts/'.$this->card->id.'/settle', [
+            'due_date' => '2026-02-09',
+            'owed' => '120.0000',
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('statements', 0)
+        );
+    }
+
     public function test_index_names_the_bank_each_card_is_paid_from(): void
     {
         // So the settle dialog can say where the money leaves before the user

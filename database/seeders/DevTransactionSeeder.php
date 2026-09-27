@@ -349,10 +349,30 @@ class DevTransactionSeeder extends Seeder
                 'meta' => ['due_date' => '2026-02-09'],
             ],
 
+            // A second period, and the one the settle button hangs off. The 26th is
+            // past this card's 25th closing, so this charge opens a period of its own
+            // rather than joining the one above, and nothing pending sits in it --
+            // which is the third of the three things settleable() asks for, the other
+            // two being a bank to pay from and a period that is not already settled.
+            //
+            // 250.0000 left owing, so the dialog opens on a figure worth reading and
+            // Dev Card's balance moves off 0.0000 to -250.0000.
+            [
+                'account' => 'Dev Card',
+                'date' => '2026-02-26',
+                'type' => TransactionType::Charge->value,
+                'description' => 'Grocery',
+                'amount' => '250.0000',
+                'ccy' => $hkd,
+                'status' => $posted,
+                'category' => 'HOME',
+                'meta' => ['merchant' => 'Grocery'],
+            ],
+
             // ------------------------------------------------------------------
-            // Dev Card Everyday: one unpaid charge and one pending, so the Balance
-            // column has a card that owes something as well as one that does not.
-            // Leaves 45.2500.
+            // Dev Card Everyday: one unpaid charge and one pending, so the panel has
+            // a period it must refuse to settle as well as one it must allow. Leaves
+            // -45.2500.
             // ------------------------------------------------------------------
             [
                 'account' => 'Dev Card Everyday',

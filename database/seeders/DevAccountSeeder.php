@@ -140,7 +140,17 @@ class DevAccountSeeder extends Seeder
     }
 
     /**
-     * Securities account name => the cash account it settles through.
+     * Account name => the cash account it is paired with.
+     *
+     * The same field points in opposite directions depending on the type: a
+     * brokerage settles *into* a bank, a card is paid *from* one. Both are required
+     * or permitted on their own types and neither means anything for a cash account,
+     * so one map carries both rather than two maps that could disagree.
+     *
+     * A card is here so the settle button is reachable. It needs three things at
+     * once -- a card with an outstanding period, a period with nothing pending in
+     * it, and a bank to pay from -- and without this the whole flow, dialog and two
+     * rows and figure comparison included, was unreachable in a browser.
      *
      * @return array<string, string>
      */
@@ -149,6 +159,11 @@ class DevAccountSeeder extends Seeder
         return [
             'Dev Brokerage' => 'Dev Cash',
             'Dev Brokerage Alt' => 'Dev Cash Reserve',
+
+            // Deliberately not Dev Cash Reserve, which the other brokerage takes: two
+            // cards paying out of the same bank is the ordinary case, and pairing them
+            // across would make a bug in one look like a bug in the other.
+            'Dev Card' => 'Dev Cash',
         ];
     }
 }

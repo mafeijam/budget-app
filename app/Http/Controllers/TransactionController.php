@@ -85,9 +85,15 @@ class TransactionController extends Controller
         // What each card still owes. One query per card, not one for all: due_date
         // belongs to a single card's statements. The second consumer of a query the
         // due index no longer serves -- see create_transactions_table.
+        //
+        // Inactive cards included, unlike the account picker above. Closing a card
+        // does not unpaid it, and settle() has never checked status, so filtering
+        // them out here left a debt the user could neither see nor discharge -- the
+        // one thing the panel exists for. The picker keeps its filter because a
+        // closed account is a poor choice for a *new* transaction, which is the other
+        // question.
         $statements = Account::query()
             ->where('type', AccountType::Card->value)
-            ->where('status', 'active')
             ->orderBy('name')
             // with('meta') so settlementAccount() is not a second query per card; a
             // plain find() because the link is a JSON path Eloquent cannot join on.

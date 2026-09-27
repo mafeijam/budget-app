@@ -264,7 +264,7 @@ class DevTransactionSeederTest extends TestCase
         //
         //   Dev Cash         5000 - 1200.50 - 80 - 900        =  2819.5000
         //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded =     0.3000
-        //   Dev Card         -120 - 780 + 900                 =     0.0000
+        //   Dev Card         -120 - 780 + 900 - 250           =  -250.0000
         //   Dev Card Everyday -45.25, pending 99 excluded     =   -45.2500
         //
         // The card rows are negative because a balance is a position: a card owing
@@ -276,7 +276,7 @@ class DevTransactionSeederTest extends TestCase
         $expected = [
             'Dev Cash' => '2819.5000',
             'Dev Cash Reserve' => '0.3000',
-            'Dev Card' => '0.0000',
+            'Dev Card' => '-250.0000',
             'Dev Card Everyday' => '-45.2500',
         ];
 
@@ -290,7 +290,7 @@ class DevTransactionSeederTest extends TestCase
         }
     }
 
-    public function test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge(): void
+    public function test_one_card_has_a_settled_period_and_one_left_owing(): void
     {
         // Both figures from owed(), which is a period's debt and stays positive -- so
         // the 45.2500 here and the -45.2500 in the balance above are the same money.
@@ -298,12 +298,15 @@ class DevTransactionSeederTest extends TestCase
         // every card as its gross charges is visible side by side.
         $this->seed(DevTransactionSeeder::class);
 
-        $this->assertSame(
-            '0.0000',
-            CardStatement::forAccount(Account::where('name', 'Dev Card')->firstOrFail())
-                ->sole()
-                ->owed()
-        );
+        // Two periods on one card, which is the shape the panel needs: the first was
+        // paid off and the second was not, and outstandingFor() rejects a settled one.
+        // So Dev Card gives the statement two rows and the panel one, and a reader
+        // comparing the two sees the filter rather than a discrepancy.
+        $periods = CardStatement::forAccount(Account::where('name', 'Dev Card')->firstOrFail());
+
+        $this->assertCount(2, $periods);
+        $this->assertSame('0.0000', $periods->first()->owed(), 'The period that was paid off.');
+        $this->assertSame('250.0000', $periods->last()->owed(), 'The one left owing.');
 
         $this->assertSame(
             '45.2500',
