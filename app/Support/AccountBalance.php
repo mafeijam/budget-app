@@ -13,7 +13,14 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * What each account holds: money in a bank, money owed on a card.
+ * What each account is worth: money in a bank, a card's position against it.
+ *
+ * A net position, so every row in the column points the same way. A card owing
+ * 45.25 reads -45.25, because the user is down that much -- which is the opposite
+ * sign to CardStatement::owed(), and deliberately so. That is a period's debt and
+ * stays positive; this is an account's standing and is negative when it owes. The
+ * two are computed separately and the statement query carries its own CASE, so
+ * neither reads the other's answer.
  *
  * One query for a whole page of accounts rather than one per account. A balance is a
  * sum over every row its account has, so it cannot be read off the page the way

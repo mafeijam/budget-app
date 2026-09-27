@@ -69,14 +69,20 @@ enum TransactionType: string
     /**
      * Which way a row of this type moves its account's balance: 1, -1, or 0.
      *
-     * The account type is a parameter because `amount` is a positive magnitude and
-     * its direction comes from the pair. On a cash account an expense is money
-     * leaving; on a card a charge is money owed to an issuer, which is the same
-     * direction of travel as a payment on a bank, so neither the type nor the
-     * account alone settles the sign.
+     * The balance is the account's position, not the direction cash travels, and
+     * that is the whole of the sign: a cash account holds what is in it, and a card
+     * is a liability, so a charge is negative and a payment positive. A card paid
+     * beyond its charges therefore reads positive -- the card owes the user.
      *
-     * Zero means the row does not count, which is the answer for a securities
-     * account because it has no balance to move.
+     * A charge and a payment on a bank are opposites here and alike physically,
+     * which is why the account type is a parameter: `amount` is a positive
+     * magnitude, so it is the pair that says which way.
+     *
+     * Zero means the row does not count, the answer for a securities account
+     * because it has no balance to move.
+     *
+     * The opposite of CardStatement::owed(), which is a period's debt and stays
+     * positive. The statement query carries its own CASE and does not read this.
      */
     public function movesBalanceOn(AccountType $accountType): int
     {
@@ -92,8 +98,8 @@ enum TransactionType: string
             },
 
             AccountType::Card => match ($this) {
-                self::Charge => 1,
-                self::Payment => -1,
+                self::Charge => -1,
+                self::Payment => 1,
 
                 self::Expense, self::Income, self::Transfer, self::Buy, self::Sell, self::Dividend => 0,
             },

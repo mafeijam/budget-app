@@ -22,9 +22,11 @@ use Tests\TestCase;
  * The arithmetic is a signed sum over every row of one account, and `amount` is a
  * positive magnitude, so the sign has to come from somewhere. It comes from
  * TransactionType::movesBalanceOn(), which takes the account type as a parameter
- * because the two together decide the direction: an expense is money leaving a bank,
- * and a charge is money owed to an issuer, which travels the same way as a payment
- * on a bank and so carries the opposite sign to what the word suggests.
+ * because the two together decide the direction and neither does alone: an expense
+ * is money leaving a bank, and a charge is a debt the user has taken on, so both are
+ * negative -- a charge and a payment on a bank being opposites here where physically
+ * they are alike. A card that owes reads negative, and one paid beyond its charges
+ * reads positive, because the balance is a position rather than a direction of travel.
  *
  * The two questions that are not arithmetic are the interesting ones. A securities
  * account holds positions rather than money, so it reports no balance at all rather
@@ -150,12 +152,15 @@ class AccountBalanceTest extends TestCase
     // A card
     // ---------------------------------------------------------------------
 
-    public function test_an_unpaid_card_reads_as_the_sum_of_its_charges(): void
+    public function test_an_unpaid_card_reads_negative(): void
     {
+        // Negative because the user is down what they have spent and not yet paid,
+        // not because the money left an account they can see. It did not; it is on
+        // the card's statement.
         $this->charge('2026-01-01', '120.0000');
         $this->charge('2026-01-20', '80.5000');
 
-        $this->assertSame('200.5000', $this->balanceOf($this->card));
+        $this->assertSame('-200.5000', $this->balanceOf($this->card));
     }
 
     public function test_a_payment_clears_what_a_charge_owed(): void
@@ -174,7 +179,7 @@ class AccountBalanceTest extends TestCase
         // report this card as owing 100 when it owes 780.
         $this->charge('2026-01-01', '100.0000', ['card_amount' => '780.0000']);
 
-        $this->assertSame('780.0000', $this->balanceOf($this->card));
+        $this->assertSame('-780.0000', $this->balanceOf($this->card));
     }
 
     public function test_a_charge_with_no_bag_is_still_owed(): void
@@ -185,7 +190,7 @@ class AccountBalanceTest extends TestCase
         $bare = $this->account('Bare Card', 'card');
         $this->chargeOn($bare, '2026-01-01', '90.0000', bag: []);
 
-        $this->assertSame('90.0000', $this->balanceOf($bare));
+        $this->assertSame('-90.0000', $this->balanceOf($bare));
     }
 
     public function test_a_pending_charge_is_not_owed_yet(): void
@@ -195,21 +200,32 @@ class AccountBalanceTest extends TestCase
         $this->assertSame('0.0000', $this->balanceOf($this->card));
     }
 
-    public function test_an_overpaid_card_reads_negative(): void
+    public function test_an_overpaid_card_reads_positive(): void
     {
-        // Signed rather than clamped: a credit left on a card is a real state, and a
-        // figure that stopped at zero would report it as a card that owes nothing.
+        // The other face of the same rule: a card paid beyond its charges is a card
+        // that owes the user, so the user is up. Positive, and still not clamped --
+        // a figure that stopped at zero would report a credit as a card owing
+        // nothing, which is the opposite of what happened.
+        //
+        // CardStatement::owed() calls the same state -50.0000, because a period's
+        // debt and an account's position are different questions.
         $this->charge('2026-01-01', '100.0000');
         $this->row($this->card, 'payment', '150.0000', ['due_date' => '2026-02-09']);
 
-        $this->assertSame('-50.0000', $this->balanceOf($this->card));
+        $this->assertSame('50.0000', $this->balanceOf($this->card));
     }
 
-    public function test_a_card_total_agrees_with_the_statements_it_is_made_of(): void
+    public function test_a_card_balance_is_what_the_statements_owe_negated(): void
     {
-        // The two numbers answer the same question at different granularity, and a card
-        // table disagreeing with the panel beneath it would be worse than either. The
-        // settled period nets to zero; the outstanding one does not.
+        // The same money, counted from two sides, so the two figures must agree in
+        // magnitude. They do not agree in sign, and that is not a disagreement: a
+        // period's owed is a debt and reads positive, a card's balance is a position
+        // and reads negative while it owes. Each is computed by its own query, which
+        // is the only reason they can differ at all.
+        //
+        // A card table that disagreed with the panel beneath it in magnitude would be
+        // worse than either sign. The settled period nets to zero; the outstanding
+        // one does not.
         $this->charge('2026-01-01', '120.0000');
         $this->charge('2026-01-20', '80.5000');
         $this->row($this->card, 'payment', '120.0000', ['due_date' => '2026-02-09']);
@@ -225,7 +241,11 @@ class AccountBalanceTest extends TestCase
             );
 
         $this->assertSame('120.5000', $fromStatements);
-        $this->assertSame($fromStatements, $this->balanceOf($this->card));
+
+        $this->assertSame(
+            BigDecimal::of($fromStatements)->negated()->toString(),
+            $this->balanceOf($this->card)
+        );
     }
 
     // ---------------------------------------------------------------------
@@ -291,8 +311,8 @@ class AccountBalanceTest extends TestCase
         $this->assertSame(-1, TransactionType::Expense->movesBalanceOn(AccountType::Cash));
         $this->assertSame(-1, TransactionType::Transfer->movesBalanceOn(AccountType::Cash));
 
-        $this->assertSame(1, TransactionType::Charge->movesBalanceOn(AccountType::Card));
-        $this->assertSame(-1, TransactionType::Payment->movesBalanceOn(AccountType::Card));
+        $this->assertSame(-1, TransactionType::Charge->movesBalanceOn(AccountType::Card));
+        $this->assertSame(1, TransactionType::Payment->movesBalanceOn(AccountType::Card));
     }
 
     public function test_a_type_says_zero_for_an_account_it_cannot_be_recorded_on(): void
@@ -328,7 +348,7 @@ class AccountBalanceTest extends TestCase
             // than zero -- which is the same distinction the column makes.
             ->has('balances', 2)
             ->where('balances.'.$this->bank->id, '379.5000')
-            ->where('balances.'.$this->card->id, '80.0000')
+            ->where('balances.'.$this->card->id, '-80.0000')
             ->missing('balances.'.$this->brokerage->id)
         );
     }

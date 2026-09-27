@@ -262,17 +262,22 @@ class DevTransactionSeederTest extends TestCase
         // Asserted, not discovered. A fixture that took whatever the balance query
         // said would be the query's own evidence.
         //
-        //   Dev Cash         5000 - 1200.50 - 80 - 900        = 2819.5000
-        //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded =    0.3000
-        //   Dev Card         120 + 780 - 900                   =    0.0000
-        //   Dev Card Everyday 45.25, pending 99 excluded       =   45.2500
+        //   Dev Cash         5000 - 1200.50 - 80 - 900        =  2819.5000
+        //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded =     0.3000
+        //   Dev Card         -120 - 780 + 900                 =     0.0000
+        //   Dev Card Everyday -45.25, pending 99 excluded     =   -45.2500
+        //
+        // The card rows are negative because a balance is a position: a card owing
+        // 45.25 leaves the user down 45.25. The statement period for the same card
+        // reads owed 45.2500, and both are right -- see
+        // test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge.
         $this->seed(DevTransactionSeeder::class);
 
         $expected = [
             'Dev Cash' => '2819.5000',
             'Dev Cash Reserve' => '0.3000',
             'Dev Card' => '0.0000',
-            'Dev Card Everyday' => '45.2500',
+            'Dev Card Everyday' => '-45.2500',
         ];
 
         $accounts = Account::whereIn('name', array_keys($expected))->get();
@@ -287,8 +292,10 @@ class DevTransactionSeederTest extends TestCase
 
     public function test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge(): void
     {
-        // Both figures in the same column, so a build that renders every card as 0.0000
-        // or every card as its gross charges is visible side by side.
+        // Both figures from owed(), which is a period's debt and stays positive -- so
+        // the 45.2500 here and the -45.2500 in the balance above are the same money.
+        // Two figures in one column, so a build rendering every card as 0.0000 or
+        // every card as its gross charges is visible side by side.
         $this->seed(DevTransactionSeeder::class);
 
         $this->assertSame(
