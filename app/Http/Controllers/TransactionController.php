@@ -45,7 +45,6 @@ class TransactionController extends Controller
             ]);
 
         $categories = Category::all()->map(fn ($category) => [
-            // ...$category->toArray(),
             'label' => $category->name,
             'value' => $category->id,
         ]);

@@ -78,7 +78,6 @@ class AccountController extends Controller
 
     public function store(AccountData $data)
     {
-        // return AccountData::getValidationRules(request()->all());
         DB::beginTransaction();
 
         try {
@@ -120,8 +119,6 @@ class AccountController extends Controller
                     ['id' => $account->meta?->id],
                     ['meta' => $meta]
                 );
-
-                // $account->meta?->update(['meta' => $meta]);
             } else {
                 $account->meta()->delete();
             }
