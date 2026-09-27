@@ -293,13 +293,19 @@ watch(
 // period and the panel is the only place that knows which one. Reseeded on every open
 // rather than the first, since the dialog is reusable and a date left over from settling
 // one statement would silently date the next.
+//
+// The period and the bank arrive as arguments rather than being read off the props they
+// also fill: the panel assigns them in the same tick it calls this, and a render -- so a
+// props update -- is queued behind that. Read here they would be the previous open's, and
+// on the first open after a page load there is no previous one: an empty date, an empty
+// picker and a disabled confirm.
 defineExpose({
-  show: () => {
+  show: (period, bank) => {
     // The statement's own due date, not today: see paidOn above. And the card's own
     // bank, rather than whatever was chosen last time: settling one statement from
     // another account changed the card, so the next one starts from where that left off.
-    paidOn.value = props.period?.due_date ?? ''
-    bankId.value = props.bank?.id ?? null
+    paidOn.value = period?.due_date ?? ''
+    bankId.value = bank?.id ?? null
     error.value = null
     fieldError.value = null
     bankError.value = null

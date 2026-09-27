@@ -149,8 +149,16 @@ const blockedReason = (group, period) => {
 const dialog = ref(null)
 const chosen = ref(null)
 
+// The period and the bank go to show() as well as onto `chosen`, because chosen
+// reaches the dialog as props and a render is queued rather than run: a show()
+// reading props in the same tick as this assignment sees the previous open's
+// values, and the first after a page load sees none at all -- so the dialog would
+// open on an empty date and an empty picker, with its confirm disabled. The
+// caller has both values already, so it passes them.
 const openSettle = (group, period) => {
-  chosen.value = { group, period, bank: props.banks[group.card.id] ?? null }
-  dialog.value?.show()
+  const bank = props.banks[group.card.id] ?? null
+
+  chosen.value = { group, period, bank }
+  dialog.value?.show(period, bank)
 }
 </script>
