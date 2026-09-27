@@ -9,25 +9,17 @@ use InvalidArgumentException;
 use Spatie\LaravelData\Data;
 
 /**
- * The fields only some transaction types have, in the JSON meta bag so that a new
- * one needs no migration.
- *
- * A DTO rather than a plain array because the rules are conditional on the root
- * `type`: a charge has a merchant, a trade a symbol and a price, and neither is
- * meaningful for the other.
- *
- * Every rule is `nullable`, because the validator counts null as present and both
- * a blank number field and TransactionData::empty() produce one -- without it the
- * type and range rules would fire on every field of every row that does not use
- * them. `required_if` is implicit and survives, so a charge still has to name its
- * merchant.
+ * The fields only some transaction types have, in the meta bag so a new one needs
+ * no migration. A DTO rather than an array because the rules are conditional on the
+ * root `type` -- a charge has a merchant, a trade a symbol. Every rule is
+ * `nullable` (the validator counts null as present) while `required_if` survives,
+ * so a charge still has to name its merchant.
  */
 class TransactionMetaData extends Data
 {
     /**
-     * The amount column's scale, decimal(12,4). Referenced by the arithmetic below
-     * rather than repeated as a literal, so a derived amount cannot drift from
-     * what the column can store.
+     * The amount column's scale, decimal(12,4). Referenced rather than repeated as a
+     * literal, so a derived amount cannot drift from what the column can store.
      */
     public const AMOUNT_SCALE = 4;
 
@@ -46,13 +38,10 @@ class TransactionMetaData extends Data
         public ?string $unit_price = null,
         public ?string $fees = null,
 
-        // The statement period a charge rolls up into, and so the day it is
-        // payable. Derived for a charge and supplied by a payment, which names
-        // the statement it settles. NULL for every other type, and a card row
-        // with no statement day.
-        //
-        // A column while MySQL could index it, and a bag now that it cannot --
-        // see create_transactions_table for the reasoning.
+        // The statement period a charge rolls up into, and so the day it is payable.
+        // Derived for a charge, supplied by a payment naming the statement it
+        // settles, NULL otherwise. A column while MySQL could index it, a bag now
+        // that it cannot -- see create_transactions_table.
         public ?string $due_date = null,
 
         // A charge in a currency other than its card's, as that amount in the card's
@@ -61,8 +50,7 @@ class TransactionMetaData extends Data
         public ?string $card_amount = null,
 
         // The other half of a card settlement, which is two rows and not one. Written
-        // by TransactionController::settle() and by nothing else; see the rule below
-        // for why that distinction is the whole point of the field.
+        // by TransactionController::settle() and nothing else -- see the rule below.
         public ?int $paired_transaction_id = null,
     ) {}
 
@@ -93,31 +81,19 @@ class TransactionMetaData extends Data
             ],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
 
-            // `nullable` first, for the same reason as every other key here: a
-            // blank field and TransactionData's derivations both produce a null,
-            // and the validator counts null as present.
-            //
-            // Not required for a charge even though the constructor always fills
-            // it in, because it is filled in after validation has run. A charge
-            // on a card with no statement day has none, and requiring it would
-            // reject a row the schema permits.
+            // `nullable` first, as on every other key here. Not required for a charge
+            // even though the constructor always fills it in, because it is filled in
+            // after validation has run -- and a card with no statement day has none.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
-            // Not `required_if`. Whether this is needed depends on the charge's
-            // currency against the *account row's* currency, which a rule cannot see
-            // for the same reason guardAccountType() is a constructor check rather
-            // than a rule. What this does is bound it: a figure that is zero, or
-            // carries more than four decimal places, or is past the amount column's
-            // width, is refused here rather than summed into a statement and rounded
-            // by the database.
-            //
-            // `gt:0` rather than `min:0` because a zero here is a missing figure
-            // wearing a value: it would contribute nothing to the statement while
-            // looking recorded.
-            //
-            // The ceiling is the amount column's, and for the same reason -- this
-            // figure is summed into what the card owes, so it has to fit where an
-            // amount fits.
+            // Not `required_if`: whether this is needed depends on the charge's
+            // currency against the *account row's*, which a rule cannot see for the
+            // same reason guardAccountType() is a constructor check. What this does is
+            // bound the figure, so a value that is zero, over-scaled or past the
+            // column's width is refused here rather than summed into a statement and
+            // rounded by the database. Hence `gt:0` rather than `min:0` -- a zero is
+            // a missing figure wearing a value -- and the amount column's ceiling,
+            // since this is summed into what the card owes.
             'card_amount' => [
                 'nullable',
                 'decimal:0,'.self::AMOUNT_SCALE,
@@ -125,20 +101,15 @@ class TransactionMetaData extends Data
                 'max:'.self::MAX_AMOUNT,
             ],
 
-            // The only rule in this DTO that is not `nullable`, and the only one
-            // that is a flat prohibition rather than something conditional on the
-            // root `type`. Both are the point.
+            // The only rule here that is not `nullable`, and the only flat prohibition
+            // rather than one conditional on the root `type`. Both are the point.
             //
             // A card settlement is two rows that must not come apart, and this is the
-            // link between them. Nothing else may write it: settle() creates the two
-            // rows and then fills this in itself, writing the bag directly rather
-            // than through the DTO, because the ids do not exist until both rows do.
-            //
-            // So the field is prohibited on any payload. Permitted on one type and
-            // forbidden on the rest would not do -- a client claiming `type=transfer`
-            // and naming somebody else's transaction would pass every other rule, and
-            // a forged pair would refuse deletion of an unrelated row. Prohibited
-            // outright means the only writer is the one place that means it.
+            // link between them. Only settle() may write it, because it creates both
+            // rows and the ids do not exist until it has. Prohibited outright rather
+            // than permitted on one type: a client claiming `type=transfer` and naming
+            // somebody else's transaction would pass every other rule, and a forged
+            // pair would refuse deletion of an unrelated row.
             'paired_transaction_id' => ['prohibited'],
         ];
     }
@@ -146,13 +117,11 @@ class TransactionMetaData extends Data
     /**
      * Every transaction type except the ones named, as a comma-separated list.
      *
-     * There is no `required_if_in` in this Laravel: it is silently accepted and
-     * then skipped, so a trade could be recorded with no symbol and no quantity
-     * and nothing would complain.
-     *
-     * Deriving the list also means a new case is reflected automatically, and an
-     * unrecognised type falls outside it and so has the field required -- the right
-     * way round, since the enum rejects the bad type in any case.
+     * There is no `required_if_in` in this Laravel: it is silently accepted and then
+     * skipped, so a trade could be recorded with no symbol and nothing would
+     * complain. Deriving the list also means an unrecognised type falls outside it
+     * and so has the field required -- the right way round, since the enum rejects
+     * the bad type in any case.
      */
     private static function typesExcept(TransactionType ...$permitted): string
     {
@@ -180,23 +149,19 @@ class TransactionMetaData extends Data
      * The amount implied by a trade's quantity, price and fee.
      *
      * Null for every type that does not derive: a dividend is recorded on a
-     * securities account but its amount is simply stated, so deriving one from
-     * whatever symbol the account happens to hold would be nonsense.
+     * securities account but its amount is simply stated.
      *
-     * The fee is folded in net rather than left as a transaction of its own, since
-     * it is part of this trade and never appears in a balance alone. A buy costs
-     * price x quantity + fees and a sell yields price x quantity - fees; in both
-     * cases the magnitude that actually moves the account. Adding the fee to a sell
-     * would overstate the balance by exactly the brokerage.
+     * The fee is folded in net rather than left as a transaction of its own, since it
+     * is part of this trade and never appears in a balance alone. A buy costs
+     * price x quantity + fees, a sell yields price x quantity - fees; adding the fee
+     * to a sell would overstate the balance by exactly the brokerage.
      *
-     * Amount is a positive magnitude whose direction comes from the account type
-     * and the transaction type, so a negative result is a data error -- usually a
-     * fee entered against the wrong side. Zero is fine: a sell netting to nothing
+     * Amount is a positive magnitude, so a negative result is a data error -- usually
+     * a fee entered against the wrong side. Zero is fine: a sell netting to nothing
      * closed with nothing left to deposit.
      *
      * Decimal, not float: Float64 has no decimal semantics, so it survives these
-     * magnitudes by luck rather than by guarantee, and a wider quantity or a
-     * change of scale would break it silently.
+     * magnitudes by luck, and a wider quantity would break it silently.
      */
     public function derivedAmount(TransactionType $type): ?string
     {

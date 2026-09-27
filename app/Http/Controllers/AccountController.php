@@ -28,46 +28,23 @@ class AccountController extends Controller
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
 
-        // The settlement picker's options. Filtered to cash because every other
-        // type is refused by AccountData, so offering one would offer a choice
-        // that cannot be submitted. Inactive accounts are kept: status is
-        // orthogonal to settlement and a closed bank still holds the history a
-        // dividend arrives into.
-        //
-        // Deliberately not the paginated result set. The table above pages at 5,
-        // so reusing it would make every bank off the first page unselectable
-        // while the form still looked complete. Cash accounts are one-per-bank
-        // and few, so an unbounded list is the right trade against a picker that
-        // silently cannot reach a valid target.
+        // Cash only, and including inactive: every other type is refused by
+        // AccountData, and a closed bank still holds history a dividend lands in.
+        // Not the paginated set above, which would strand banks off page one.
         $settlementOptions = Account::query()
             ->where('type', AccountType::Cash->value)
             ->orderBy('name')
             ->get(['id', 'name', 'ccy'])
-            // ccy in the label because AccountData now refuses a brokerage that
-            // settles into a differently-denominated bank, so the label is what
-            // makes an incompatible target recognisable before the form refuses
-            // it. Were the label just the name, a user would pick a bank, submit,
-            // and be told the pairing is wrong without being told which two
-            // currencies clashed.
+            // ccy in the label so an incompatible bank is recognisable before the
+            // form refuses it.
             ->map(fn (Account $account) => [
                 'label' => "{$account->name} ({$account->ccy})",
                 'value' => $account->id,
             ])
             ->values();
 
-        // The currency dropdown's options.
-        //
-        // Sent from the server rather than written into FormAccount.vue as a
-        // literal, which is what the type and status pickers used to do. The
-        // AccountType docblock claims that hardcoding "can no longer drift ahead
-        // of the server" -- true, because the server rejects what the browser
-        // offers -- but it can still drift *behind*: adding a case to the enum
-        // would leave the dropdown short by one with nothing failing. Deriving
-        // the list here removes the second failure mode as well.
-        //
-        // In enum declaration order rather than alphabetical, so the two
-        // currencies the user is most likely to want lead and adding a case
-        // lands where it was written.
+        // Derived, not hardcoded in FormAccount.vue, which would drift *behind* the
+        // enum. Enum order, so the likeliest currencies lead.
         $currencyOptions = collect(Currency::cases())
             ->map(fn (Currency $currency) => [
                 'label' => $currency->label(),
@@ -75,18 +52,7 @@ class AccountController extends Controller
             ])
             ->values();
 
-        // The type and status pickers' options, for the same reason and by the
-        // same route. These two were the last option lists still written into the
-        // template, which left a case added to either enum accepted by the server
-        // and unoffered by the form -- a brokerage type the user could not
-        // create, with no test failing anywhere.
-        //
-        // Plain value arrays, not {label, value} pairs like currencyOptions,
-        // because these enums have no separate display name: the value is what
-        // the user reads. Adding a label() to either enum is a visible change to
-        // the form's wording, and belongs in a commit about wording rather than
-        // one about staying in sync. The two shapes differ because the data
-        // differs.
+        // Plain values, not {label, value} pairs: neither enum has a display name.
         $typeOptions = array_column(AccountType::cases(), 'value');
 
         $statusOptions = array_column(AccountStatus::cases(), 'value');
@@ -130,12 +96,8 @@ class AccountController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Rolling back is right -- these are multi-write operations and a
-            // half-applied account is worse than none. Discarding the exception
-            // is not: every failure below looked identical from the outside, a
-            // 302 reading "error db...", with no record of what actually went
-            // wrong. report() sends it to the exception handler, which logs it
-            // like any other error. The user-facing response is unchanged.
+            // Roll back but do not discard: every failure would otherwise look alike
+            // from the outside. See AccountErrorReportingTest.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -168,8 +130,7 @@ class AccountController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // See store() above. report() logs the cause; the generic flash is
-            // kept so the existing frontend behaviour is untouched.
+            // See store() above: report() logs the cause, the flash is unchanged.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -181,15 +142,8 @@ class AccountController extends Controller
 
     public function destroy(Account $account)
     {
-        // The transactions_account_id_foreign refuses this delete, and while the
-        // table was empty the refusal could never fire -- so there was no guard for
-        // it and the first row written would turn deleting an account with history
-        // into a QueryException and a 500, from a button on the account list.
-        //
-        // Checked before the settlement guard because it is the more fundamental
-        // one: a bank with a client's spending in it is not deletable at all,
-        // whichever way the money is described, and naming only the settlement link
-        // would report an account with two problems as having one.
+        // The foreign key would refuse this, but only now the table has rows. Checked
+        // first: an account with two faults should not report only one.
         $transactions = Transaction::where('account_id', $account->id)->count();
 
         if ($transactions > 0) {
@@ -201,17 +155,10 @@ class AccountController extends Controller
             ));
         }
 
-        // The referential check the foreign key used to do, done here because the
-        // link is in the meta bag and a JSON value carries no constraint. Refuse
-        // rather than cascade or clear: cascading would delete a user's securities
-        // account because they tidied up a dormant bank, and clearing would
-        // manufacture the exact row AccountMetaData prohibits. Leaving it dangling
-        // is the one outcome that is not a lie, so it is the one taken.
-        //
-        // JSON_UNQUOTE because the value may be stored as a number or as the
-        // string a select emits, and MySQL does not consider those equal. A
-        // securities account is never its own settlement target, so no
-        // self-exclusion is needed.
+        // The foreign key's referential check, done here because a JSON value carries
+        // no constraint. Refuse rather than cascade or clear. JSON_UNQUOTE because
+        // the value may be a number or the string a select emits, which MySQL does
+        // not consider equal.
         $settledInto = Account::query()
             ->whereHas('meta', fn ($query) => $query->whereRaw(
                 'JSON_UNQUOTE(JSON_EXTRACT(meta.meta, \'$.settlement_account_id\')) = ?',

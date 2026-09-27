@@ -30,14 +30,8 @@ class TransactionController extends Controller
             'path' => '/transactions',
         ];
 
-        // type and ccy ride along with each option because the form needs both and
-        // cannot get them anywhere else. `type` is what lets the type picker offer
-        // only what the chosen account accepts, which is the reason typeOptions is
-        // keyed by account type at all; `ccy` is what a transaction defaults to,
-        // which is right nearly every time.
-        //
-        // Not the paginated table set: a card on page two must still be selectable
-        // while the form still looks complete.
+        // type and ccy ride along: the form needs both and has no other source.
+        // Not the paginated set -- a card on page two must stay selectable.
         $accounts = Account::query()
             ->with('meta')
             ->where('status', 'active')
@@ -57,8 +51,7 @@ class TransactionController extends Controller
         ]);
 
         $transactions = Transaction::query()
-            // `account` is here for account_name, which the accessor reads. Without it
-            // the list would run a query per row to name the account it already holds.
+            // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
             ->paginate($r->input('per_page', 5));
@@ -67,18 +60,9 @@ class TransactionController extends Controller
 
         $options = compact('accounts', 'categories');
 
-        // Which transaction types each account type accepts, keyed by it. Not a flat
-        // list: the pairing is what makes a type legal at all, and offering "buy" on
-        // a savings account means the user fills in a trade, submits, and is told by
-        // TransactionData::guardAccountType() that it was never going to work. The
-        // refusal is correct and the picker is still wrong.
-        //
-        // Derived from TransactionType::accountTypes() through isAllowedFor(), which
-        // is the single place the pairing is defined -- so a type added to the enum
-        // appears here and a type moved between account types moves with it. Sending
-        // it grouped rather than making the browser hold the rule is the same
-        // argument as the currency list on AccountController: the server is what
-        // decides, and a copy in the template can only drift.
+        // The pairing is what makes a type legal, so a flat list would offer "buy" on
+        // a savings account only to refuse it. Derived from accountTypes(), the one
+        // place that pairing lives.
         $typeOptions = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
                 $accountType->value => collect(TransactionType::cases())
@@ -89,10 +73,7 @@ class TransactionController extends Controller
             ])
             ->all();
 
-        // Status and currency, same reason and same route as the account page's
-        // equivalent lists. Plain values for status because it has no separate
-        // display name; {label, value} for currency because Currency::label() is a
-        // real thing that differs from the code.
+        // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
         $currencyOptions = collect(Currency::cases())
@@ -102,26 +83,15 @@ class TransactionController extends Controller
             ])
             ->values();
 
-        // What each card still owes, period by period.
-        //
-        // The second consumer of the query transactions_account_due_index used to
-        // serve and no longer has an index for -- see create_transactions_table and
-        // App\Support\CardStatement. One query per card rather than one for all of
-        // them: grouping is by due_date, which is a fact about a single card's
-        // statements, and merging the accounts first would total a figure across
-        // cards that are separately owed and separately paid.
-        //
-        // Outstanding periods only, so a card with years of settled history does not
-        // push the ones needing attention down the page. The payments that closed
-        // them are in the list below.
+        // What each card still owes. One query per card, not one for all: due_date
+        // belongs to a single card's statements. The second consumer of a query the
+        // due index no longer serves -- see create_transactions_table.
         $statements = Account::query()
             ->where('type', AccountType::Card->value)
             ->where('status', 'active')
             ->orderBy('name')
-            // with('meta') so the statement query does not re-read each card's bag, and
-            // so settlementAccount() is not a second query per card. It is a plain
-            // find() rather than a belongsTo because the link is a JSON path and
-            // Eloquent cannot join on one -- see Account::settlementAccount().
+            // with('meta') so settlementAccount() is not a second query per card; a
+            // plain find() because the link is a JSON path Eloquent cannot join on.
             ->with('meta')
             ->get()
             ->map(fn (Account $card) => [
@@ -146,13 +116,8 @@ class TransactionController extends Controller
             ->filter(fn (array $group) => $group['periods'] !== [])
             ->values();
 
-        // Which bank each of those cards is paid from, keyed by card id.
-        //
-        // Sent so the settle dialog can name the account the money leaves *before*
-        // the user commits, and so a card that has none shows a disabled control with
-        // a reason rather than a button that fails on click. A second lookup of what
-        // settle() will check, which is the duplication the cost is worth: the
-        // alternative is the user finding out from an error message.
+        // So the settle dialog can name the bank *before* the user commits, and a
+        // card with none shows a disabled control rather than a button that fails.
         $cardBanks = Account::query()
             ->where('type', AccountType::Card->value)
             ->with('meta')
@@ -186,20 +151,15 @@ class TransactionController extends Controller
 
     public function store(TransactionData $data)
     {
-        // A transaction is two writes -- the row, then the bag -- and the second is
-        // where a type-specific attribute lives, so a failure between them has to
-        // leave neither. The same shape, and the same reasoning, as
+        // Two writes, so a failure between them must leave neither. As
         // AccountController::store().
         DB::beginTransaction();
 
         try {
             $transaction = Transaction::create($data->except('meta_data')->toArray());
 
-            // Nulls dropped, falsy values kept. Plain filter() would drop both, and
-            // TransactionMetaData allows fees of '0' -- so a trade that genuinely
-            // cost nothing in commission would arrive with no fees key and read back
-            // as missing rather than as zero. AccountController's filter() is
-            // unharmed by the same distinction because nothing it stores can be zero.
+            // Nulls dropped, falsy kept: plain filter() would drop a fee of '0', which
+            // would then read back as missing rather than zero.
             $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
 
             if ($meta->isNotEmpty()) {
@@ -212,27 +172,20 @@ class TransactionController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Rolling back is right; discarding the exception is not. Every failure
-            // otherwise looked identical from the outside -- a 302 reading
-            // "error db..." with no record of what went wrong. See
-            // AccountErrorReportingTest, which is the same contract pinned for
-            // accounts.
+            // Roll back but do not discard. See AccountErrorReportingTest.
             report($e);
 
             return back()->with('message', 'error db...');
         }
 
-        // type, not type->value: Transaction declares no casts, so the attribute
-        // comes back the string the column holds. See MassAssignmentTest.
+        // type, not type->value: Transaction declares no casts. See MassAssignmentTest.
         return back()->with('message', "Transaction [{$transaction->type}] recorded");
     }
 
     public function update(Transaction $transaction, TransactionData $data)
     {
-        // Same two writes and the same transaction as store(). The difference is the
-        // bag: on a second write it is replaced rather than added, or a merchant the
-        // user corrected would sit beside the one they replaced and the row would read
-        // complete while carrying both.
+        // The bag is replaced rather than added, or a corrected merchant would sit
+        // beside the one it replaced.
         DB::beginTransaction();
 
         try {
@@ -241,19 +194,15 @@ class TransactionController extends Controller
             $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
 
             if ($meta->isNotEmpty()) {
-                // Keyed on the bag's own id, as AccountController does. Without it
-                // updateOrCreate would search on the relation's foreign key with no
-                // values to fill, find nothing, and try to insert -- which the meta
-                // table's unique index on (model_id, model_type) then refuses.
+                // Keyed on the bag's own id, as AccountController does; keyed on the
+                // relation instead, it finds nothing and tries to insert.
                 $transaction->meta()->updateOrCreate(
                     ['id' => $transaction->meta?->id],
                     ['meta' => $meta]
                 );
             } else {
-                // A payload with no bag is valid for a charge, and the statement
-                // query groups on the bag's due_date. A bag left behind would keep
-                // the charge in its period after the user had cleared the merchant,
-                // so the absence has to be written rather than skipped.
+                // A bag left behind would keep the charge in its statement period,
+                // which the query groups on the bag's due_date.
                 $transaction->meta()->delete();
             }
 
@@ -266,19 +215,16 @@ class TransactionController extends Controller
             return back()->with('message', 'error db...');
         }
 
-        // fresh(), not the instance: the payload's type may have been a different one,
-        // and the message should name what the row now is rather than what was sent.
+        // fresh(), not the instance: name what the row is now, not what was sent.
         return back()->with('message', "Transaction [{$transaction->fresh()->type}] updated");
     }
 
     /**
      * Pay off one statement period of a card, in two rows.
      *
-     * The amount is computed here and never taken from the request. The one figure
-     * the client does send is the one the user was shown, and it is compared rather
-     * than used: a payment recorded against a figure that has since changed would be
-     * a payment the user did not agree to, and because both rows are written
-     * together the mistake would be internally consistent and invisible.
+     * The amount is computed here, never taken from the request. The figure the
+     * client does send is compared, not used: since both rows are written together, a
+     * payment against a stale figure would be internally consistent and invisible.
      */
     public function settle(Account $account, Request $r)
     {
@@ -297,9 +243,7 @@ class TransactionController extends Controller
             ));
         }
 
-        // The bank the money leaves. A card with no bank named cannot be settled, and
-        // saying so is more use than guessing one: the account form is where it is
-        // set, and the picker there lists only cash accounts in the card's currency.
+        // A card with no bank named cannot be settled; say so rather than guess one.
         $bank = $account->settlementAccount();
 
         if ($bank === null) {
@@ -318,11 +262,8 @@ class TransactionController extends Controller
             $refuse(sprintf('Nothing is owed for the statement due %s.', $figures['due_date']));
         }
 
-        // Checked before the figure is compared, because this is the case where the
-        // owed total is arithmetically right and still not a number to pay: the
-        // issuer has not billed the pending rows, so paying the counted figure now
-        // leaves the period owing the rest under someone who believes they have
-        // settled it.
+        // Before the figure is compared: the total can be arithmetically right and
+        // still not payable, since the issuer has not billed the pending rows.
         if ($statement->hasPendingActivity()) {
             $refuse(sprintf(
                 'That statement has %d row%s not yet posted, so its total is not final. Post or remove %s first.',
@@ -366,15 +307,10 @@ class TransactionController extends Controller
                 'status' => TransactionStatus::Posted->value,
             ]);
 
-            // The link, written here rather than through TransactionMetaData because
-            // the ids do not exist until both rows do -- and the DTO prohibits the
-            // field, which is the point: this is the only place in the app allowed to
-            // set it.
-            //
-            // On the card side the bag also carries the due_date, because that is the
-            // key the statement query groups by and the payment is what zeroes it.
-            // The transfer's bag carries nothing else: a bank has no statement
-            // periods, and a due_date here would drop it into a card's arithmetic.
+            // Written here, not through the DTO, which prohibits the field: the ids do
+            // not exist until both rows do. The card side also carries the due_date the
+            // statement query groups by; the transfer's carries nothing, or a bank
+            // would fall into a card's arithmetic.
             $payment->meta()->create([
                 'meta' => ['due_date' => $figures['due_date'], 'paired_transaction_id' => $transfer->id],
             ]);
@@ -387,9 +323,8 @@ class TransactionController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Both rows or neither. A payment without the transfer is a card that
-            // says it was paid while the bank says the money is still there, and
-            // there is no field in either row that would show it.
+            // Both rows or neither: a lone payment is a card that says it was paid
+            // while the bank says the money is still there.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -405,10 +340,8 @@ class TransactionController extends Controller
 
     public function destroy(Transaction $transaction)
     {
-        // A settlement is two rows and must not come apart. Deleting one half leaves a
-        // payment that never happened: the card shows the period owing again while
-        // the bank shows the money having left. Refused, the same shape as the
-        // refusal to delete an account a card is paid from.
+        // A settlement is two rows and must not come apart; deleting one half invents
+        // a payment that never happened.
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
 
         if ($pairedId !== null) {
