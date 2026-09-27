@@ -69,8 +69,14 @@ class FormContractTest extends TestCase
 
         // A charge's due date is derived by the server from the card's statement day
         // and term, and a payment supplies it to name the statement it settles --
-        // neither is something the user types, and asking for it would be asking for
-        // something the server then overrules.
+        // neither is something this form types, and asking for it here would be asking
+        // for something the server then overrules.
+        //
+        // Not true of the app any more, only of this form: a statement's due date can
+        // be corrected once the bank has issued it, and DueDateDialog is where that
+        // happens. It is not this form, because the correction is a property of the
+        // period -- one key every row in it shares -- rather than of any single charge,
+        // and no control here could write that.
         'meta_data.due_date',
 
         // What the account is called. The form picks the account by id; the name is

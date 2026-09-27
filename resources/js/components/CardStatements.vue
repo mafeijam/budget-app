@@ -50,6 +50,28 @@
                 text-color="white"
                 :label="`${period.pending_count} not yet posted`"
               />
+              <!--
+                After the badge, so the cell reads due, then why it is provisional, then
+                what to do about it. Icon rather than a labelled button because the cell
+                is the width of a date and the words are on hover.
+              -->
+              <q-btn
+                dense
+                flat
+                round
+                class="q-ml-xs"
+                color="grey-7"
+                icon="edit_calendar"
+                :disable="!correctable(period)"
+                @click="openCorrect(group, period)"
+              >
+                <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
+                  {{ correctionBlocked(period) }}
+                </q-tooltip>
+                <q-tooltip v-else :delay="500" :offset="[0, 6]">
+                  Correct this statement's due date
+                </q-tooltip>
+              </q-btn>
             </td>
             <td class="text-right">
               {{ period.charge_count }}
@@ -88,6 +110,8 @@
       :period="chosen?.period"
       :bank="chosen?.bank"
     />
+
+    <DueDateDialog ref="dueDialog" :group="chosen?.group" :period="chosen?.period" />
   </q-card>
 </template>
 
@@ -125,6 +149,12 @@ const covers = period => {
   return from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`
 }
 
+// Whether a period holds anything the issuer has not billed, which is what makes its
+// figures and its due date provisional together. One predicate for the two questions
+// below: they are refused for the same reason, and two functions each testing
+// period.pending_count would be a second copy of a decision the server makes.
+const pending = period => period.pending_count > 0
+
 // The one condition the server refuses on that the panel can see: a period with
 // pending rows has a total that is not final, and offering to settle it would be
 // offering something that comes back as a refusal.
@@ -136,17 +166,36 @@ const covers = period => {
 //
 // Disabled rather than hidden: the period still shows what it owes, and the control
 // says why it cannot be settled yet.
-const settleable = (group, period) => !period.pending_count
+const settleable = (group, period) => !pending(period)
 
 const blockedReason = (group, period) => {
-  if (period.pending_count) {
+  if (pending(period)) {
     return `${period.pending_count} row${period.pending_count === 1 ? '' : 's'} not yet posted, so the total is not final`
   }
 
   return ''
 }
 
+// The same refusal, asked about a different act, and worded for it: a period that is not
+// final cannot be paid and has not been issued, which are different sentences about
+// different things.
+//
+// A settled period is the other refusal the server has, and the panel never shows one:
+// index() filters them out before the periods reach here. So pending is the only
+// condition this can be disabled for, and the server asks again regardless -- a stale
+// page gets past a disabled button.
+const correctable = period => !pending(period)
+
+const correctionBlocked = period => {
+  if (pending(period)) {
+    return `${period.pending_count} row${period.pending_count === 1 ? '' : 's'} not yet posted, so the statement has not been issued yet`
+  }
+
+  return ''
+}
+
 const dialog = ref(null)
+const dueDialog = ref(null)
 const chosen = ref(null)
 
 // The period and the bank go to show() as well as onto `chosen`, because chosen
@@ -160,5 +209,14 @@ const openSettle = (group, period) => {
 
   chosen.value = { group, period, bank }
   dialog.value?.show(period, bank)
+}
+
+// The same two lines for the same reason, and the period passed as an argument for the
+// same reason: chosen reaches the dialog as props and a render is queued rather than run,
+// so a show() reading props in the same tick as the assignment sees the previous open's
+// values and the first after a page load sees none at all.
+const openCorrect = (group, period) => {
+  chosen.value = { group, period }
+  dueDialog.value?.show(period)
 }
 </script>

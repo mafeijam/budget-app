@@ -15,6 +15,7 @@ declare module 'vue' {
     AppTableActions: typeof import('./resources/js/components/AppTableActions.vue')['default']
     CardStatements: typeof import('./resources/js/components/CardStatements.vue')['default']
     CreateBtn: typeof import('./resources/js/components/CreateBtn.vue')['default']
+    DueDateDialog: typeof import('./resources/js/components/DueDateDialog.vue')['default']
     FormAccount: typeof import('./resources/js/components/Form/FormAccount.vue')['default']
     FormCategory: typeof import('./resources/js/components/Form/FormCategory.vue')['default']
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']

@@ -14,6 +14,13 @@ Route::inertia('/', 'index');
 Route::post('accounts/{account}/settle', [TransactionController::class, 'settle'])
     ->name('accounts.settle');
 
+// Correcting a statement's due date moves one key shared by every charge and payment
+// in the period, so it is a property of the period rather than of any row. Its own path
+// for the same reason settle() has one: there is no row here to show, edit or delete
+// either, and the day it is keyed on travels in the body rather than in the URL.
+Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveDueDate'])
+    ->name('accounts.due-date');
+
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');

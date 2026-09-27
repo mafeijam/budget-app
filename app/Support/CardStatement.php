@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * One statement period of a credit card, and what it still owes.
@@ -37,6 +38,20 @@ use Illuminate\Support\Facades\DB;
  */
 class CardStatement
 {
+    /**
+     * Where a period's key lives inside a bag, quoted for interpolation into SQL.
+     *
+     * The one place it is written down. forAccount() groups on it and moveDueDate()
+     * selects the rows to move by it, and the two have to agree exactly: a pair that
+     * had drifted would group a charge under one period and then move it under
+     * another, which changes what the card is owed with nothing reporting a change.
+     *
+     * Bound rather than interpolated would be no use here -- a JSON path is a literal
+     * to MySQL, not a value it will take a placeholder for -- and it is a constant
+     * either way, so there is nothing here for a request to inject.
+     */
+    private const DUE_DATE_PATH = "'$.due_date'";
+
     /**
      * The SQL figure a charge contributes to its card's own total: the stated
      * card-currency amount where it has one, the row's amount otherwise.
@@ -105,6 +120,11 @@ class CardStatement
 
         $inCardCurrency = self::cardCurrencySql();
 
+        // Into a local, the way the two above are, rather than concatenated into the
+        // SQL: the query is a single quoted string that Pint would otherwise break into
+        // three parts and re-quote each on its own.
+        $path = self::DUE_DATE_PATH;
+
         $rows = DB::select(
             // The status filter sits inside each CASE rather than in the WHERE,
             // deliberately. In the WHERE it would hide a pending row outright, and a
@@ -120,7 +140,7 @@ class CardStatement
             // with no period has the key absent rather than present-and-null -- but
             // relying on that would make the answer depend on a decision made three
             // layers up, and this query would then include a "period" with no date.
-            "SELECT JSON_UNQUOTE(JSON_EXTRACT(m.meta, '$.due_date'))                  AS due_date,
+            "SELECT JSON_UNQUOTE(JSON_EXTRACT(m.meta, {$path}))                   AS due_date,
                     MIN(CASE WHEN t.type = 'charge' THEN t.date END)                 AS first_charge_date,
                     MAX(CASE WHEN t.type = 'charge' THEN t.date END)                 AS last_charge_date,
                     COUNT(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN 1 END) AS charge_count,
@@ -131,7 +151,7 @@ class CardStatement
                FROM transactions t
                JOIN meta m ON m.model_id = t.id AND m.model_type = ?
               WHERE t.account_id = ?
-                AND JSON_EXTRACT(m.meta, '$.due_date') IS NOT NULL
+                AND JSON_EXTRACT(m.meta, {$path}) IS NOT NULL
               GROUP BY due_date
               ORDER BY due_date",
             // Transaction::class, not Account::class: the bag being read is the
@@ -189,6 +209,148 @@ class CardStatement
     public function hasPendingActivity(): bool
     {
         return $this->pendingCount > 0;
+    }
+
+    /**
+     * Every transaction in one period of one card, bags loaded.
+     *
+     * A period is a shared key rather than a row, so moving it means rewriting that key
+     * on every row that carries it. The rows are read here, beside the query that
+     * defines the key, because the alternative is the controller restating
+     * JSON_EXTRACT on the bag -- a second statement of where a period lives, which
+     * would move some rows and not others the moment the two drifted, and a charge
+     * left behind is a charge quietly re-billed.
+     *
+     * A subquery on the bag rather than a join, so the transactions come back as
+     * models with their relations intact: the write below goes through meta() and needs
+     * nothing from the join that forAccount() wants. A card with no such period yields
+     * nothing rather than throwing, like forAccount() with no transactions at all.
+     *
+     * @return Collection<int, Transaction>
+     */
+    public static function rowsInPeriod(Account $card, string $dueDate): Collection
+    {
+        return Transaction::query()
+            ->with('meta')
+            ->where('account_id', $card->id)
+            ->whereIn('id', DB::table('meta')
+                ->select('model_id')
+                ->where('model_type', Transaction::class)
+                // JSON_UNQUOTE on both sides of the comparison, because the extracted
+                // value is a JSON string and an unquoted one would never equal a date.
+                ->whereRaw('JSON_UNQUOTE(JSON_EXTRACT(meta, '.self::DUE_DATE_PATH.')) = ?', [$dueDate])
+            )
+            ->get();
+    }
+
+    /**
+     * Move one period of a card to a different day it falls due.
+     *
+     * The due date a period carries is a prediction, made from the card's statement day
+     * and term. The bank states a day of its own when it issues the statement, and the
+     * two are not always the same -- so this replaces the prediction with the fact, for
+     * one period, and leaves the card's terms alone. What it does not do is correct
+     * anything entered later: a charge recorded tomorrow is placed by the terms as they
+     * stand, so a card whose terms are simply wrong needs those changed, on the account.
+     *
+     * A period and not a charge, deliberately. Re-dating one charge moves it out of the
+     * bill it was counted on and the statement's total no longer adds up to the charges
+     * it covers; the whole set has to move together, which is what this does.
+     *
+     * Every refusal is a ValidationException on `due_date` rather than a return or a
+     * thrown exception, so it reaches the dialog as a field error beside the statement
+     * it is about rather than as a failed save.
+     *
+     * @param  string  $from  the day the period is currently keyed on
+     * @param  string  $to  the day the bank stated it falls due
+     */
+    public static function moveDueDate(Account $card, string $from, string $to): void
+    {
+        // Nothing to do, and not an error: a caller that always sends the period's own
+        // date should not have to know whether it changed. Re-running the write would
+        // touch every bag in the period to set the key each already carries.
+        if ($from === $to) {
+            return;
+        }
+
+        $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
+
+        $periods = self::forAccount($card);
+
+        $statement = $periods->firstWhere('dueDate', $from);
+
+        if ($statement === null) {
+            $refuse(sprintf('Card [%s] has no statement due %s.', $card->name, $from));
+        }
+
+        // A settled period is the record of a bill that has been paid, and there is no
+        // un-settling: renaming it would leave a payment explaining less than the money
+        // that left the bank. The panel does not offer this for one, so the only way here
+        // is a stale page or a hand-made request -- which is exactly what a guard is for.
+        if ($statement->isSettled()) {
+            $refuse(sprintf(
+                'The statement due %s has been settled, so its due date cannot be changed. '
+                    .'It is the record of a bill that has been paid.',
+                $from
+            ));
+        }
+
+        // Not settled, and not issued either: a pending row shares the key, so moving
+        // the period would move a charge the bank has not billed onto a statement that
+        // says nothing about it. Leaving it behind is the other half of that, and there
+        // is no way to move one row out of a period today.
+        if ($statement->hasPendingActivity()) {
+            $refuse(sprintf(
+                'The statement due %s has %d row%s not yet posted, so it has not been issued '
+                    .'and its due date is not final. Post or remove %s first.',
+                $from,
+                $statement->pendingCount,
+                $statement->pendingCount === 1 ? '' : 's',
+                $statement->pendingCount === 1 ? 'it' : 'them'
+            ));
+        }
+
+        // The one that would be silent. Two periods under one key are one row out of
+        // forAccount(), so the two bills would arrive already merged -- the panel would
+        // show a single period owing both, and settling it would write one payment
+        // against money owed for two.
+        if ($periods->contains(fn (self $period) => $period->dueDate === $to)) {
+            $refuse(sprintf(
+                'Card [%s] already has a statement due %s. Two statements cannot fall due on '
+                    .'the same day, and moving this one there would merge the two bills.',
+                $card->name,
+                $to
+            ));
+        }
+
+        // Lexicographic because both sides are Y-m-d. Always true of a derived date --
+        // the term is at least a day, counted from a closing day on or after the charge
+        // -- so a violation is a mistyped date rather than an unusual card.
+        if ($statement->lastChargeDate !== null && $to <= $statement->lastChargeDate) {
+            $refuse(sprintf(
+                'The statement due %s covers charges up to %s, so it cannot fall due on %s.',
+                $from,
+                $statement->lastChargeDate,
+                $to
+            ));
+        }
+
+        DB::transaction(function () use ($card, $from, $to) {
+            foreach (self::rowsInPeriod($card, $from) as $row) {
+                // Merged rather than replaced, and that is the whole of it: the bag
+                // carries card_amount -- the figure a cross-currency charge is worth to
+                // the card, which cardCurrencySql() prefers over the row's own amount --
+                // and paired_transaction_id, which is the whole of what makes deleting a
+                // settlement delete both halves. Writing just the key would drop both,
+                // and quietly change what the card is owed.
+                $row->meta()->update([
+                    'meta' => array_merge(
+                        $row->meta->meta->getArrayCopy(),
+                        ['due_date' => $to]
+                    ),
+                ]);
+            }
+        });
     }
 
     /**

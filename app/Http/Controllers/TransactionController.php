@@ -473,6 +473,47 @@ class TransactionController extends Controller
         ));
     }
 
+    /**
+     * Replace one statement period's due date with the day the bank stated.
+     *
+     * The day a period carries is a prediction, counted from the card's statement day and
+     * term, and the bank's own day is not always that one. Every row in the period moves
+     * together, because the due date is the key they are grouped by rather than a field
+     * on any of them.
+     *
+     * Which periods may move is decided in CardStatement::moveDueDate(), beside the query
+     * that defines the key, rather than here: a controller-side check would be a second
+     * place to state what a period is.
+     */
+    public function moveDueDate(Account $account, Request $r)
+    {
+        $figures = $r->validate([
+            'due_date' => ['required', 'date_format:Y-m-d'],
+            'new_due_date' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
+
+        // Said as its own refusal rather than left to the one below it, which would
+        // report a savings account as having no statement due that day -- true, and no
+        // help to somebody who clicked the wrong row.
+        if ($account->type !== AccountType::Card->value) {
+            $refuse(sprintf(
+                'Account [%s] is a %s account. Only a card has a statement to correct.',
+                $account->name,
+                $account->type
+            ));
+        }
+
+        CardStatement::moveDueDate($account, $figures['due_date'], $figures['new_due_date']);
+
+        return back()->with('message', sprintf(
+            'Card statement [%s] now falls due [%s]',
+            $figures['due_date'],
+            $figures['new_due_date']
+        ));
+    }
+
     public function destroy(Transaction $transaction)
     {
         $refusal = $this->deleteRefusal($transaction);

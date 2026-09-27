@@ -352,6 +352,55 @@ class CardStatementTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // The rows behind a period
+    // ---------------------------------------------------------------------
+
+    public function test_rows_in_period_returns_every_row_of_that_period_and_nothing_else(): void
+    {
+        // The read behind moveDueDate(). It has to pick out exactly the rows
+        // forAccount() grouped, or a correction moves some of a period and leaves the
+        // rest behind -- and a charge left in the old period is a charge the card is
+        // billed for twice over, with the panel showing both.
+        $this->charge('2026-01-01', '120.0000');
+        $this->charge('2026-01-20', '80.5000');
+        $this->payment('2026-02-20', '50.0000', 'posted', '2026-02-09');
+        $this->charge('2026-01-26', '10.0000');
+
+        $rows = CardStatement::rowsInPeriod($this->card, '2026-02-09');
+
+        $this->assertCount(3, $rows);
+        $this->assertSame(
+            ['120.0000', '80.5000', '50.0000'],
+            $rows->pluck('amount')->all(),
+            'The period\'s rows are not the ones its figures were counted from.'
+        );
+
+        // Bags loaded, or the write below is a query per row on top of the read.
+        $this->assertTrue($rows->every(fn ($row) => $row->relationLoaded('meta')));
+    }
+
+    public function test_rows_in_period_of_a_day_no_statement_falls_due_is_empty(): void
+    {
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->assertCount(0, CardStatement::rowsInPeriod($this->card, '2026-06-09'));
+    }
+
+    public function test_rows_in_period_does_not_reach_another_cards_statements(): void
+    {
+        // Both cards close on different days, so the same day is a period on one and
+        // nothing on the other. Picking rows by date without the account would move a
+        // stranger's statement along with it.
+        $this->charge('2026-01-01', '120.0000');
+        $this->chargeOn($this->otherCard, '2026-01-01', '99.0000');
+
+        // The other card closes on the 10th rather than the 25th, so the same charge
+        // falls in a different period on it.
+        $this->assertCount(1, CardStatement::rowsInPeriod($this->card, '2026-02-09'));
+        $this->assertCount(1, CardStatement::rowsInPeriod($this->otherCard, '2026-01-25'));
+    }
+
+    // ---------------------------------------------------------------------
 
     private function card(string $name, array $terms): Account
     {
