@@ -19,33 +19,31 @@ class AccountMetaData extends Data
     {
         return [
             // `nullable` first, and the only reason any of these work: the validator
-            // counts null as present, so without it `integer` and `between` fire on
-            // the null a blank field produces. `required_if` is implicit and runs.
+            // counts null as present, so without it `integer` and `between` fire on the
+            // null a blank field produces. `required_if` is implicit and runs.
             //
             // Both required for a card: a term is an interval and says nothing about
             // the day the statement closes, so neither alone can place a charge. The
             // shared 1-31 range means different things -- a day of the month, and a
             // count of days -- and CardStatementCycle rejects a value outside it
-            // rather than clamping, since 0 or 32 is a data entry error either way.
+            // rather than clamping.
             'term_days' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
             'statement_day' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
 
-            // `type` and `id` are read from the root payload even though this rule
-            // sits on a nested key -- Laravel resolves a non-dotted parameter against
-            // the whole request, not the parent array. That is what lets a
-            // type-specific attribute be declared here without repeating what it
-            // depends on.
+            // `type` and `id` are read from the root payload even though this rule sits
+            // on a nested key -- Laravel resolves a non-dotted parameter against the
+            // whole request, not the parent array. That is what lets a type-specific
+            // attribute be declared here without repeating what it depends on.
             //
             // required_if plus prohibited_unless say the field is present exactly when
-            // the account may have one: required for a securities account, whose
-            // trades mean nothing without a bank to settle into; merely permitted for
-            // a card, usable before the user has said where they pay it from. A cash
-            // account is prohibited, and that is the point -- the account settled
-            // *into* may not name a target.
+            // the account may have one: required for a securities account, whose trades
+            // mean nothing without a bank to settle into; merely permitted for a card,
+            // usable before the user has said where they pay it from. A cash account is
+            // prohibited, and that is the point -- the account settled *into* may not
+            // name a target.
             //
-            // `different` is redundant with AccountData::guardSettlementAccount(),
-            // since neither a securities account nor a card is cash. It is here for
-            // the message, which would otherwise blame the target.
+            // `different` is redundant with AccountData::guardSettlementAccount(), and
+            // is here only so the message blames the target.
             'settlement_account_id' => [
                 'nullable',
                 'required_if:type,security',

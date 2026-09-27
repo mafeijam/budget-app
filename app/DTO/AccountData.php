@@ -35,10 +35,10 @@ class AccountData extends Data
         return [
             'name' => ['required', 'string', $unique],
 
-            // No rule for ccy: typing it Currency makes spatie/laravel-data derive
-            // the membership check. The `size:3` it replaces was never one -- it
-            // accepted 'ZZZ' and 'hkd' as readily as 'HKD'. The settlement field is
-            // type-specific and lives in AccountMetaData.
+            // No rule for ccy: typing it Currency makes spatie/laravel-data derive the
+            // membership check, and `size:3` never was one -- it accepted 'ZZZ' and
+            // 'hkd' as readily as 'HKD'. The settlement field is type-specific and
+            // lives in AccountMetaData.
         ];
     }
 
@@ -53,9 +53,8 @@ class AccountData extends Data
     /**
      * Reject a settlement target that is not a cash account in the same currency.
      *
-     * A constructor check rather than a rule, because only the database knows what
-     * the target *is* -- so it holds whether or not the caller called validate().
-     * A ValidationException, so it reaches the form as a field error, not a 500.
+     * A constructor check rather than a rule, because only the database knows what the
+     * target *is* -- so it holds whether or not the caller called validate().
      */
     private function guardSettlementAccount(): void
     {
@@ -72,9 +71,8 @@ class AccountData extends Data
             return;
         }
 
-        // The subject and verb for these sentences, spelled out because a brokerage
-        // settles into a bank while a card is paid from one. The verb is stored bare
-        // because each message puts it in a different grammatical slot.
+        // Spelled out because a brokerage settles into a bank while a card is paid
+        // from one. The verb is stored bare: each message puts it in a different slot.
         [$subject, $verb] = match ($this->type) {
             AccountType::Security => ['brokerage', 'settle into'],
             AccountType::Card => ['card', 'be paid from'],
@@ -94,14 +92,14 @@ class AccountData extends Data
             ]);
         }
 
-        // Checked after the type, since a wrong-type target is the more fundamental
-        // mismatch and naming its currency would imply converting could fix it.
+        // Checked after the type: a wrong-type target is the more fundamental mismatch,
+        // and naming its currency would imply converting could fix it.
         //
-        // Refuse rather than convert: a *charge* in another currency is fine because
+        // Refuse rather than convert. A *charge* in another currency is fine because
         // the user states it in the card's own currency (card_amount, which
-        // CardStatement sums). A *bank* in another currency has no such figure -- the
-        // card's statement total is not that amount and nothing here converts between
-        // them -- so the pairing is left unusable rather than quietly miscounted.
+        // CardStatement sums). A *bank* in another currency has no such figure and
+        // nothing here converts between them, so the pairing is left unusable rather
+        // than quietly miscounted.
         if ($target->ccy !== $this->ccy->value) {
             throw ValidationException::withMessages([
                 'meta_data.settlement_account_id' => sprintf(

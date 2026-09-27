@@ -14,18 +14,14 @@ use Spatie\LaravelData\Data;
  * root `type` -- a trade has a symbol, a charge a due date. Every rule is
  * `nullable` (the validator counts null as present) while `required_if` survives.
  *
- * A charge's merchant is not among them. It duplicated `description`, which every
- * transaction now has to supply and which says the same thing: the two were set to
- * the same string in the fixtures, and nothing read the merchant -- not
- * CardStatement, not AccountBalance, not settle(). Required, validated, displayed
- * and wired to nothing, which is the shape fx_rate had before it was removed. See
- * that commit for why that is a defect rather than a preference.
+ * A charge's merchant is not among them: `description` says the same thing and is
+ * required of every row, so the field was wired to nothing.
  */
 class TransactionMetaData extends Data
 {
     /**
-     * The amount column's scale, decimal(12,4). Referenced rather than repeated as a
-     * literal, so a derived amount cannot drift from what the column can store.
+     * The amount column's scale, decimal(12,4). Referenced rather than repeated, so a
+     * derived amount cannot drift from what the column can store.
      */
     public const AMOUNT_SCALE = 4;
 
@@ -79,18 +75,15 @@ class TransactionMetaData extends Data
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
 
             // `nullable` first, as on every other key here. Not required for a charge
-            // even though the constructor always fills it in, because it is filled in
-            // after validation has run -- and a card with no statement day has none.
+            // even though the constructor fills it in, because it is filled in after
+            // validation and a card with no statement day has none.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
-            // Not `required_if`: whether this is needed depends on the charge's
-            // currency against the *account row's*, which a rule cannot see for the
-            // same reason guardAccountType() is a constructor check. What this does is
-            // bound the figure, so a value that is zero, over-scaled or past the
-            // column's width is refused here rather than summed into a statement and
-            // rounded by the database. Hence `gt:0` rather than `min:0` -- a zero is
-            // a missing figure wearing a value -- and the amount column's ceiling,
-            // since this is summed into what the card owes.
+            // Not `required_if`: whether this is needed depends on the charge's currency
+            // against the *account row's*, which a rule cannot see. What this does is
+            // bound the figure, so a zero or an over-scaled one is refused here rather
+            // than summed into a statement and rounded by the database. Hence `gt:0` --
+            // a zero is a missing figure wearing a value.
             'card_amount' => [
                 'nullable',
                 'decimal:0,'.self::AMOUNT_SCALE,
@@ -98,17 +91,12 @@ class TransactionMetaData extends Data
                 'max:'.self::MAX_AMOUNT,
             ],
 
-            // The only rule here that is not `nullable`, and the only flat prohibition
-            // rather than one conditional on the root `type`. Both are the point.
-            //
-            // A card settlement is two rows that must not come apart, and this is the
-            // link between them. Only settle() may write it, because it creates both
-            // rows and the ids do not exist until it has. Prohibited outright rather
-            // than permitted on one type: a client claiming `type=transfer` and naming
-            // somebody else's transaction would pass every other rule, and a forged
-            // pair is followed -- destroy() deletes whatever this points at, so the
-            // link this rule refuses to let a client write is the difference between
-            // deleting one row and deleting two.
+            // The only rule here that is not `nullable`, and the only flat prohibition.
+            // Only settle() may write it, because the ids do not exist until it has
+            // created both rows, and destroy() deletes whatever this points at -- so
+            // the link is the difference between deleting one row and deleting two.
+            // Prohibited outright rather than permitted on one type: a client naming
+            // somebody else's transaction would pass every other rule.
             'paired_transaction_id' => ['prohibited'],
         ];
     }
@@ -117,10 +105,9 @@ class TransactionMetaData extends Data
      * Every transaction type except the ones named, as a comma-separated list.
      *
      * There is no `required_if_in` in this Laravel: it is silently accepted and then
-     * skipped, so a trade could be recorded with no symbol and nothing would
-     * complain. Deriving the list also means an unrecognised type falls outside it
-     * and so has the field required -- the right way round, since the enum rejects
-     * the bad type in any case.
+     * skipped, so a trade could be recorded with no symbol and nothing would complain.
+     * Deriving the list also puts an unrecognised type outside it, and so inside the
+     * requirement -- the right way round, since the enum rejects the bad type anyway.
      */
     private static function typesExcept(TransactionType ...$permitted): string
     {
@@ -146,20 +133,14 @@ class TransactionMetaData extends Data
     /**
      * The amount implied by a trade's quantity, price and fee.
      *
-     * Null for every type that does not derive: a dividend is recorded on a
-     * securities account but its amount is simply stated.
-     *
-     * The fee is folded in net rather than left as a transaction of its own, since it
-     * is part of this trade and never appears in a balance alone. A buy costs
-     * price x quantity + fees, a sell yields price x quantity - fees; adding the fee
-     * to a sell would overstate the balance by exactly the brokerage.
-     *
-     * Amount is a positive magnitude, so a negative result is a data error -- usually
-     * a fee entered against the wrong side. Zero is fine: a sell netting to nothing
-     * closed with nothing left to deposit.
+     * Null for every type that does not derive. The fee is folded in net rather than
+     * left as a transaction of its own, since it is part of this trade and never
+     * appears in a balance alone: a buy costs price x quantity + fees, a sell yields
+     * price x quantity - fees, and adding the fee to a sell would overstate the
+     * balance by exactly the brokerage.
      *
      * Decimal, not float: Float64 has no decimal semantics, so it survives these
-     * magnitudes by luck, and a wider quantity would break it silently.
+     * magnitudes by luck and a wider quantity would break it silently.
      */
     public function derivedAmount(TransactionType $type): ?string
     {

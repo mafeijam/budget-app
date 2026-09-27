@@ -17,9 +17,13 @@ use Throwable;
 
 /**
  * One row of the transactions table, which holds cash, card and trade rows alike --
- * hence conditional rather than uniform. Payload constraints in rules(), anything
- * needing the account row in the constructor. amount is a positive magnitude, its
- * direction coming from the account and transaction types together.
+ * hence conditional rather than uniform. amount is a positive magnitude; its direction
+ * comes from the account and transaction types together.
+ *
+ * Payload constraints live in rules(). Anything needing the account row is a
+ * constructor check instead, and a ValidationException so it reaches the form as a
+ * field error rather than a 500: a rule cannot see the account, and a check here holds
+ * whether or not the caller called validate().
  */
 class TransactionData extends Data
 {
@@ -42,12 +46,10 @@ class TransactionData extends Data
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
 
-        // The owning account's name, read off the model rather than the accounts
-        // table so a list costs no extra query per row. Not something a client
-        // decides; see rules() for why it is not `prohibited`.
-        //
-        // Last, and defaulted, because no caller has it to hand -- an optional
-        // parameter ahead of the required ones would not get its default at all.
+        // The owning account's name, read off the model the constructor already
+        // loaded. Not a client's to decide -- rules() has no rule for it, and says why.
+        // Last and defaulted because an optional parameter ahead of the required ones
+        // gets no default at all.
         public ?string $account_name = null,
     ) {
         $this->created_at ??= now();
@@ -73,11 +75,9 @@ class TransactionData extends Data
         return [
             'account_id' => ['exists:accounts,id'],
 
-            // account_name carries no rule on purpose: it is derived, so there is
-            // nothing to validate -- but it cannot be `prohibited` either, because
-            // the edit form round-trips a whole table row that now carries the name.
-            // Whatever a payload sends is overwritten when the row is read back, so
-            // it is inert rather than trusted.
+            // No rule on purpose: it is derived, so there is nothing to validate, and
+            // `prohibited` would not do either since the edit form round-trips a row
+            // carrying the name. A payload's value is overwritten on read.
 
             // Required only for categorised spending. A payment may still be
             // labelled, hence required_unless rather than prohibited_unless: the
@@ -93,15 +93,13 @@ class TransactionData extends Data
 
             // decimal counts *decimal places*, not integer digits, so this caps the
             // scale at four and `max` then caps the magnitude at the eight digits the
-            // precision leaves. A string because this is money -- widen the rules
-            // rather than retyping it.
+            // precision leaves. A string because this is money.
             //
             // Two rules over two *different* lists, and sharing one is a trap:
             // `required_unless:<non-trades>` reads as "required unless it is not a
             // trade", which is a trade, so it demands an amount on exactly the rows
-            // that must not have one. There is no `required_if_in` or
-            // `prohibited_if_in` in this Laravel -- both are accepted into the array
-            // and then never run, failing silently.
+            // that must not have one. See TransactionMetaData::typesExcept() for the
+            // `required_if_in` that would read better and silently never runs.
             'amount' => [
                 'nullable',
                 'required_unless:type,'.self::typesWhere(fn (TransactionType $t) => $t->derivesAmount()),
@@ -111,21 +109,16 @@ class TransactionData extends Data
                 'max:'.TransactionMetaData::MAX_AMOUNT,
             ],
 
-            // Required for every type, which is why it needs no conditional. A row
-            // nobody can name is a row the list shows as a type and an amount and
-            // nothing else, and `merchant` used to carry that weight for a charge
-            // alone -- see the note on TransactionMetaData for why it is gone.
+            // Required for every type, which is why it needs no conditional. `merchant`
+            // used to carry this for a charge alone; see TransactionMetaData.
             'description' => ['required', 'max:255'],
 
             // No membership rule -- Currency is the type, so spatie derives it. Not
-            // narrowed to the account's ccy, since accommodating a difference is
-            // what card_amount is for; not widened to all of ISO 4217, which would
-            // record a code no account can hold and no dropdown offers.
+            // narrowed to the account's ccy: accommodating a difference is what
+            // card_amount is for.
             //
-            // Required, because without it a trade with no meta_data at all passes:
-            // nested rules never run on a missing key, so nothing asks for the
-            // numbers the amount is derived from and the row reaches a NOT NULL
-            // column null.
+            // Required, because nested rules never run on a missing key -- a trade with
+            // no meta_data at all would ask for nothing and reach a NOT NULL column null.
             'meta_data' => [
                 'required_unless:type,'.self::typesWhere(fn (TransactionType $t) => ! $t->derivesAmount()),
             ],
@@ -142,8 +135,8 @@ class TransactionData extends Data
     /**
      * The transaction types matching a predicate, as a comma-separated list.
      *
-     * Derived from the enum so the rules cannot go stale when a type is added: a
-     * hand-written list quietly stops matching, and here that fails open.
+     * Derived from the enum so a hand-written list cannot quietly stop matching --
+     * and here that would fail open.
      */
     private static function typesWhere(callable $predicate): string
     {
@@ -155,10 +148,6 @@ class TransactionData extends Data
 
     /**
      * Reject a transaction type that does not belong on the account's type.
-     *
-     * A constructor check rather than a rule, because what is legal depends on the
-     * account row -- so it holds whether or not the caller called validate(). A
-     * ValidationException, so it reaches the form as a field error, not a 500.
      */
     private function guardAccountType(?Account $account): void
     {
@@ -178,8 +167,7 @@ class TransactionData extends Data
     /**
      * Fill in a trade's amount, or clear any a client tried to supply.
      *
-     * Assignment rather than `??=`: the derived figure is the only correct one, so a
-     * supplied amount is overwritten even unvalidated.
+     * Assignment rather than `??=`: the derived figure is the only correct one.
      */
     private function deriveAmount(): void
     {
@@ -194,17 +182,10 @@ class TransactionData extends Data
      * Demand the card-currency figure for a charge entered in another currency.
      *
      * A charge in USD on an HKD card stores 100 and contributes 780 to what the card
-     * owes, and the difference between those two numbers is not derivable from
-     * anything this app holds -- so the user types it. Required rather than defaulting
-     * to `amount`, because that fallback is silent: a forgotten figure would
-     * contribute the raw amount in the wrong currency, and a quietly wrong statement
-     * is worse than one that refuses to be recorded. A constructor check for the same
-     * reason guardAccountType() is one -- the account row is the other half of the
-     * comparison and a rule cannot see it.
-     *
-     * Only a charge. A payment is in the card's currency by definition, and the bank
-     * it is paid from must be in the same one. See
-     * AccountData::guardSettlementAccount().
+     * owes, and the difference is not derivable from anything this app holds. Required
+     * rather than defaulting to `amount`, because that fallback is silent and a quietly
+     * wrong statement is worse than one that refuses to be recorded. Only a charge: a
+     * payment is in the card's currency by definition.
      */
     private function guardCardAmount(?Account $account): void
     {
@@ -244,19 +225,14 @@ class TransactionData extends Data
     /**
      * Place a charge in the statement period its date falls in.
      *
-     * Only a charge. A payment's due date names the statement it settles, normally
-     * the earliest unpaid -- a question about outstanding balances that belongs in
-     * the controller. A card with no statement day yields no due date rather than
-     * one counted from the payment term alone, which would be a whole cycle out.
+     * Only a charge. A payment's due date names the statement it settles -- normally
+     * the earliest unpaid -- which is a question about outstanding balances rather
+     * than one derivable from the date.
      *
-     * Into a gap only. A payload that already carries one keeps it, which is the
-     * door an edit used to walk through and the reason there is a second method for
-     * it; see placeChargeInItsPeriod().
-     *
-     * The bag is created if the payload carried none. Not tidiness: meta_data is
-     * required for a trade and optional otherwise, so a charge that sends no bag is
-     * valid, and skipping it would drop the charge out of its statement's figure with
-     * nothing reporting a problem.
+     * Into a gap only: a payload that already carries a period keeps it. The bag is
+     * created if there was none, since meta_data is required only for a trade and
+     * skipping it would drop the charge out of its statement's figure with nothing
+     * reporting a problem.
      */
     private function deriveDueDate(?Account $account): void
     {
@@ -279,35 +255,18 @@ class TransactionData extends Data
     }
 
     /**
-     * Put a charge in the statement period the date on the payload puts it in,
-     * overwriting whichever period the payload carried.
+     * Put a charge in the statement period its date falls in, overwriting whichever
+     * period the payload carried.
      *
-     * Called by the controller on the way to an update, and deliberately not from the
-     * constructor: that also runs when a stored row is read back, through
-     * TransactionData::collect. Re-deriving on a read would show a period the statement
-     * panel does not group by the moment someone edits a card's statement day -- two
-     * views of one row, disagreeing, and neither of them wrong about itself. A read
-     * shows what is stored; a write recomputes.
-     *
-     * The second door exists because the edit form round-trips a whole table row, and
-     * a row's bag carries the due date the server derived last time. So every edit of
-     * a charge arrived holding the bill it was already counted in, deriveDueDate()
-     * stood down because the field was filled, and a corrected date left the charge in
-     * a statement it no longer belonged to: the row and the panel describing different
-     * bills, with the statement query grouping on exactly the key that disagreed.
+     * Called on the way to an update and not from the constructor, which also runs
+     * when a stored row is read back: re-deriving on a read would show a period the
+     * statement panel does not group by, the moment somebody edits a card's statement
+     * day. A read shows what is stored; a write recomputes.
      *
      * Overwritten rather than kept, as in deriveAmount(): the period a date falls in is
-     * the only correct one, so a supplied figure is overruled rather than trusted. A
-     * charge the card has no terms for keeps whatever period it has, because the terms
-     * may have been removed since the charge was made and that charge is still a fact
-     * -- and clearing the key would drop the row out of the statement it was recorded
-     * in, which is a worse answer than a stale one to argue about later.
-     *
-     * A payment is left entirely alone. Its due date names the statement it settles,
-     * and that is the one thing about a payment that is not derivable from its date.
-     *
-     * @param  Transaction  $charge  the row being written, so what it already says can
-     *                               be compared against what the payload says.
+     * the only correct one. A charge whose card no longer has terms keeps the period it
+     * was recorded in, since clearing the key would drop the row out of the statement
+     * it belongs to.
      */
     public function placeChargeInItsPeriod(?Account $account, Transaction $charge): void
     {
@@ -315,14 +274,13 @@ class TransactionData extends Data
             return;
         }
 
-        // Only when one of the two things a period is derived from has actually moved:
-        // the date, which chooses the cycle, or the account, whose terms that cycle is
-        // read from. A charge's statement is a fact about the day it was made and the
-        // terms in force then, so an edit that touches neither has said nothing about
-        // the period -- and re-deriving on that evidence would refuse a description
-        // fix on a charge whose statement has been settled ("this charge cannot be
-        // moved out of it", to a user who moved nothing), or re-bill a year of history
-        // because somebody edited the card's statement day last week.
+        // Only when one of the two things a period comes from has moved: the date,
+        // which chooses the cycle, or the account, whose terms that cycle is read from.
+        // A charge's statement is a fact about the day it was made and the terms in
+        // force then, so an edit touching neither has said nothing about the period --
+        // and re-deriving on that evidence would refuse a description fix on a charge
+        // whose statement is settled, or re-bill a year of history because somebody
+        // edited the card's statement day last week.
         if ($this->date === $charge->date && $this->account_id === $charge->account_id) {
             return;
         }
@@ -342,10 +300,10 @@ class TransactionData extends Data
     /**
      * The statement period this charge's date falls in, or null when there is none.
      *
-     * Null for two different reasons, and both mean the same thing to every caller:
-     * the card has no statement day to count a cycle from, or the date is not a date
-     * the `date` rule would accept. Throwing a parse error on the second would show
-     * the user an exception where the field error belongs.
+     * Null for two reasons, and both mean the same thing to every caller: the card has
+     * no statement day to count a cycle from, or the date is not a date the `date` rule
+     * would accept. Throwing a parse error on the second would show the user an
+     * exception where the field error belongs.
      */
     private function periodFor(?Account $account): ?string
     {
@@ -370,21 +328,13 @@ class TransactionData extends Data
      * A settled period is a bill that has been paid, and its figures are the record of
      * that bill: the charges it covered and the payment that closed it. Re-dating a
      * charge out of one leaves it showing a credit against money already handed over;
-     * re-dating one into one makes a paid bill owing money again. Both are a corrupted
-     * statement rather than a corrected one, this app has no way to represent the
-     * difference, and both are silent -- the panel would just show a figure nobody could
-     * account for. There is no un-settling either, so the answer is to refuse and say
-     * what to do instead, which is the same bargain guardAccountType() makes.
+     * re-dating one into one makes a paid bill owing money again. Both are silent --
+     * the panel would just show a figure nobody could account for -- and there is no
+     * un-settling, so the answer is to refuse and say what to do instead.
      *
-     * Keyed on `date` rather than on the bag's due_date, because the date is the field
-     * the user moved and the only one of the two with a control on the form: due_date
-     * is server-owned (FormContractTest's allowlist) and has no field to hang a message
-     * off, so an error keyed there would be raised where nobody can see it.
-     *
-     * Both periods are read from the one query settle() reads, so the refusal is made on
-     * the same figures the panel showed. The card the charge is leaving is a second
-     * query, and only when the account itself changed -- the period being left behind
-     * belongs to the card it was on, which need not be the one it is being written to.
+     * Keyed on `date` rather than the bag's due_date, because that is the field the
+     * user moved and the only one of the two with a control on the form to hang a
+     * message off.
      */
     private function guardPeriodCanMove(?Account $account, Transaction $charge, string $dueDate): void
     {
@@ -392,9 +342,9 @@ class TransactionData extends Data
             return;
         }
 
-        // The period the row is in now, read off its own bag rather than off the
-        // payload: what the payload carries is what is being argued with, and a charge
-        // whose account changed carries a period belonging to the card it came from.
+        // Read off the row's own bag rather than the payload's, which is what is being
+        // argued with: a charge whose account changed carries a period belonging to the
+        // card it came from.
         $leaving = $charge->meta?->meta['due_date'] ?? null;
 
         // Nothing to leave, or leaving for the period it is in: nothing moves.
