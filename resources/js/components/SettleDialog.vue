@@ -161,11 +161,11 @@ const open = ref(false)
 const settling = ref(false)
 const error = ref(null)
 
-// The day the money moved, and today until the user says otherwise. Seeded from the
-// page's own `today` rather than the browser clock, so it is the same day settle()
-// would have written unprompted -- the two disagree for six hours out of every
-// twenty-four, and the dialog is showing the user what will be recorded.
-const paidOn = ref(usePage().props.today ?? '')
+// The day the money moved, and the statement's own due date until the user says
+// otherwise. A settlement belongs to the period it settles, so the due date is the
+// answer in the ordinary case and this is the field for the days it is not -- paid
+// early, or paid long after the statement fell due.
+const paidOn = ref('')
 
 // A field error and a banner error, because a malformed date is the user's own input
 // and belongs beside the field while a refusal is about the whole request. Both are
@@ -241,7 +241,10 @@ watch(
 // left over from settling one statement would silently date the next.
 defineExpose({
   show: () => {
-    paidOn.value = usePage().props.today ?? ''
+    // The statement's own due date, not today. A settlement belongs to the period it
+    // settles, and this field is for the days that is not the answer -- paid early, or
+    // paid long after the statement fell due.
+    paidOn.value = props.period?.due_date ?? ''
     error.value = null
     fieldError.value = null
     open.value = true

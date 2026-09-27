@@ -89,12 +89,6 @@ class TransactionController extends Controller
             ])
             ->all();
 
-        // Today, for the settle dialog's date field. Sent rather than read from the
-        // browser clock so the day the dialog shows and the day settle() writes are the
-        // same Asia/Hong_Kong -- for six hours out of every twenty-four they would not
-        // be, which is the whole of what this avoids.
-        $today = today()->toDateString();
-
         // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
@@ -173,7 +167,6 @@ class TransactionController extends Controller
             'cardBanks',
             'typeOptions',
             'typeDefaults',
-            'today',
             'statusOptions',
             'currencyOptions',
         ));
@@ -317,10 +310,13 @@ class TransactionController extends Controller
             ));
         }
 
-        // People settle on the day they are reminded, not the day a statement falls
-        // due, and a settlement forgotten last week is a real thing to want recorded.
-        // So the day is theirs to say, and it goes on both rows below.
-        $paidOn = $figures['date'] ?? today()->toDateString();
+        // The day the money moved. A settlement belongs to the period it settles, so
+        // the statement's own due date is the answer in the ordinary case and this is
+        // the day for the rest -- paid early, or paid long after it fell due. The
+        // dialog pre-fills the due date and the server falls back to the same thing, so
+        // there is one rule rather than a form that says one thing and an endpoint
+        // another.
+        $paidOn = $figures['date'] ?? $figures['due_date'];
 
         DB::beginTransaction();
 

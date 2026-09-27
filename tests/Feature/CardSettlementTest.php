@@ -90,20 +90,27 @@ class CardSettlementTest extends TestCase
         $this->assertSame('2026-01-28', $payment->date);
     }
 
-    public function test_a_settlement_with_no_day_given_is_dated_today(): void
+    public function test_a_settlement_with_no_day_given_is_dated_the_period_it_settles(): void
     {
-        // What every caller did before the day was configurable, and what a direct
-        // POST still does. Pinned because the default is the behaviour, not a
-        // convenience bolted on afterwards: a caller that omits it must not get a
-        // null date, which the NOT NULL column would refuse at the last moment.
+        // What every caller gets when it omits the day, and what the dialog pre-fills.
+        // The statement's own due date rather than today, because a settlement belongs
+        // to the period it settles -- and pinned because a default that disagrees with
+        // the form's would mean the dialog shows one day and the endpoint writes
+        // another, which is the kind of thing only a test notices.
+        //
+        // Today() would be the other defensible answer, and it is wrong here in a way
+        // that shows up on real data: a period can be outstanding before it falls due,
+        // so defaulting to today would date an early payment to whenever the user
+        // happened to settle it.
         $this->charge('2026-01-01', '120.0000');
 
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(
-            today()->toDateString(),
-            Transaction::where('type', 'payment')->firstOrFail()->date
+            self::PERIOD,
+            Transaction::where('type', 'payment')->firstOrFail()->date,
+            'A settlement with no day given should carry the statement due date.'
         );
     }
 
