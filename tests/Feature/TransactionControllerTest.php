@@ -1195,9 +1195,6 @@ class TransactionControllerTest extends TestCase
 
     public function test_index_sends_no_linked_rows_when_no_page_row_is_paired(): void
     {
-        // An empty object rather than an absent key, so the browser reads a map it can
-        // index without asking whether there is one. A missing key would be
-        // indistinguishable from a pairing the server failed to find.
         $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
@@ -1205,9 +1202,112 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_says_which_rows_cannot_be_deleted_and_why(): void
+    {
+        // The button is disabled from this, so the sentence has to be the one destroy()
+        // would have refused with -- the browser displays it rather than composing its
+        // own, and a charge in a settled statement is the only thing on this list that
+        // carries a reason.
+        $this->card->meta()->update(['meta' => [
+            'term_days' => 15,
+            'statement_day' => 25,
+            'settlement_account_id' => $this->bank->id,
+        ]]);
+
+        $charge = $this->storedCharge();
+
+        $this->post("/accounts/{$this->card->id}/settle", [
+            'due_date' => '2026-02-09',
+            'owed' => '120.0000',
+        ])->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('refusals', [$charge->id => 'Charge [Cafe] is in the statement due 2026-02-09, which has been settled, and cannot be '
+                    .'deleted on its own. Delete the payment that settled it first.',
+            ])
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Deleting
     // ---------------------------------------------------------------------
+
+    public function test_a_charge_in_a_settled_statement_cannot_be_deleted(): void
+    {
+        // A settled period is the record of a bill that was paid. Deleting one of the
+        // charges on it leaves the payment that closed it explaining less than the
+        // money that left the bank, or nothing at all -- a period with no charges reads
+        // as a credit, and the panel offers a settle button the server refuses.
+        $charge = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->delete("/transactions/{$charge->id}")
+            ->assertSessionHas(
+                'message',
+                'Charge [Cafe] is in the statement due 2026-02-09, which has been settled, and cannot be '
+                    .'deleted on its own. Delete the payment that settled it first.'
+            );
+
+        $this->assertSame('2026-01-01', $charge->fresh()->date, 'The charge was deleted anyway.');
+        $this->assertSame('2026-02-09', $charge->fresh()->meta_data['due_date']);
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->sole()->isSettled(),
+            'The statement no longer balances.'
+        );
+    }
+
+    public function test_deleting_the_payment_first_makes_the_charge_deletable(): void
+    {
+        // The way out, and the reason the refusal is allowed to exist. A guard with no
+        // exit makes a mistake in a paid statement uncorrectable for good; this is
+        // undo the settlement, then fix the charge, one row at a time. Nothing else
+        // would make a second charge on the same period deletable either.
+        $charge = $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->delete('/transactions/'.Transaction::where('type', 'payment')->value('id'))
+            ->assertSessionHasNoErrors();
+
+        $this->delete("/transactions/{$charge->id}")->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('transactions', 0);
+        $this->assertSame(0, CardStatement::forAccount($this->card)->count());
+    }
+
+    public function test_a_charge_in_an_open_statement_deletes_normally(): void
+    {
+        // The other half, so the guard is not refusing every charge on a card.
+        $charge = $this->storedCharge();
+
+        $this->delete("/transactions/{$charge->id}")
+            ->assertSessionHas('message', 'Transaction [charge] deleted');
+    }
+
+    public function test_a_partly_paid_statement_still_lets_its_charges_go(): void
+    {
+        // Settled, not "has a payment in it". A period with 120 of charges and 50 paid
+        // still owes 70, and the user is still going to pay the rest, so refusing to
+        // correct a charge in it would be refusing a statement that is not closed.
+        $charge = $this->storedCharge();
+
+        $this->post('/transactions', [
+            'account_id' => $this->card->id,
+            'category_id' => null,
+            'date' => '2026-01-15',
+            'type' => 'payment',
+            'description' => 'Part payment',
+            'amount' => '50.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ])->assertSessionHasNoErrors();
+
+        $this->delete("/transactions/{$charge->id}")->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('transactions', ['id' => $charge->id]);
+    }
 
     public function test_destroy_removes_the_transaction_and_its_bag(): void
     {

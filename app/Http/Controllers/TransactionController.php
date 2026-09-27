@@ -59,15 +59,40 @@ class TransactionController extends Controller
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
             ->paginate($r->input('per_page', 5));
 
+        $page = $transactions->getCollection();
+
+        // What each card still owes. One query per card, not one for all: due_date
+        // belongs to a single card's statements. Inactive cards included, unlike the
+        // account picker below -- closing a card does not unpaid it, and settle() has
+        // never checked status.
+        //
+        // Read once and split in PHP. The panel wants the periods still owing, and the
+        // delete button below wants the ones already settled, and a second read would
+        // be a second scan of the meta table -- see CardStatement on what that costs.
+        $cards = Account::query()
+            ->where('type', AccountType::Card->value)
+            ->orderBy('name')
+            // with('meta') so settlementAccount() is not a second query per card.
+            ->with('meta')
+            ->get();
+
+        $cardPeriods = $cards
+            ->mapWithKeys(fn (Account $card) => [$card->id => CardStatement::forAccount($card)])
+            ->all();
+
         // What each row on this page would take with it, keyed by the row that would
         // take it along -- so the delete confirmation can name the other half of a card
         // settlement before the user agrees to remove it.
         //
-        // Read off the models, before Data::collect() below. That call maps the
-        // paginator through and leaves DTOs where the models were, so a query
-        // returning this paginator a few lines later hands over TransactionData and
-        // nothing says so -- a 500 on a page with rows in it, an empty page otherwise.
-        $linked = $this->linkedCounterparts($transactions->getCollection());
+        // Built from $page rather than from the paginator: Data::collect() below maps
+        // it through and leaves DTOs where the models were, so a query returning it
+        // afterwards hands over TransactionData and nothing says so -- a 500 on a page
+        // with rows in it, an empty page otherwise.
+        $linked = $this->linkedCounterparts($page);
+
+        // Why each row on this page cannot be deleted, keyed by its id. Sent so the
+        // button can say so rather than being offered and then refused.
+        $refusals = $this->deleteRefusals($page, $cardPeriods);
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
@@ -103,25 +128,21 @@ class TransactionController extends Controller
             ])
             ->values();
 
-        // What each card still owes. One query per card, not one for all: due_date
-        // belongs to a single card's statements.
-        //
-        // Inactive cards included, unlike the account picker above. Closing a card does
-        // not unpaid it, and settle() has never checked status, so filtering them out
-        // here would leave a debt the user could neither see nor discharge.
-        $statements = Account::query()
-            ->where('type', AccountType::Card->value)
-            ->orderBy('name')
-            // with('meta') so settlementAccount() is not a second query per card.
-            ->with('meta')
-            ->get()
+        // A period that is settled is a fact about the past and is left out, so a card
+        // with five years of paid statements does not push the ones needing attention
+        // off the page. The settled ones are not discarded: the refusal below is built
+        // from them, and the transactions that made them are all still in the list.
+        $statements = $cards
             ->map(fn (Account $card) => [
                 'card' => [
                     'id' => $card->id,
                     'name' => $card->name,
                     'ccy' => $card->ccy,
                 ],
-                'periods' => CardStatement::outstandingFor($card)
+                // values() because reject keeps the keys it did not reject, and a
+                // period list keyed 1, 3, 7 reaches Vue as an object rather than the
+                // list the v-for is written against.
+                'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
                     ->map(fn (CardStatement $statement) => [
                         'first_charge_date' => $statement->firstChargeDate,
                         'last_charge_date' => $statement->lastChargeDate,
@@ -167,6 +188,7 @@ class TransactionController extends Controller
             'statements',
             'cardBanks',
             'linked',
+            'refusals',
             'typeOptions',
             'typeDefaults',
             'statusOptions',
@@ -390,6 +412,12 @@ class TransactionController extends Controller
 
     public function destroy(Transaction $transaction)
     {
+        $refusal = $this->deleteRefusal($transaction);
+
+        if ($refusal !== null) {
+            return back()->with('message', $refusal);
+        }
+
         // Read the pairing, and the settlement's period, before anything is deleted:
         // both live in bags, and both bags are about to go.
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
@@ -430,6 +458,103 @@ class TransactionController extends Controller
         return back()->with('message', $period === null
             ? 'Card settlement deleted in full: 2 transactions'
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * Why this row cannot be deleted, or null when it can.
+     *
+     * A charge in a settled statement. A settled period is the record of a bill that
+     * was paid, and deleting one of its charges leaves the payment that closed it
+     * explaining less than the money that left the bank -- or nothing at all: a period
+     * with no charges and a payment on it reads as a credit, and the panel then offers a
+     * settle button the server turns down.
+     *
+     * Derived rather than a column on the row. A period settles when its charges and
+     * payments cancel, which no single row can know, so a status here could only be a
+     * claim about the charge -- a user could mark it settled while its statement was
+     * still owed.
+     *
+     * The message carries the way out, because a guard without one makes a mistake in a
+     * paid statement uncorrectable for good: delete the payment that settled the period,
+     * which reopens it, and the charge deletes normally. That is the same delete the
+     * pairing below already takes as a pair.
+     *
+     * @param  Collection<int, CardStatement>|null  $cardPeriods  that card's periods,
+     *                                                            read once by the caller
+     */
+    private function deleteRefusal(?Transaction $transaction, ?Collection $cardPeriods = null): ?string
+    {
+        if ($transaction === null || $transaction->type !== TransactionType::Charge->value) {
+            return null;
+        }
+
+        // A row belongs to a statement only if the app filed it under one.
+        $dueDate = $transaction->meta?->meta?->getArrayCopy()['due_date'] ?? null;
+
+        if ($dueDate === null) {
+            return null;
+        }
+
+        $cardPeriods ??= $this->cardPeriodsFor($transaction);
+
+        $period = $cardPeriods?->firstWhere('dueDate', $dueDate);
+
+        if ($period === null || ! $period->isSettled()) {
+            return null;
+        }
+
+        return sprintf(
+            'Charge [%s] is in the statement due %s, which has been settled, and cannot be deleted '
+                .'on its own. Delete the payment that settled it first.',
+            $transaction->description,
+            $dueDate
+        );
+    }
+
+    /**
+     * The refusals for a page of rows, keyed by id, so the browser can disable a button
+     * rather than offer an action the server will turn down.
+     *
+     * The same answers destroy() gives, from the same method, so the sentence on the
+     * button and the sentence in the message cannot drift. A disabled button is not
+     * enforcement either way -- a stale page and a direct request both bypass it -- which
+     * is why destroy() asks the same question again.
+     *
+     * @param  Collection<int, Transaction>  $rows
+     * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
+     * @return array<int, string>
+     */
+    private function deleteRefusals(Collection $rows, array $cardPeriods): array
+    {
+        $refusals = [];
+
+        foreach ($rows as $row) {
+            $refusal = $this->deleteRefusal($row, $cardPeriods[$row->account_id] ?? null);
+
+            if ($refusal !== null) {
+                $refusals[$row->id] = $refusal;
+            }
+        }
+
+        return $refusals;
+    }
+
+    /**
+     * One card's statement periods, for a row whose card this request has not read.
+     *
+     * The index reads them for every card on the page and passes them in, because that
+     * query is the expensive one and re-running it per row is not free -- see
+     * CardStatement on what it costs. This is the one-off read for a delete.
+     */
+    private function cardPeriodsFor(Transaction $transaction): ?Collection
+    {
+        $account = $transaction->account;
+
+        if ($account?->type !== AccountType::Card->value) {
+            return null;
+        }
+
+        return CardStatement::forAccount($account);
     }
 
     /**

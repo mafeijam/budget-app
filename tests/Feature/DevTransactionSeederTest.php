@@ -299,7 +299,7 @@ class DevTransactionSeederTest extends TestCase
         $this->seed(DevTransactionSeeder::class);
 
         // Two periods on one card, which is the shape the panel needs: the first was
-        // paid off and the second was not, and outstandingFor() rejects a settled one.
+        // paid off and the second was not, and the panel leaves a settled period out.
         // So Dev Card gives the statement two rows and the panel one, and a reader
         // comparing the two sees the filter rather than a discrepancy.
         $periods = CardStatement::forAccount(Account::where('name', 'Dev Card')->firstOrFail());

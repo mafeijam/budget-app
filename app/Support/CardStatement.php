@@ -161,22 +161,6 @@ class CardStatement
     }
 
     /**
-     * The periods on a card that still owe something, earliest first.
-     *
-     * What a panel listing them wants, and bounded without a limit clause: a period
-     * that has been paid off is a fact about the past, and a card with five years of
-     * settled history would otherwise push the periods needing attention off the
-     * bottom of the page. Settled periods are still in the transaction list, where
-     * the payment that closed them is.
-     *
-     * @return Collection<int, self>
-     */
-    public static function outstandingFor(Account $card): Collection
-    {
-        return self::forAccount($card)->reject->isSettled()->values();
-    }
-
-    /**
      * What this period still owes.
      *
      * Signed, so an overpayment reads negative rather than clamping at zero. One

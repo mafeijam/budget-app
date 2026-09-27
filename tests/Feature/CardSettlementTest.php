@@ -10,6 +10,7 @@ use App\Support\CardStatementCycle;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -216,11 +217,14 @@ class CardSettlementTest extends TestCase
 
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
-        $outstanding = CardStatement::outstandingFor($this->card);
-
-        $this->assertSame(1, $outstanding->count());
-        $this->assertSame('2026-03-12', $outstanding->sole()->dueDate);
-        $this->assertSame('80.0000', $outstanding->sole()->owed());
+        // What the panel would list, which is the periods still owing -- read through
+        // the page rather than off the class, because the page is what filters and a
+        // test of a helper asserts only that the helper is the helper.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('statements.0.periods', 1)
+            ->where('statements.0.periods.0.due_date', '2026-03-12')
+            ->where('statements.0.periods.0.owed', '80.0000')
+        );
     }
 
     public function test_a_partial_prior_payment_is_settled_for_the_remainder(): void
