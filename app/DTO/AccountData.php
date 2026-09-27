@@ -54,7 +54,9 @@ class AccountData extends Data
      * Reject a settlement target that is not a cash account in the same currency.
      *
      * A constructor check rather than a rule, because only the database knows what the
-     * target *is* -- so it holds whether or not the caller called validate().
+     * target *is* -- so it holds whether or not the caller called validate(). The rule
+     * itself is Account::guardSettledFrom(), shared with the settle endpoint; the
+     * refusal is re-keyed here because the field this form submits is a nested one.
      */
     private function guardSettlementAccount(): void
     {
@@ -71,44 +73,16 @@ class AccountData extends Data
             return;
         }
 
-        // Spelled out because a brokerage settles into a bank while a card is paid
-        // from one. The verb is stored bare: each message puts it in a different slot.
-        [$subject, $verb] = match ($this->type) {
-            AccountType::Security => ['brokerage', 'settle into'],
-            AccountType::Card => ['card', 'be paid from'],
-            // Unreachable -- a cash account is prohibited the field -- but named
-            // rather than defaulted, so a new case fails loudly.
-            AccountType::Cash => ['cash account', 'settle into'],
-        };
-
-        if ($target->type !== AccountType::Cash->value) {
+        try {
+            Account::guardSettledFrom(
+                $target,
+                $this->type->value,
+                $this->ccy->value,
+                Account::settlementWording($this->type->value)
+            );
+        } catch (ValidationException $e) {
             throw ValidationException::withMessages([
-                'meta_data.settlement_account_id' => sprintf(
-                    'A %s can only %s a cash account, not a %s account.',
-                    $subject,
-                    $verb,
-                    $target->type
-                ),
-            ]);
-        }
-
-        // Checked after the type: a wrong-type target is the more fundamental mismatch,
-        // and naming its currency would imply converting could fix it.
-        //
-        // Refuse rather than convert. A *charge* in another currency is fine because
-        // the user states it in the card's own currency (card_amount, which
-        // CardStatement sums). A *bank* in another currency has no such figure and
-        // nothing here converts between them, so the pairing is left unusable rather
-        // than quietly miscounted.
-        if ($target->ccy !== $this->ccy->value) {
-            throw ValidationException::withMessages([
-                'meta_data.settlement_account_id' => sprintf(
-                    'A %s %s cannot %s a %s account.',
-                    $this->ccy->value,
-                    $subject,
-                    $verb,
-                    $target->ccy
-                ),
+                'meta_data.settlement_account_id' => $e->errors()['settlement_account_id'][0],
             ]);
         }
     }

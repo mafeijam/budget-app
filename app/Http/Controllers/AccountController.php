@@ -33,20 +33,10 @@ class AccountController extends Controller
         // absent from the map, which is how the column knows to leave it blank.
         $balances = AccountBalance::forAccounts($accounts->getCollection());
 
-        // Cash only, and including inactive: every other type is refused by
-        // AccountData, and a closed bank still holds history a dividend lands in.
-        // Not the paginated set above, which would strand banks off page one.
-        $settlementOptions = Account::query()
-            ->where('type', AccountType::Cash->value)
-            ->orderBy('name')
-            ->get(['id', 'name', 'ccy'])
-            // ccy in the label so an incompatible bank is recognisable before the
-            // form refuses it.
-            ->map(fn (Account $account) => [
-                'label' => "{$account->name} ({$account->ccy})",
-                'value' => $account->id,
-            ])
-            ->values();
+        // Cash accounts only, and not the paginated set above, which would strand
+        // banks off page one. On the model rather than here, because the settle dialog
+        // offers the same list and two copies would drift.
+        $settlementOptions = Account::settlementOptions();
 
         // Derived, not hardcoded in FormAccount.vue, which would drift *behind* the
         // enum. Enum order, so the likeliest currencies lead.

@@ -55,6 +55,32 @@
           the contract, and teaching the test about components costs more than the
           duplication.
         -->
+        <!--
+          Always present rather than only for a card that names no bank, because a card
+          is paid from different accounts at different times and making the user visit
+          the account form to change it is a worse answer than asking here. The server
+          remembers the answer, so this is a choice with a consequence rather than a
+          field, and the sentence below says what that consequence is.
+        -->
+        <q-select
+          v-model="bankId"
+          :options="options"
+          class="q-mb-sm"
+          label="Paid from"
+          filled
+          emit-value
+          map-options
+          :hint="bankHint"
+          :error="!!bankError"
+          :error-message="bankError"
+        >
+          <template #no-option>
+            <q-item>
+              <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
         <q-input
           v-model="paidOn"
           class="q-mb-sm"
@@ -83,14 +109,16 @@
           taking money out of a bank account the user may not have had in mind, or may
           not have connected to this card at all. Cheaper to say now than to discover in
           the bank list. Both rows carry the date above, so it is named once rather than
-          implying the transfer happened whenever.
+          implying the transfer happened whenever, and the account is named as chosen so
+          the sentence stays true while the picker is being used.
         -->
         <div class="bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
           This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
-          <template v-if="bank"> and a transfer of the same amount out of {{ bank }}.</template>
-          <template v-else>
-            , but this card does not name the bank it is paid from, so it cannot be settled.
+          <template v-if="chosenName">
+            and a transfer of the same amount out of {{ chosenName }}.
+            <template v-if="changedBank">The card will be paid from there from now on.</template>
           </template>
+          <template v-else>, and no account has been chosen to pay it from.</template>
         </div>
 
         <!--
@@ -141,11 +169,33 @@
 const props = defineProps({
   group: { type: Object, default: Object },
   period: { type: Object, default: null },
-  // The card's bank, or null when it has none. Sent by the controller rather than
-  // looked up here, so the dialog can name where the money leaves before the user
-  // commits, and so the server's own check is on screen.
-  bank: { type: String, default: null },
+  // The card's bank as {id, name}, or null when it names none. Both fields because the
+  // picker is preselected with the id and the sentence below prints the name.
+  bank: { type: Object, default: null },
 })
+
+// The cash accounts a card may be paid from, from the page props: the same list the
+// account form offers, sent by the controller, so the two cannot disagree about what may
+// be a target. The currency is in each label because the server refuses a mismatch, so a
+// bank in the wrong currency is recognisable rather than a surprise on save.
+const options = computed(() => usePage().props.settlementOptions ?? [])
+
+// Which account the money leaves from, preselected with the card's own so the ordinary
+// case is nothing to do.
+const bankId = ref(null)
+
+const chosenName = computed(() => options.value.find(o => o.value === bankId.value)?.label ?? null)
+
+// Whether the choice is not the card's current one, which the server takes as an
+// instruction to change it. Said rather than left to be inferred, because settling one
+// statement from the wrong account changes where every later one is paid from too.
+const changedBank = computed(() => bankId.value !== null && bankId.value !== props.bank?.id)
+
+const bankHint = computed(() =>
+  changedBank.value
+    ? 'The card will be paid from this account from now on'
+    : 'Where the money leaves when this card is paid',
+)
 
 const formatDate = useCalendarDay()
 
@@ -163,6 +213,11 @@ const paidOn = ref('')
 // statement could not be settled": a malformed date is the user's own input and belongs
 // beside the field, while a refusal is about the whole request.
 const fieldError = ref(null)
+
+// The account field's own error, kept apart from the banner for the same reason as the
+// date: a target the server will not accept is about one field, and the banner would say
+// the whole request failed.
+const bankError = ref(null)
 
 // The calendar's menu, so a chosen day can close it.
 const dateMenu = ref(null)
@@ -186,11 +241,11 @@ const money = value => {
   return `${whole}.${places.padEnd(4, '0').slice(0, 2)}`
 }
 
-// The same two conditions the server refuses on, and the same reason as the panel's
-// settleable: disabled rather than hidden, with the reason visible, so the period still
-// shows what it owes and why it cannot be settled yet.
+// Disabled rather than hidden, with the reason on the control, so the period still shows
+// what it owes. An account must be chosen: there is nothing to write the transfer to
+// without one, and the server refuses that case rather than guessing a bank.
 const settleable = computed(
-  () => Boolean(props.bank) && !props.period?.pending_count && !settling.value,
+  () => bankId.value !== null && !props.period?.pending_count && !settling.value,
 )
 
 const confirm = () =>
@@ -199,19 +254,27 @@ const confirm = () =>
     // The figure the user was shown, sent so the server can notice if it has moved.
     // Never used as the amount -- see TransactionController::settle(). The date is not
     // sent that way: settle() takes it as given, because unlike the amount it is not
-    // something the server can check.
-    { due_date: props.period.due_date, owed: props.period.owed, date: paidOn.value },
+    // something the server can check. The account is the third: settle() uses it and
+    // remembers it on the card, so it is not a per-statement override.
+    {
+      due_date: props.period.due_date,
+      owed: props.period.owed,
+      date: paidOn.value,
+      settlement_account_id: bankId.value,
+    },
     {
       preserveScroll: true,
       preserveState: true,
       onError: errors => {
         fieldError.value = errors.date ?? null
+        bankError.value = errors.settlement_account_id ?? null
         error.value = errors.due_date ?? errors.date ?? 'That statement could not be settled.'
       },
       onSuccess: () => {
         open.value = false
         error.value = null
         fieldError.value = null
+        bankError.value = null
       },
       onFinish: () => (settling.value = false),
     },
@@ -222,6 +285,7 @@ watch(
   () => {
     error.value = null
     fieldError.value = null
+    bankError.value = null
   },
 )
 
@@ -231,10 +295,14 @@ watch(
 // one statement would silently date the next.
 defineExpose({
   show: () => {
-    // The statement's own due date, not today: see paidOn above.
+    // The statement's own due date, not today: see paidOn above. And the card's own
+    // bank, rather than whatever was chosen last time: settling one statement from
+    // another account changed the card, so the next one starts from where that left off.
     paidOn.value = props.period?.due_date ?? ''
+    bankId.value = props.bank?.id ?? null
     error.value = null
     fieldError.value = null
+    bankError.value = null
     open.value = true
   },
 })

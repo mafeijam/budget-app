@@ -52,6 +52,157 @@ class CardSettlementTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // Where the money leaves from
+    // ---------------------------------------------------------------------
+
+    public function test_a_card_with_no_bank_is_settled_from_the_account_the_user_names(): void
+    {
+        // A card carrying no link is a state the rules permit, not broken data --
+        // AccountMetaData requires a settlement account of a brokerage and merely allows
+        // one on a card, for exactly the window before the user has said where they pay
+        // it from. So the dialog offers the choice and this endpoint takes it, rather
+        // than the card being unsettleable until someone visits the account form.
+        $other = Account::create(['name' => 'Reserve', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $this->card->meta()->update(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
+
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => $other->id,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            $other->id,
+            Transaction::where('type', 'transfer')->firstOrFail()->account_id,
+            'The money did not leave the account the user named.'
+        );
+    }
+
+    public function test_the_account_named_at_settlement_becomes_the_cards_bank(): void
+    {
+        // Remembered, or the picker would be asked for the same answer at every
+        // statement and the card would still be sitting there with no bank. Only
+        // when it differs, so the ordinary settle does not rewrite the row every time.
+        $other = Account::create(['name' => 'Reserve', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $this->charge('2026-01-01', '120.0000');
+        $this->charge('2026-03-01', '80.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => $other->id,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($other->id, $this->card->fresh()->settlementAccount()?->id);
+
+        // The card's terms share the row, and dropping them would leave a card that
+        // produces no due dates at all -- silently, since a charge would then simply
+        // have no period.
+        $this->assertSame(15, $this->card->meta->meta['term_days']);
+        $this->assertSame(25, $this->card->meta->meta['statement_day']);
+
+        // The second settle names nothing, and lands on the remembered bank: that is
+        // what proves it was remembered rather than merely written.
+        $this->settle(['due_date' => '2026-04-09', 'owed' => '80.0000'])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            $other->id,
+            Transaction::where('type', 'transfer')->latest('id')->firstOrFail()->account_id
+        );
+    }
+
+    public function test_a_card_with_no_bank_and_no_answer_still_refuses(): void
+    {
+        // The one thing a picker cannot fix. Nothing was named and the card names
+        // nothing, so there is no transfer to write.
+        $this->card->meta()->update(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])
+            ->assertSessionHasErrors([
+                'due_date' => 'Card [Card] does not name the bank it is paid from, so it cannot be settled.',
+            ]);
+
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+    }
+
+    public function test_the_named_account_is_refused_for_being_the_wrong_kind_of_account(): void
+    {
+        // The same refusal the account form gives, from the same check. A brokerage is
+        // not somewhere money is paid from, and the message is asserted as that exact
+        // string so a second copy of the rule rather than a shared one fails here.
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => $broker->id,
+        ])->assertSessionHasErrors('settlement_account_id');
+
+        $this->assertSame(
+            'A card can only be paid from a cash account, not a security account.',
+            session('errors')->getBag('default')->messages()['settlement_account_id'][0]
+        );
+
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+    }
+
+    public function test_the_named_account_is_refused_for_being_in_another_currency(): void
+    {
+        // Refused rather than converted, and for the same reason a charge in another
+        // currency is not: nothing here converts between them, so the pairing would be
+        // quietly miscounted rather than merely awkward.
+        $usd = Account::create(['name' => 'New York', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => $usd->id,
+        ])->assertSessionHasErrors('settlement_account_id');
+
+        $this->assertSame(
+            'A HKD card cannot be paid from a USD account.',
+            session('errors')->getBag('default')->messages()['settlement_account_id'][0]
+        );
+    }
+
+    public function test_a_card_naming_itself_is_refused_as_the_wrong_kind_of_account(): void
+    {
+        // Wanted a check here for a card paid from itself -- a transfer with no other
+        // side -- and there does not need to be one. A settlement target is always a
+        // cash account, and neither a card nor a brokerage is one, so the type check
+        // above refuses a self-named target before anything else gets a chance to. The
+        // only account that could name itself is a cash account, and AccountMetaData
+        // prohibits the field for one.
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => $this->card->id,
+        ])->assertSessionHasErrors([
+            'settlement_account_id' => 'A card can only be paid from a cash account, not a card account.',
+        ]);
+
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+    }
+
+    public function test_the_named_account_must_exist(): void
+    {
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle([
+            'due_date' => self::PERIOD,
+            'owed' => '120.0000',
+            'settlement_account_id' => 9999,
+        ])->assertSessionHasErrors('settlement_account_id');
+    }
+
+    // ---------------------------------------------------------------------
     // The day the money moved
     // ---------------------------------------------------------------------
 

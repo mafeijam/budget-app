@@ -160,17 +160,23 @@ class TransactionController extends Controller
             ->filter(fn (array $group) => $group['periods'] !== [])
             ->values();
 
-        // So the settle dialog can name the bank *before* the user commits, and a card
-        // with none shows a disabled control rather than a button that fails.
-        $cardBanks = Account::query()
-            ->where('type', AccountType::Card->value)
-            ->with('meta')
-            ->get()
+        // The bank each card is paid from, keyed by card id. Both fields, because the
+        // dialog needs the id to preselect the picker and the name to print in the
+        // sentence about where the money leaves. A card that names none is absent,
+        // which is what tells the dialog to offer a choice.
+        $cardBanks = $cards
             ->filter(fn (Account $card) => $card->settlementAccount() !== null)
             ->mapWithKeys(fn (Account $card) => [
-                $card->id => $card->settlementAccount()->name,
+                $card->id => [
+                    'id' => $card->settlementAccount()->id,
+                    'name' => $card->settlementAccount()->name,
+                ],
             ])
             ->all();
+
+        // The picker behind that choice -- the same list the account form offers, from
+        // the model, so the two cannot disagree about what may be a target.
+        $settlementOptions = Account::settlementOptions();
 
         $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
 
@@ -187,6 +193,7 @@ class TransactionController extends Controller
             'options',
             'statements',
             'cardBanks',
+            'settlementOptions',
             'linked',
             'refusals',
             'typeOptions',
@@ -295,6 +302,12 @@ class TransactionController extends Controller
             // period. Optional so a caller that sends nothing gets the period's own due
             // date below, which is the answer in the ordinary case.
             'date' => ['nullable', 'date_format:Y-m-d'],
+
+            // The cash account the money leaves, which the dialog always sends and a
+            // caller may not. Optional because the card's own link is the answer when
+            // it has one, and a card that has none is a reachable state rather than
+            // broken data -- AccountMetaData permits a card to carry no link at all.
+            'settlement_account_id' => ['nullable', 'integer', 'exists:accounts,id'],
         ]);
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
@@ -307,8 +320,40 @@ class TransactionController extends Controller
             ));
         }
 
-        // A card with no bank named cannot be settled; say so rather than guess one.
-        $bank = $account->settlementAccount();
+        $named = $account->settlementAccount();
+        $bank = $named;
+
+        // ?? null because validate() omits an absent key entirely -- nullable permits a
+        // present null, not a missing one. The date field above is read the same way.
+        if (($figures['settlement_account_id'] ?? null) !== null) {
+            $chosen = Account::find($figures['settlement_account_id']);
+
+            // exists:accounts,id has already run, so this only fires for an account
+            // deleted between the two, and a bank that is not there is the same answer
+            // as a bank that cannot be named.
+            if ($chosen === null) {
+                $refuse(sprintf(
+                    'Card [%s] cannot be paid from account [%s], which no longer exists.',
+                    $account->name,
+                    $figures['settlement_account_id']
+                ));
+            }
+
+            // The account form's own rule, so the dialog cannot offer a target that form
+            // would refuse. Account::guardSettledFrom() is where it lives.
+            Account::guardSettledFrom(
+                $chosen,
+                $account->type,
+                $account->ccy,
+                Account::settlementWording($account->type)
+            );
+
+            // No check that the target is not the card itself: a settlement target is
+            // always a cash account, and a card is not one, so the type check above
+            // refuses that first. The form's `different:id` is reachable only because a
+            // rule runs before the guard, and only to blame the target in the message.
+            $bank = $chosen;
+        }
 
         if ($bank === null) {
             $refuse(sprintf(
@@ -355,6 +400,24 @@ class TransactionController extends Controller
         DB::beginTransaction();
 
         try {
+            // Remember where the card is paid from, when the dialog said somewhere else.
+            // Inside the write, so a settlement cannot be recorded with the choice only
+            // half applied -- and merged rather than written, because term_days and
+            // statement_day share this row and a blind write would drop them, leaving a
+            // card that produces no due dates at all.
+            //
+            // Only when it differs: the ordinary settle sends back the account the card
+            // already names, and rewriting the row to its own value would touch every
+            // card on every statement for nothing.
+            if ($named?->id !== $bank->id) {
+                $account->meta()->update([
+                    'meta' => array_merge(
+                        $account->meta?->meta?->getArrayCopy() ?? [],
+                        ['settlement_account_id' => $bank->id]
+                    ),
+                ]);
+            }
+
             $payment = Transaction::create([
                 'account_id' => $account->id,
                 'category_id' => null,

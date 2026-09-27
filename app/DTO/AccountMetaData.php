@@ -42,8 +42,11 @@ class AccountMetaData extends Data
             // prohibited, and that is the point -- the account settled *into* may not
             // name a target.
             //
-            // `different` is redundant with AccountData::guardSettlementAccount(), and
-            // is here only so the message blames the target.
+            // `different` is the only rule that stops a card naming itself, and
+            // Account::guardSettledFrom() cannot: it is static and takes the settler's
+            // type and currency rather than its row, because AccountData validates a
+            // payload for an account that may not exist yet. It is here rather than
+            // only in the guard because the message blames the target.
             'settlement_account_id' => [
                 'nullable',
                 'required_if:type,security',

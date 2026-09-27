@@ -365,10 +365,10 @@ class TransactionControllerTest extends TestCase
 
     public function test_index_names_the_bank_each_card_is_paid_from(): void
     {
-        // So the settle dialog can say where the money leaves before the user
-        // commits, rather than the user finding out from a refusal. A card with no
-        // bank is simply absent from the map, which is how the panel tells the
-        // difference between "owes nothing" and "cannot be paid".
+        // So the settle dialog can say where the money leaves before the user commits,
+        // and preselect the picker with it -- hence the id as well as the name. A card
+        // with no bank is absent from the map, which is how the dialog knows to offer a
+        // choice rather than print one.
         // update, not create: setUp already gave the card its terms, and the bag is
         // one row per model -- the unique index is on (model_id, model_type).
         $this->card->meta()->update(['meta' => [
@@ -381,7 +381,27 @@ class TransactionControllerTest extends TestCase
         $lonely->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('cardBanks', [$this->card->id => 'Bank'])
+            ->where('cardBanks', [$this->card->id => ['id' => $this->bank->id, 'name' => 'Bank']])
+        );
+    }
+
+    public function test_index_offers_the_accounts_a_card_could_be_paid_from(): void
+    {
+        // The picker behind that choice, and the same list the account form is given:
+        // cash accounts only, with the currency in the label so an incompatible one is
+        // recognisable before the server refuses it rather than silently missing.
+        $this->post('/accounts', [
+            'name' => 'Brokerage',
+            'status' => 'active',
+            'type' => 'security',
+            'ccy' => 'HKD',
+            'meta_data' => ['settlement_account_id' => $this->bank->id],
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('settlementOptions', [
+                ['label' => 'Bank (HKD)', 'value' => $this->bank->id],
+            ])
         );
     }
 

@@ -112,8 +112,6 @@ const money = value => {
   return `${whole}.${places.padEnd(4, '0').slice(0, 2)}`
 }
 
-const bankName = card => props.banks[card.id] ?? null
-
 // The dates of the charges in the period, which is what the statement is about -- Due
 // says when it is payable, this says what it is for. One date when every charge landed
 // on the same day, because "16 Sep – 16 Sep" says less and takes twice the room.
@@ -127,18 +125,20 @@ const covers = period => {
   return from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`
 }
 
-// The same two conditions the server refuses on, kept in step with
-// TransactionController::settle(). A copy rather than a derivation, because the
-// server's answer comes from the database and this one only has the panel's payload.
+// The one condition the server refuses on that the panel can see: a period with
+// pending rows has a total that is not final, and offering to settle it would be
+// offering something that comes back as a refusal.
 //
-// Disabled rather than hidden either way: a period with a total that is not final, or a
-// card with nowhere to pay from, should still show what it owes and say why it cannot
-// be settled, rather than lose the button.
-const settleable = (group, period) => Boolean(bankName(group.card)) && !period.pending_count
+// Not the bank, which used to be the other half of this. The dialog asks which account
+// to pay from now, so a card that names none is the case it exists for, and disabling
+// the button was the dead end. A card with no cash account anywhere is still stuck, and
+// the dialog is where that gets said.
+//
+// Disabled rather than hidden: the period still shows what it owes, and the control
+// says why it cannot be settled yet.
+const settleable = (group, period) => !period.pending_count
 
 const blockedReason = (group, period) => {
-  if (!bankName(group.card)) return 'This card does not name the bank it is paid from'
-
   if (period.pending_count) {
     return `${period.pending_count} row${period.pending_count === 1 ? '' : 's'} not yet posted, so the total is not final`
   }
@@ -150,7 +150,7 @@ const dialog = ref(null)
 const chosen = ref(null)
 
 const openSettle = (group, period) => {
-  chosen.value = { group, period, bank: bankName(group.card) }
+  chosen.value = { group, period, bank: props.banks[group.card.id] ?? null }
   dialog.value?.show()
 }
 </script>
