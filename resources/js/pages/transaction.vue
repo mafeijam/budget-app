@@ -28,27 +28,23 @@
 const props = defineProps({
   ...hasTableProps,
   // Not part of hasTableProps, and its absence is silent: the form reads
-  // props.options.accounts for the account picker, so without this the select
-  // renders with no options at all and clicking it opens nothing. Declared as an
-  // Object because the controller sends {accounts, categories}.
+  // props.options.accounts, so without this the select renders with no options at all.
   options: { type: Object, default: Object },
-  // What each card still owes, period by period. Outstanding periods only -- a
-  // card with nothing due gets no heading, and the payments that closed the rest
-  // are in the table below.
+  // What each card still owes, period by period. Outstanding periods only -- a card
+  // with nothing due gets no heading, and the payments that closed the rest are in the
+  // table below.
   statements: { type: Array, default: Array },
-  // Which bank each card is paid from, keyed by card id, so the settle dialog can
-  // say where the money leaves before the user commits.
+  // Which bank each card is paid from, keyed by card id, so the settle dialog can say
+  // where the money leaves before the user commits.
   cardBanks: { type: Object, default: () => ({}) },
 })
 
 const pagination = usePagination()
 const formatDate = useHongKongTime()
 
-// The same shape as the account list's Meta column, for the same reason: meta_data
-// arrives as the DTO, so every declared key is present whether or not this row uses
-// it -- which would print "symbol": null and three unused trade fields on a cash
-// expense. Back to null rather than {} so a row with nothing stored reads as having
-// nothing.
+// The same shape as the account list's Meta column: meta_data arrives as the DTO, so
+// every declared key is present whether or not this row uses it. Back to null rather
+// than {} so a row with nothing stored reads as having nothing.
 const stripNulls = meta => {
   const kept = Object.fromEntries(Object.entries(meta ?? {}).filter(([, value]) => value !== null))
 
@@ -66,13 +62,12 @@ const columns = reactive([
   {
     name: 'account',
     label: 'Account',
-    // Whose money the row is. Without it a table of cash, card and trade rows gives
-    // a number in the corner and nothing else to tell them apart.
+    // Whose money the row is. Without it a table of cash, card and trade rows gives a
+    // number in the corner and nothing else to tell them apart.
     //
-    // Not sortable, and not lazily so: the list orders by whatever `sort` says
-    // against the transactions table, and account_name is not a column on it. Making
-    // this sortable means teaching the query to sort through the relation, which is a
-    // decision about the index rather than about this column.
+    // Not sortable, and not lazily so: the list orders against the transactions table
+    // and account_name is not a column on it, so this means teaching the query to sort
+    // through the relation.
     field: 'account_name',
     align: 'left',
     sortable: false,
@@ -94,9 +89,8 @@ const columns = reactive([
   {
     name: 'amount',
     label: 'Amount',
-    // Money is stored as a fixed-scale decimal and arrives as a string, precisely
-    // so it is not rounded by a float on the way here. Formatted for display and
-    // nothing else -- the value that goes into the page is the string.
+    // Money arrives as a string precisely so a float never rounds it on the way here.
+    // Formatted for display and nothing else.
     field: 'amount',
     align: 'right',
     sortable: true,
@@ -118,14 +112,13 @@ const columns = reactive([
   {
     name: 'metaData',
     label: 'Meta',
-    // Which keys appear is the whole content of this column. A card charge shows the
+    // Which keys appear is the whole content of this column: a card charge shows the
     // due date the server derived, or the card-currency figure it was given; a cash
-    // expense shows nothing at all.
+    // expense shows nothing.
     //
-    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is
-    // the four-character string "null" and the cell would read as though the row
-    // carried a value called null. The guard is the empty string, and a table of
-    // blank cells is what "this row has no bag" should look like.
+    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is the
+    // four-character string "null" and the cell would read as though the row carried a
+    // value called null.
     field: val => {
       const kept = stripNulls(val.meta_data)
 

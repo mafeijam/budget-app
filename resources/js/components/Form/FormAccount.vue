@@ -68,10 +68,9 @@
       </template>
 
       <!--
-        Card as well as securities, for the same reason the rule allows it on both: a
-        brokerage settles trades into a bank, a card is paid from one. Offering it for
-        securities alone would leave a card with no way to record where it is paid
-        from, and the field would have to be set by hand.
+        Card as well as securities, because the rule allows it on both: a brokerage
+        settles trades into a bank, a card is paid from one. Offering it for securities
+        alone would leave a card with no way to record where it is paid from.
       -->
       <template v-if="['security', 'card'].includes(form.type)">
         <q-select
@@ -104,25 +103,17 @@ const { schema, form } = useFormEmpty()
 const { target, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
-// Cash accounts only, straight off the server. Read from the page props rather
-// than the table's rows: the table paginates, so a securities account could not
-// settle into a bank that happened to be off the first page. Server-rendered
-// rather than derived here so the options cannot disagree with what AccountData
-// will accept.
+// Every list from the page props, never hardcoded here: the controller derives each from
+// the enum that decides it, so a dropdown cannot offer a value AccountData would reject
+// nor fall short of one it accepts. `?? []` rather than a literal fallback, so a missing
+// prop shows an empty dropdown rather than a stale hardcoded set.
+//
+// settlementOptions is read from the props rather than the table's rows because the
+// table paginates -- a securities account could not settle into a bank off page one.
 const settlementOptions = computed(() => usePage().props.settlementOptions ?? [])
 
-// Currency options, for the same reason and by the same route: derived from the
-// server so the dropdown cannot offer a currency AccountData would reject, nor
-// fall short of one it accepts. See the comment on the controller.
-//
-// `?? []` rather than a literal fallback, so a missing prop shows an empty
-// dropdown rather than silently offering a stale hardcoded set.
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
-// Type and status, same reason and same route. These two were the last option
-// lists still written into this template, which left a case added to either enum
-// accepted by AccountData and unoffered here -- a brokerage type the user could
-// not create, with nothing failing. `?? []` for the same reason as above.
 const typeOptions = computed(() => usePage().props.typeOptions ?? [])
 
 const statusOptions = computed(() => usePage().props.statusOptions ?? [])
@@ -152,17 +143,14 @@ const settlementHint = computed(() => {
 
 useWatchTarget(target, schema, form)
 
-// The two account types that may carry a settlement link, as the one place that says
-// so on the frontend. Mirrors AccountMetaData's `prohibited_unless:type,security,card`;
-// the form cannot read a validation rule, so this is a copy that can go stale, and the
-// consequence of its going stale is a visible wrong answer rather than a silent one --
-// a field shown for a cash account, which the save then refuses.
+// The two account types that may carry a settlement link, mirroring AccountMetaData's
+// `prohibited_unless:type,security,card`. The form cannot read a validation rule, so
+// this is a copy that can go stale -- visibly, since a field shown for a cash account
+// is one the save then refuses.
 //
-// Leaving a type that may not carry a link makes the value invalid, and the rule
-// prohibits the field rather than ignoring it, so a stale one would fail the save
-// over a field the user can no longer see. Not cleared on the way in: an account that
-// may not have held one has nothing stale to drop, and clearing unconditionally
-// would wipe the link off an account toggled away and back.
+// Not cleared on the way in: an account that may not have held a link has nothing stale
+// to drop, and clearing unconditionally would wipe it off an account toggled away and
+// back.
 const maySettle = type => ['security', 'card'].includes(type)
 
 watch(

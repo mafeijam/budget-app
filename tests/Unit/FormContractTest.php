@@ -110,7 +110,7 @@ class FormContractTest extends TestCase
         // told their date is malformed.
         $vue = (string) file_get_contents(resource_path('js/components/Form/FormTransaction.vue'));
 
-        // Comments stripped, because the field's own comment quotes mask= while
+        // Comments stripped, because the field's own comment discusses the mask while
         // explaining which component it belongs to.
         $markup = (string) preg_replace('/<!--.*?-->/s', '', $vue);
 

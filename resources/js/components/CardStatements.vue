@@ -8,11 +8,10 @@
 
     <!--
       One table for every card, not one per card. A separate table computes its own
-      column widths, so with two or more cards the Due column of one sat wherever its
-      own figures put it and the header repeated above each -- columns that looked
-      aligned with a single card and visibly were not with two. The card name is a
-      spanning row instead of a heading above the table, so it still separates one
-      card's periods from the next without giving the columns back to the browser.
+      column widths, so with two or more cards the Due column of one sat wherever its own
+      figures put it and the header repeated above each -- aligned with a single card,
+      visibly not with two. The card name is a spanning row rather than a heading, so it
+      still separates one card's periods from the next.
     -->
     <q-markup-table flat dense>
       <thead>
@@ -38,14 +37,11 @@
             <td>
               {{ formatDate(period.due_date) }}
               <!--
-                The one thing the figure cannot tell the user. The owed total is correct
-                without a pending row -- that is what pending means -- so a reader who
-                trusted it would pay against a statement that grows once the charge
-                posts, and the period would reopen under them having settled it. Said
-                here rather than only in the dialog, because the row is what they would
-                act on. On the due date rather than on Covers, because it is about
-                whether the period can be settled at all and that is a question about
-                when it falls due.
+                The one thing the figure cannot tell the user: the owed total is correct
+                without a pending row, so a reader who trusted it would pay against a
+                statement that grows once the charge posts and the period would reopen
+                under them having settled it. Said on the due date rather than on Covers
+                because it is about whether the period can be settled at all.
               -->
               <q-badge
                 v-if="period.pending_count"
@@ -65,13 +61,7 @@
             </td>
             <td class="text-right text-weight-medium">{{ money(period.owed) }}</td>
             <td class="text-right">
-              <!--
-                Disabled rather than hidden, and the reason is the dialog's. A period
-                with pending rows has a total that is not final and a card with no
-                bank has nowhere to pay from; either way the user is better served by
-                the period still showing what it owes and a control that says why not
-                than by a missing button.
-              -->
+              <!-- Disabled rather than hidden, for the reason given on `settleable`. -->
               <q-btn
                 dense
                 flat
@@ -104,9 +94,8 @@
 <script setup>
 const props = defineProps({
   groups: { type: Array, default: Array },
-  // The bank each card is paid from, keyed by card id. Sent by the controller so the
-  // dialog can name the account the money leaves before the user commits, and so the
-  // server's own check is on screen rather than only appearing on a refusal.
+  // The bank each card is paid from, keyed by card id, so the dialog can name where
+  // the money leaves before the user commits.
   banks: { type: Object, default: () => ({}) },
 })
 
@@ -125,13 +114,10 @@ const money = value => {
 
 const bankName = card => props.banks[card.id] ?? null
 
-// The dates of the charges in the period, which is what the statement is about --
-// Due says when it is payable, this says what it is for.
-//
-// One date when every charge landed on the same day, because "16 Sep – 16 Sep"
-// says less than "16 Sep" and takes twice the room. Nothing at all for a period
-// with no charge in it, which is honest: it covers nothing, and the null is why
-// this is not a subtraction.
+// The dates of the charges in the period, which is what the statement is about -- Due
+// says when it is payable, this says what it is for. One date when every charge landed
+// on the same day, because "16 Sep – 16 Sep" says less and takes twice the room.
+// Nothing at all for a period with no charge in it, which is honest: it covers nothing.
 const covers = period => {
   const from = period.first_charge_date
   const to = period.last_charge_date
@@ -144,8 +130,10 @@ const covers = period => {
 // The same two conditions the server refuses on, kept in step with
 // TransactionController::settle(). A copy rather than a derivation, because the
 // server's answer comes from the database and this one only has the panel's payload.
-// Still worth having: a control that offers an action the server will refuse, or
-// hides one it will accept, is worse than a duplicated condition.
+//
+// Disabled rather than hidden either way: a period with a total that is not final, or a
+// card with nowhere to pay from, should still show what it owes and say why it cannot
+// be settled, rather than lose the button.
 const settleable = (group, period) => Boolean(bankName(group.card)) && !period.pending_count
 
 const blockedReason = (group, period) => {
