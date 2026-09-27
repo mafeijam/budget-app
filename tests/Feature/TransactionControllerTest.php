@@ -925,9 +925,153 @@ class TransactionControllerTest extends TestCase
 
         $this->put("/transactions/{$transaction->id}", $this->chargePayload([
             'date' => '2026-01-26',
+
+            // The period the edit form actually sends. useWatchTarget seeds the form
+            // from a whole table row, and a row's bag carries the period the server
+            // derived last time -- so every edit of a charge arrived holding the bill
+            // it was already counted in. Deriving only into a gap let that stand, and
+            // the charge stayed in a statement its corrected date had left.
+            'meta_data' => ['due_date' => '2026-02-09'],
         ]))->assertSessionHasNoErrors();
 
         $this->assertSame('2026-03-12', $transaction->fresh()->meta_data['due_date']);
+    }
+
+    public function test_re_dating_a_charge_takes_it_out_of_the_old_statement(): void
+    {
+        // The point of the move, and the reason a stale due_date is worse than a wrong
+        // number: CardStatement groups on that key, so a charge left behind in the
+        // period it has left goes on counting toward what the card owes. Both halves
+        // are wrong -- the old period still carries a charge it does not cover, and the
+        // new one is short of the one it does -- and the panel is the only place either
+        // is visible.
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-26',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasNoErrors();
+
+        $periods = CardStatement::forAccount($this->card);
+
+        $this->assertFalse(
+            $periods->contains(fn (CardStatement $period) => $period->dueDate === '2026-02-09'),
+            'The statement the charge left still counts it.'
+        );
+
+        $this->assertSame('120.0000', $periods->firstWhere('dueDate', '2026-03-12')?->owed());
+    }
+
+    public function test_a_charge_in_a_settled_statement_cannot_be_re_dated(): void
+    {
+        // A settled period is a bill that has been paid, and its figures are the record
+        // of that bill. Moving the charge out would leave a credit against money already
+        // handed over, which this app can represent as nothing but a corrupted
+        // statement. There is no un-settling either, so the save is refused and the row
+        // is left exactly as it was -- including its date, which is the field the error
+        // is keyed on and the one the user moved.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-26',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors('date');
+
+        $fresh = $transaction->fresh();
+
+        $this->assertSame('2026-01-01', $fresh->date, 'The rejected date was written anyway.');
+        $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
+            'The statement the charge belongs to no longer balances.'
+        );
+    }
+
+    public function test_a_charge_cannot_be_moved_into_a_settled_statement(): void
+    {
+        // The other direction, and the one a guard written only for the period being
+        // left would miss: the charge stays in an open statement and is re-dated across
+        // a boundary into one that has been paid, which makes a settled bill owing
+        // money again.
+        $this->storedCharge();
+
+        // A second charge a statement later: 1 Mar is billed by the statement closing on
+        // 25 Mar, so it falls due on 9 Apr.
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-03-01',
+            'description' => 'Books',
+        ]))->assertSessionHasNoErrors();
+
+        $this->settleTheStatementDue('2026-04-09', '120.0000');
+
+        $charge = Transaction::where('description', 'Cafe')->firstOrFail();
+
+        $this->put("/transactions/{$charge->id}", $this->chargePayload([
+            'date' => '2026-03-15',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors('date');
+
+        $this->assertSame('2026-01-01', $charge->fresh()->date);
+        $this->assertSame('2026-02-09', $charge->fresh()->meta_data['due_date']);
+    }
+
+    public function test_editing_a_charge_without_moving_it_leaves_its_statement_alone(): void
+    {
+        // The counterpart to the refusal above, and the reason the re-derivation is
+        // gated on the date and the account having moved. A charge's statement is a
+        // fact about the day it was made, so fixing a description has said nothing
+        // about the period -- and a save that refused to touch the description of a
+        // charge because its statement happened to be settled would be refusing an
+        // edit the user never framed as a move.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'description' => 'Cafe, corrected',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasNoErrors();
+
+        $fresh = $transaction->fresh();
+
+        $this->assertSame('Cafe, corrected', $fresh->description);
+        $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
+            'Editing a description moved the charge out of the statement it was in.'
+        );
+    }
+
+    public function test_editing_a_payment_keeps_the_statement_it_settles(): void
+    {
+        // The due date a payment carries is the one that is not derivable from its own
+        // date: it names the bill that was paid, which is why settle() writes it and why
+        // nothing recomputes it. A payment the form round-trips arrives with that period
+        // in its bag, and dropping it would reopen a statement the user has already
+        // discharged, leaving the panel owing what was paid a moment ago.
+        $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+
+        $this->put("/transactions/{$payment->id}", [
+            'account_id' => $this->card->id,
+            'category_id' => null,
+            'date' => '2026-02-09',
+            'type' => 'payment',
+            'description' => 'Statement paid',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-02-09', $payment->fresh()->meta_data['due_date']);
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
+            'Editing a payment reopened the statement it settled.'
+        );
     }
 
     public function test_update_deletes_the_bag_when_the_new_type_has_none(): void
@@ -1052,6 +1196,28 @@ class TransactionControllerTest extends TestCase
         $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
 
         return Transaction::latest('id')->firstOrFail();
+    }
+
+    /**
+     * Pay off one statement period, the way the panel's settle button does.
+     *
+     * The card is given a bank first, since settle() refuses a card that does not name
+     * one -- and it is given its terms again because the meta bag is one row per model,
+     * so writing the bank into it without them would leave the card with no statement
+     * day and every period below it unreadable.
+     */
+    private function settleTheStatementDue(string $dueDate, string $owed): void
+    {
+        $this->card->meta()->update(['meta' => [
+            'term_days' => 15,
+            'statement_day' => 25,
+            'settlement_account_id' => $this->bank->id,
+        ]]);
+
+        $this->post("/accounts/{$this->card->id}/settle", [
+            'due_date' => $dueDate,
+            'owed' => $owed,
+        ])->assertSessionHasNoErrors();
     }
 
     private function chargePayload(array $overrides = []): array

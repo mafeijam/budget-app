@@ -209,6 +209,19 @@ class TransactionController extends Controller
 
     public function update(Transaction $transaction, TransactionData $data)
     {
+        // Before the transaction is opened, and outside the try. A ValidationException
+        // is an Exception, so one raised inside would be caught, rolled back and
+        // reported as "error db..." -- telling the user the database failed when nothing
+        // had been attempted. The guards in the DTO's constructor sit before this method
+        // for the same reason, and by the same accident of when the DTO is built.
+        //
+        // with('meta') because the cycle is read off the card's bag, and the account
+        // itself is not lazy-loaded anywhere else on this path.
+        $data->placeChargeInItsPeriod(
+            Account::with('meta')->find($data->account_id),
+            $transaction
+        );
+
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
         DB::beginTransaction();

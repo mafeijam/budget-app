@@ -7,6 +7,8 @@ use App\Enums\Currency;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Transaction;
+use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -247,6 +249,10 @@ class TransactionData extends Data
      * the controller. A card with no statement day yields no due date rather than
      * one counted from the payment term alone, which would be a whole cycle out.
      *
+     * Into a gap only. A payload that already carries one keeps it, which is the
+     * door an edit used to walk through and the reason there is a second method for
+     * it; see placeChargeInItsPeriod().
+     *
      * The bag is created if the payload carried none. Not tidiness: meta_data is
      * required for a trade and optional otherwise, so a charge that sends no bag is
      * valid, and skipping it would drop the charge out of its statement's figure with
@@ -262,21 +268,168 @@ class TransactionData extends Data
             return;
         }
 
+        $dueDate = $this->periodFor($account);
+
+        if ($dueDate === null) {
+            return;
+        }
+
+        $this->meta_data ??= new TransactionMetaData;
+        $this->meta_data->due_date = $dueDate;
+    }
+
+    /**
+     * Put a charge in the statement period the date on the payload puts it in,
+     * overwriting whichever period the payload carried.
+     *
+     * Called by the controller on the way to an update, and deliberately not from the
+     * constructor: that also runs when a stored row is read back, through
+     * TransactionData::collect. Re-deriving on a read would show a period the statement
+     * panel does not group by the moment someone edits a card's statement day -- two
+     * views of one row, disagreeing, and neither of them wrong about itself. A read
+     * shows what is stored; a write recomputes.
+     *
+     * The second door exists because the edit form round-trips a whole table row, and
+     * a row's bag carries the due date the server derived last time. So every edit of
+     * a charge arrived holding the bill it was already counted in, deriveDueDate()
+     * stood down because the field was filled, and a corrected date left the charge in
+     * a statement it no longer belonged to: the row and the panel describing different
+     * bills, with the statement query grouping on exactly the key that disagreed.
+     *
+     * Overwritten rather than kept, as in deriveAmount(): the period a date falls in is
+     * the only correct one, so a supplied figure is overruled rather than trusted. A
+     * charge the card has no terms for keeps whatever period it has, because the terms
+     * may have been removed since the charge was made and that charge is still a fact
+     * -- and clearing the key would drop the row out of the statement it was recorded
+     * in, which is a worse answer than a stale one to argue about later.
+     *
+     * A payment is left entirely alone. Its due date names the statement it settles,
+     * and that is the one thing about a payment that is not derivable from its date.
+     *
+     * @param  Transaction  $charge  the row being written, so what it already says can
+     *                               be compared against what the payload says.
+     */
+    public function placeChargeInItsPeriod(?Account $account, Transaction $charge): void
+    {
+        if ($this->type !== TransactionType::Charge) {
+            return;
+        }
+
+        // Only when one of the two things a period is derived from has actually moved:
+        // the date, which chooses the cycle, or the account, whose terms that cycle is
+        // read from. A charge's statement is a fact about the day it was made and the
+        // terms in force then, so an edit that touches neither has said nothing about
+        // the period -- and re-deriving on that evidence would refuse a description
+        // fix on a charge whose statement has been settled ("this charge cannot be
+        // moved out of it", to a user who moved nothing), or re-bill a year of history
+        // because somebody edited the card's statement day last week.
+        if ($this->date === $charge->date && $this->account_id === $charge->account_id) {
+            return;
+        }
+
+        $dueDate = $this->periodFor($account);
+
+        if ($dueDate === null) {
+            return;
+        }
+
+        $this->guardPeriodCanMove($account, $charge, $dueDate);
+
+        $this->meta_data ??= new TransactionMetaData;
+        $this->meta_data->due_date = $dueDate;
+    }
+
+    /**
+     * The statement period this charge's date falls in, or null when there is none.
+     *
+     * Null for two different reasons, and both mean the same thing to every caller:
+     * the card has no statement day to count a cycle from, or the date is not a date
+     * the `date` rule would accept. Throwing a parse error on the second would show
+     * the user an exception where the field error belongs.
+     */
+    private function periodFor(?Account $account): ?string
+    {
         $cycle = $account === null ? null : CardStatementCycle::fromMeta($account->meta?->meta);
 
         if ($cycle === null) {
-            return;
+            return null;
         }
 
         try {
             $charge = Carbon::createFromFormat('Y-m-d', $this->date);
         } catch (Throwable) {
-            // The date rule reports the bad format; throwing a parse error here
-            // would show the user an exception instead.
+            return null;
+        }
+
+        return $cycle->dueDateFor($charge)->toDateString();
+    }
+
+    /**
+     * Refuse to move a charge out of, or into, a statement that has been settled.
+     *
+     * A settled period is a bill that has been paid, and its figures are the record of
+     * that bill: the charges it covered and the payment that closed it. Re-dating a
+     * charge out of one leaves it showing a credit against money already handed over;
+     * re-dating one into one makes a paid bill owing money again. Both are a corrupted
+     * statement rather than a corrected one, this app has no way to represent the
+     * difference, and both are silent -- the panel would just show a figure nobody could
+     * account for. There is no un-settling either, so the answer is to refuse and say
+     * what to do instead, which is the same bargain guardAccountType() makes.
+     *
+     * Keyed on `date` rather than on the bag's due_date, because the date is the field
+     * the user moved and the only one of the two with a control on the form: due_date
+     * is server-owned (FormContractTest's allowlist) and has no field to hang a message
+     * off, so an error keyed there would be raised where nobody can see it.
+     *
+     * Both periods are read from the one query settle() reads, so the refusal is made on
+     * the same figures the panel showed. The card the charge is leaving is a second
+     * query, and only when the account itself changed -- the period being left behind
+     * belongs to the card it was on, which need not be the one it is being written to.
+     */
+    private function guardPeriodCanMove(?Account $account, Transaction $charge, string $dueDate): void
+    {
+        if ($account === null) {
             return;
         }
 
-        $this->meta_data ??= new TransactionMetaData;
-        $this->meta_data->due_date = $cycle->dueDateFor($charge)->toDateString();
+        // The period the row is in now, read off its own bag rather than off the
+        // payload: what the payload carries is what is being argued with, and a charge
+        // whose account changed carries a period belonging to the card it came from.
+        $leaving = $charge->meta?->meta['due_date'] ?? null;
+
+        // Nothing to leave, or leaving for the period it is in: nothing moves.
+        if ($leaving === null || $leaving === $dueDate) {
+            return;
+        }
+
+        $statements = CardStatement::forAccount($account);
+
+        $leavingPeriod = $statements->firstWhere('dueDate', $leaving);
+
+        if ($charge->account_id !== $account->id) {
+            $from = Account::find($charge->account_id);
+
+            $leavingPeriod = $from === null
+                ? null
+                : CardStatement::forAccount($from)->firstWhere('dueDate', $leaving);
+        }
+
+        $refuse = fn (string $message) => throw ValidationException::withMessages(['date' => $message]);
+
+        if ($leavingPeriod?->isSettled()) {
+            $refuse(sprintf(
+                'The statement due %s has been settled, so this charge cannot be moved out of it. '
+                    .'Delete it and record it again.',
+                $leaving
+            ));
+        }
+
+        if ($statements->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            $refuse(sprintf(
+                'The statement due %s has been settled, so this charge cannot be moved into it. '
+                    .'Choose a date in a period that is still open.',
+                $dueDate
+            ));
+        }
     }
 }
