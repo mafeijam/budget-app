@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Account;
 use App\Models\Category;
+use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -114,5 +116,84 @@ class CategoryControllerTest extends TestCase
         $response->assertSessionHas('message', 'Category [Doomed] deleted');
 
         $this->assertDatabaseCount('categories', 0);
+    }
+
+    public function test_destroy_refuses_a_category_that_transactions_are_filed_under(): void
+    {
+        // The one that was a 500. category_id is restrictOnDelete, so this used to
+        // raise a QueryException out of the controller: a 500 with the row still
+        // there and nothing said about why. Asserted as a redirect carrying a
+        // message, because "it did not blow up" is a weaker claim than "it said
+        // no" -- and a silent refusal would read the same way from the browser.
+        $account = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $category = Category::create(['name' => 'FOOD']);
+
+        $this->expenseOn($category, $account);
+
+        $response = $this->delete("/categories/{$category->id}");
+
+        $response->assertStatus(302);
+        $response->assertSessionHas('message', 'Category [FOOD] has 1 transaction and cannot be deleted');
+        $response->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('categories', ['id' => $category->id]);
+    }
+
+    public function test_destroy_counts_every_transaction_not_just_the_first(): void
+    {
+        // The count is in the message, so a user told "1 transaction" when two are
+        // filed under the category would fix one, hit the same wall, and have no
+        // reason to think the number had been counting something else.
+        $account = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $category = Category::create(['name' => 'FOOD']);
+
+        $this->expenseOn($category, $account);
+        $this->expenseOn($category, $account);
+
+        $this->delete("/categories/{$category->id}")
+            ->assertSessionHas('message', 'Category [FOOD] has 2 transactions and cannot be deleted');
+    }
+
+    public function test_destroy_allows_a_category_nothing_is_filed_under(): void
+    {
+        // The other half, so the guard is not simply refusing everything. The
+        // nullable category_id is the trap here: counting with whereNotNull would
+        // pass on a category whose transactions were all uncategorised.
+        $account = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $category = Category::create(['name' => 'FOOD']);
+        $used = Category::create(['name' => 'Used']);
+
+        $this->expenseOn($used, $account);
+
+        Transaction::create([
+            'account_id' => $account->id,
+            'category_id' => null,
+            'date' => '2026-01-11',
+            'type' => 'expense',
+            'description' => 'Uncategorised',
+            'amount' => '9.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->delete("/categories/{$category->id}")
+            ->assertSessionHas('message', 'Category [FOOD] deleted');
+
+        $this->assertDatabaseMissing('categories', ['name' => 'FOOD']);
+        $this->assertDatabaseHas('categories', ['name' => 'Used']);
+    }
+
+    private function expenseOn(Category $category, Account $account): Transaction
+    {
+        return Transaction::create([
+            'account_id' => $account->id,
+            'category_id' => $category->id,
+            'date' => '2026-01-10',
+            'type' => 'expense',
+            'description' => 'Lunch',
+            'amount' => '42.5000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
     }
 }

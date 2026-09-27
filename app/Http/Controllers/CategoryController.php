@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTO\CategoryData;
 use App\Models\Category;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Spatie\LaravelData\PaginatedDataCollection;
 
@@ -45,6 +46,23 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
+        // Checked here rather than left to the foreign key, which refuses this by
+        // throwing. category_id is restrictOnDelete, so deleting a category anything
+        // is filed under raised a QueryException and came back as a 500 -- the row
+        // still there, and nothing said about why. The same bargain as
+        // AccountController::destroy, for the same reason: the constraint belongs to
+        // the schema and the answer belongs in a message.
+        $transactions = Transaction::where('category_id', $category->id)->count();
+
+        if ($transactions > 0) {
+            return back()->with('message', sprintf(
+                'Category [%s] has %s transaction%s and cannot be deleted',
+                $category->name,
+                $transactions,
+                $transactions === 1 ? '' : 's'
+            ));
+        }
+
         $category->delete();
 
         return back()->with('message', "Category [$category->name] deleted");
