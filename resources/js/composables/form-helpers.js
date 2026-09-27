@@ -68,6 +68,17 @@ export function useDestroy(pagination) {
   // nothing at all, which would be the one message worth not showing.
   const labelOf = row => row.description || row.name || row.id
 
+  // The other half of a card settlement, named the way the table names a row: what it
+  // is, whose it is, when, and how much. Every field is one the user can see on the
+  // row they clicked, so the two can be compared rather than taken on trust.
+  //
+  // A wider description than labelOf gives, and deliberately: the three tables carry
+  // different columns and a category has no date or amount at all, but the counterpart
+  // of a settlement row is always a transaction and always has all four. Only a paired
+  // delete reaches this, which is the only time a second row exists to name.
+  const describe = row =>
+    `[${labelOf(row)}] on ${row.account_name}, ${row.date}, ${row.amount} ${row.ccy}`
+
   // The request lives inside onOk and nowhere else, which is what makes this safe
   // rather than merely careful. Every other way out of a Quasar dialog -- the cancel
   // button, a click on the backdrop, the escape key, even a route change -- arrives
@@ -86,9 +97,25 @@ export function useDestroy(pagination) {
   // a description the user typed, and html: true renders that as markup. Quasar
   // names it as an XSS route and here it would be one.
   function destroy(row) {
+    // What deleting this row would also delete, from the page props. Null for
+    // everything but the two halves of a card settlement, which are the only rows in
+    // this app that are really one row: a settlement is a payment on the card and a
+    // transfer out of the bank, written together and deleted together, so removing
+    // one has to remove the other or the card says it was paid while the bank says
+    // the money is still there.
+    //
+    // Read at click time rather than once, because the prop is rebuilt per visit and
+    // a dialog opened after a delete has to reflect the list it was opened from.
+    const other = usePage().props.linked?.[row.id]
+
     Dialog.create({
-      title: `delete ${things[meta.path] ?? 'row'}`,
-      message: `[${labelOf(row)}] will be deleted permanently.`,
+      // Naming the settlement rather than the row when there is one: the thing being
+      // undone is a statement, and the row clicked is only the half of it the list
+      // happened to show.
+      title: other ? 'delete card settlement' : `delete ${things[meta.path] ?? 'row'}`,
+      message: other
+        ? `${describe(other)} is the other half of this settlement. Both rows will be deleted permanently.`
+        : `[${labelOf(row)}] will be deleted permanently.`,
       // flat written out on cancel rather than left to Quasar, because the flat
       // default applies only when the option is a string, and the lowercase label
       // needs it to be an object -- otherwise both buttons come out raised and the

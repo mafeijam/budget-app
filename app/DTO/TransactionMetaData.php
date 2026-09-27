@@ -106,7 +106,9 @@ class TransactionMetaData extends Data
             // rows and the ids do not exist until it has. Prohibited outright rather
             // than permitted on one type: a client claiming `type=transfer` and naming
             // somebody else's transaction would pass every other rule, and a forged
-            // pair would refuse deletion of an unrelated row.
+            // pair is followed -- destroy() deletes whatever this points at, so the
+            // link this rule refuses to let a client write is the difference between
+            // deleting one row and deleting two.
             'paired_transaction_id' => ['prohibited'],
         ];
     }

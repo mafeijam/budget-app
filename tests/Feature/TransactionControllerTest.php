@@ -1145,6 +1145,66 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('2026-02-09', $transaction->fresh()->meta_data['due_date']);
     }
 
+    public function test_index_names_the_other_half_of_a_card_settlement(): void
+    {
+        // The delete confirmation cannot invent this: the counterpart is a row of its
+        // own, on the other account, and is as likely to be on another page of the list
+        // as on this one. So the page carries it, keyed by the row that would take it
+        // along, and the dialog says what the user is about to lose.
+        $this->card->meta()->update(['meta' => [
+            'term_days' => 15,
+            'statement_day' => 25,
+            'settlement_account_id' => $this->bank->id,
+        ]]);
+
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+        $this->post("/accounts/{$this->card->id}/settle", [
+            'due_date' => '2026-02-09',
+            'owed' => '120.0000',
+        ])->assertSessionHasNoErrors();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            // The whole map in one assertion. A prop of this shape arrives as a
+            // Collection rather than a plain array, and comparing it with == would
+            // fail on that rather than on the data -- hence all(). Counting the
+            // entries as well is free, and it is the assertion that matters: the
+            // charge in the list is a row like any other and must not be here.
+            ->where('linked', fn ($linked) => $linked->all() == [
+                $payment->id => [
+                    'id' => $transfer->id,
+                    'description' => 'Card payment [Card]',
+                    'date' => '2026-02-09',
+                    'amount' => '120.0000',
+                    'ccy' => 'HKD',
+                    'account_name' => 'Bank',
+                ],
+                $transfer->id => [
+                    'id' => $payment->id,
+                    'description' => 'Statement 2026-02-09',
+                    'date' => '2026-02-09',
+                    'amount' => '120.0000',
+                    'ccy' => 'HKD',
+                    'account_name' => 'Card',
+                ],
+            ])
+        );
+    }
+
+    public function test_index_sends_no_linked_rows_when_no_page_row_is_paired(): void
+    {
+        // An empty object rather than an absent key, so the browser reads a map it can
+        // index without asking whether there is one. A missing key would be
+        // indistinguishable from a pairing the server failed to find.
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('linked', [])
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Deleting
     // ---------------------------------------------------------------------

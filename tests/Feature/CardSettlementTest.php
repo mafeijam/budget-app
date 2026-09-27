@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
@@ -371,9 +372,13 @@ class CardSettlementTest extends TestCase
 
     // ---------------------------------------------------------------------
     // The pair is not two independent rows
+    //
+    // Which is why deleting one of them deletes both. The browser is told what the
+    // other half is before the user agrees; the server does not wait to be asked
+    // twice, and will not leave half of one behind.
     // ---------------------------------------------------------------------
 
-    public function test_a_paired_row_cannot_be_deleted(): void
+    public function test_a_paired_row_deletes_both_halves(): void
     {
         $this->charge('2026-01-01', '120.0000');
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
@@ -381,33 +386,86 @@ class CardSettlementTest extends TestCase
         $payment = Transaction::where('type', 'payment')->firstOrFail();
         $transfer = Transaction::where('type', 'transfer')->firstOrFail();
 
-        // Deleting one half leaves a settlement that never happened: the card shows
-        // owing 120 again while the bank shows 120 having left. Refused, the way an
-        // account that is a settlement target is refused.
-        $this->delete("/transactions/{$payment->id}")->assertSessionHas('message', sprintf(
-            'Transaction [%d] is half of a card settlement with [%d] and cannot be deleted on its own',
-            $payment->id,
-            $transfer->id
-        ));
+        // Deleting one half used to be refused, which protected the pair by refusing
+        // the only thing the user came for. Both rows go instead -- which is the same
+        // protection, since the settlement either exists in full or not at all.
+        $this->delete("/transactions/{$payment->id}")
+            ->assertSessionHas('message', 'Card settlement ['.self::PERIOD.'] deleted in full: 2 transactions');
 
-        $this->assertDatabaseCount('transactions', 3);
+        // The charge is not part of the settlement and is still here, so the count is
+        // one rather than nothing: a settlement is two rows, not a statement.
+        $this->assertDatabaseCount('transactions', 1);
+        $this->assertDatabaseMissing('transactions', ['id' => $transfer->id]);
+
+        // Bags too. An orphaned bag is not visible in a transaction list, but it is a
+        // row a statement query joins against.
+        $this->assertSame(1, Meta::where('model_type', Transaction::class)->count());
     }
 
-    public function test_the_other_half_is_refused_too(): void
+    public function test_the_other_half_deletes_both_too(): void
     {
         $this->charge('2026-01-01', '120.0000');
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
         $transfer = Transaction::where('type', 'transfer')->firstOrFail();
 
+        // From the other end, and with the same message. The due date is read from
+        // whichever half carries one -- only the card side is filed under a period --
+        // so a settlement must not describe itself differently depending on which
+        // half the user happened to click delete on.
         $this->delete("/transactions/{$transfer->id}")
-            ->assertSessionHas('message', sprintf(
-                'Transaction [%d] is half of a card settlement with [%d] and cannot be deleted on its own',
-                $transfer->id,
-                $transfer->meta_data['paired_transaction_id']
-            ));
+            ->assertSessionHas('message', 'Card settlement ['.self::PERIOD.'] deleted in full: 2 transactions');
 
-        $this->assertDatabaseCount('transactions', 3);
+        $this->assertDatabaseMissing('transactions', ['id' => $payment->id]);
+        $this->assertDatabaseCount('transactions', 1);
+    }
+
+    public function test_deleting_a_settlement_reopens_the_statement_it_closed(): void
+    {
+        // The consequence, and the point. The charges are untouched, so removing the
+        // payment leaves the period owing what it owed before it was paid -- which is
+        // what un-doing a settlement means, and it means the card can be settled again
+        // for the same figure.
+        $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $this->assertTrue(CardStatement::forAccount($this->card)->sole()->isSettled());
+
+        $this->delete('/transactions/'.Transaction::where('type', 'payment')->value('id'))
+            ->assertSessionHasNoErrors();
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+
+        $this->assertFalse($statement->isSettled());
+        $this->assertSame('120.0000', $statement->owed());
+        $this->assertSame(0, $statement->paymentCount);
+        $this->assertSame(1, $statement->chargeCount, 'The charge the payment settled is still in the period.');
+    }
+
+    public function test_a_row_whose_partner_is_gone_deletes_on_its_own(): void
+    {
+        // A pairing left behind by a row deleted outside this app. The link resolves to
+        // nothing, and the alternative -- refusing, or erroring on the missing row --
+        // would leave this row undeletable forever, which is a worse answer than
+        // deleting the one row that is actually there.
+        $orphan = Transaction::create([
+            'account_id' => $this->card->id,
+            'category_id' => null,
+            'date' => '2026-02-09',
+            'type' => 'payment',
+            'description' => 'Payment',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $orphan->meta()->create(['meta' => ['paired_transaction_id' => 9999]]);
+
+        $this->delete("/transactions/{$orphan->id}")
+            ->assertSessionHas('message', 'Transaction [payment] deleted');
+
+        $this->assertDatabaseMissing('transactions', ['id' => $orphan->id]);
     }
 
     public function test_an_unpaired_row_deletes_normally(): void

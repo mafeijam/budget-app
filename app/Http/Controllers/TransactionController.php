@@ -15,6 +15,7 @@ use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\PaginatedDataCollection;
@@ -62,6 +63,20 @@ class TransactionController extends Controller
             ->with(['meta', 'account'])
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
             ->paginate($r->input('per_page', 5));
+
+        // What each row on this page would take with it, keyed by the row that would
+        // take it along -- so the delete confirmation can name the other half of a card
+        // settlement before the user agrees to remove it.
+        //
+        // Read off the models and placed here, before Data::collect() below rather
+        // than further down with the other page props. That call maps the paginator
+        // through and leaves DTOs where the models were, so a query returning this
+        // paginator a few lines later hands over TransactionData and nothing says so.
+        // The failure is a 500 on a page with rows in it and an empty page otherwise,
+        // which is the worst shape a mistake here can take. AccountBalance accepts
+        // either for the same reason; this ordering is the other answer to the same
+        // problem, and the cheaper one.
+        $linked = $this->linkedCounterparts($transactions->getCollection());
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
@@ -167,6 +182,7 @@ class TransactionController extends Controller
             'options',
             'statements',
             'cardBanks',
+            'linked',
             'typeOptions',
             'typeDefaults',
             'statusOptions',
@@ -394,21 +410,138 @@ class TransactionController extends Controller
 
     public function destroy(Transaction $transaction)
     {
-        // A settlement is two rows and must not come apart; deleting one half invents
-        // a payment that never happened.
+        // Read the pairing, and the settlement's period, before anything is deleted:
+        // both live in bags, and both bags are about to go.
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
+        $partner = $pairedId === null ? null : Transaction::with('meta')->find($pairedId);
+        $period = $this->settlementPeriod($transaction, $partner);
 
-        if ($pairedId !== null) {
-            return back()->with('message', sprintf(
-                'Transaction [%d] is half of a card settlement with [%d] and cannot be deleted on its own',
-                $transaction->id,
-                $pairedId
-            ));
+        // A settlement is two rows and must not come apart: deleting one half leaves a
+        // card that says it was paid and a bank that says the money is still there.
+        //
+        // This used to refuse the delete instead, which made the invariant
+        // unbreakable by accident rather than by intent -- and refused the one thing
+        // the user actually came for. Both rows or neither is the honest answer, so
+        // both go, and the browser has shown them the other half first. A pairing
+        // naming a row that is already gone -- one deleted outside this app, say --
+        // resolves to nothing, and then the single row is all there is to delete.
+        //
+        // Wrapped, because this is the first multi-row write in destroy() and half a
+        // settlement is precisely the state the wrap exists to prevent. As a side
+        // effect a database failure now reports itself instead of 500ing.
+        $rows = $partner === null ? [$transaction] : [$transaction, $partner];
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($rows as $row) {
+                $row->meta()->delete();
+                $row->delete();
+            }
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            report($e);
+
+            return back()->with('message', 'error db...');
         }
 
-        $transaction->meta()->delete();
-        $transaction->delete();
+        if ($partner === null) {
+            return back()->with('message', "Transaction [{$transaction->type}] deleted");
+        }
 
-        return back()->with('message', "Transaction [{$transaction->type}] deleted");
+        return back()->with('message', $period === null
+            ? 'Card settlement deleted in full: 2 transactions'
+            : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * The other half of each card settlement on a page of transactions, keyed by the
+     * row that would delete it.
+     *
+     * A settlement is two rows, and destroy() removes both together -- so the
+     * confirmation has to say so before the user agrees, or the dialog would be
+     * confirming a delete and quietly doing two. Sent per page and keyed by id rather
+     * than carried on the row, because the counterpart is not on this page to begin
+     * with: it is a transaction of its own, on the card or on the bank, and either
+     * half may be the one the user is looking at.
+     *
+     * The pairing is in the bags, which the page's query already eager-loaded, so
+     * this costs one query for the page and not one per row. The counterparts are
+     * fetched by id rather than read off the collection passed in -- the other half of
+     * a settlement is a row of its own, and is as likely to be on another page of the
+     * list as on this one.
+     *
+     * Every field here is one the table already shows. A row named in a dialog has to
+     * be recognisable against the row it was clicked from, and these are the columns
+     * the eye already has.
+     *
+     * @param  Collection<int, Transaction>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function linkedCounterparts(Collection $rows): array
+    {
+        $counterpartIds = $rows
+            ->map(fn (Transaction $row) => $row->meta?->meta['paired_transaction_id'] ?? null)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($counterpartIds->isEmpty()) {
+            return [];
+        }
+
+        $counterparts = Transaction::query()
+            ->with('account')
+            ->whereIn('id', $counterpartIds)
+            ->get()
+            ->keyBy('id');
+
+        $linked = [];
+
+        foreach ($rows as $row) {
+            // Absent for an unpaired row, which is most of them, and for a pairing
+            // whose other half is already gone: both have nothing extra to delete and
+            // so have nothing extra to warn about.
+            $other = $counterparts->get($row->meta?->meta['paired_transaction_id'] ?? null);
+
+            if ($other === null) {
+                continue;
+            }
+
+            $linked[$row->id] = [
+                'id' => $other->id,
+                'description' => $other->description,
+                'date' => $other->date,
+                'amount' => $other->amount,
+                'ccy' => $other->ccy,
+                'account_name' => $other->account?->name,
+            ];
+        }
+
+        return $linked;
+    }
+
+    /**
+     * The due date naming the settlement these rows are, if either row carries one.
+     *
+     * The payment half does and the transfer's does not -- only the card side is
+     * filed under a period, since a bank is not in any card's arithmetic. So the
+     * message is assembled from whichever row has it, or the same settlement would
+     * report itself differently depending on which half happened to be clicked.
+     */
+    private function settlementPeriod(?Transaction ...$rows): ?string
+    {
+        foreach ($rows as $row) {
+            $due = $row?->meta?->meta?->getArrayCopy()['due_date'] ?? null;
+
+            if ($due !== null) {
+                return $due;
+            }
+        }
+
+        return null;
     }
 }
