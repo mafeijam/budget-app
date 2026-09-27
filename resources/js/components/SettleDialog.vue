@@ -248,7 +248,9 @@ const settleable = computed(
   () => bankId.value !== null && !props.period?.pending_count && !settling.value,
 )
 
-const confirm = () =>
+const confirm = () => {
+  settling.value = true
+
   router.post(
     `/accounts/${props.group.card.id}/settle`,
     // The figure the user was shown, sent so the server can notice if it has moved.
@@ -279,6 +281,7 @@ const confirm = () =>
       onFinish: () => (settling.value = false),
     },
   )
+}
 
 watch(
   () => props.period,
