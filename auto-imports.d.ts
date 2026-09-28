@@ -38,6 +38,7 @@ declare global {
   const effectScope: typeof import('vue').effectScope
   const eventBus: typeof import('./resources/js/composables/event-bus.js').eventBus
   const extendRef: typeof import('@vueuse/core').extendRef
+  const filterInto: typeof import('./resources/js/composables/filter.js').filterInto
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher

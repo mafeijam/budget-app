@@ -156,6 +156,57 @@ class TransactionController extends Controller
                 // One phrase, not a list: "coffee, tea" is a description, and splitting
                 // it on the comma would match either word.
                 AllowedFilter::partial('description')->delimiter(''),
+                // A trade's ticker, which is a key in the bag and a column on nothing --
+                // so a callback and a whereHas rather than a partial on 'symbol', which
+                // would ask the transactions table for a column it does not have.
+                // whereHas adds the morph, so a bag belonging to an account of the same
+                // id cannot answer for it.
+                //
+                // A search rather than an equality, so a fragment finds the ticker: the
+                // filter is for finding rows, and a person who half-remembers a ticker
+                // should not have to remember the rest of it to find what they traded.
+                // The description search above usually finds these rows too, since a
+                // trade's description is written with its symbol in it; this is the one
+                // to reach for when the description says something else.
+                //
+                // Several at once, like every other filter in the bar, and the comma is
+                // what carries them: the package splits a comma out into a list before
+                // the callback is called, so the default delimiter is what makes this a
+                // list. Or rather than and, or a person reconciling two tickers would
+                // get the rows carrying both, which is none.
+                //
+                // Unindexable, like every other read of the bag: see CardStatement on
+                // what that costs, and the same trade, at this data volume.
+                AllowedFilter::callback('symbol', function (Builder $q, $value) {
+                    // A string when one ticker was sent and a list when several were, and
+                    // the filter is asked for either way. Trimmed, since a value picked
+                    // from a list and typed by hand are not the same thing.
+                    $phrases = array_filter(
+                        (array) $value,
+                        fn ($phrase) => is_string($phrase) && trim($phrase) !== ''
+                    );
+
+                    // Nothing usable in it, so nothing to narrow by: an empty field, or a
+                    // filter[symbol][]= with nothing in it. Said outright, because the
+                    // loop below would add no constraint at all and the filter would
+                    // quietly hand back the whole list.
+                    if ($phrases === []) {
+                        return $q;
+                    }
+
+                    return $q->where(function (Builder $q) use ($phrases) {
+                        foreach ($phrases as $phrase) {
+                            $q->orWhereHas(
+                                'meta',
+                                fn (Builder $bag) => $bag->where(
+                                    'meta->symbol',
+                                    'like',
+                                    '%'.trim($phrase).'%'
+                                )
+                            );
+                        }
+                    });
+                }),
                 // Inclusive, on the calendar day. A value that is not one is ignored
                 // rather than compared as a string, where "2026-1-5" would sort after
                 // "2026-01-31" and quietly drop rows.
@@ -250,6 +301,37 @@ class TransactionController extends Controller
 
         $options = compact('accounts', 'categories');
 
+        // Every ticker this app has traded, distinct, for the symbol filter to offer as
+        // it is typed into.
+        //
+        // All of them and no window, where the description hints two queries below take
+        // two years. A merchant name stops being the name somebody would use after a
+        // while, so a suggestion from four years ago is one nobody takes -- but a ticker
+        // is a name that does not go stale, and the row it finds is a trade somebody
+        // made and may still be asking about. Which is also why this is not a join to
+        // the transaction for its date: there is no date to bound it by.
+        //
+        // Read from the bag rather than from a column, because that is where a symbol
+        // lives -- a key grouped on would be a column, and see CardStatement on why the
+        // ones that are not grouped on stay in there.
+        //
+        // A scan of the meta table like every other read of it: one more on a page that
+        // already reads it once per card, and the trade CardStatement's own author
+        // decided not to make at this volume.
+        //
+        // 'null' rejected as well as nulls, because a key present and null unquotes to
+        // that string, and a list of suggestions with "null" on it is something the user
+        // would be shown and could pick.
+        $symbols = DB::table('meta')
+            ->where('model_type', Transaction::class)
+            ->selectRaw('DISTINCT JSON_UNQUOTE(JSON_EXTRACT(meta.meta, \'$.symbol\')) AS symbol')
+            ->get()
+            ->pluck('symbol')
+            ->reject(fn ($symbol) => ! is_string($symbol) || in_array($symbol, ['', 'null'], true))
+            ->sort()
+            ->values()
+            ->all();
+
         // What the filter bar offers. Every account rather than the active ones the form
         // picks from, since a closed card's history is still worth finding; every type
         // flat, since a filter is not narrowing by an account type, and in the enum's
@@ -259,6 +341,7 @@ class TransactionController extends Controller
                 ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
             'types' => array_column(TransactionType::filterOrder(), 'value'),
             'accountTypes' => array_column(AccountType::cases(), 'value'),
+            'symbols' => $symbols,
         ];
 
         // The pairing is what makes a type legal, so a flat list would offer "buy" on

@@ -47,6 +47,7 @@
     "effectScope": true,
     "eventBus": true,
     "extendRef": true,
+    "filterInto": true,
     "getCurrentInstance": true,
     "getCurrentScope": true,
     "getCurrentWatcher": true,

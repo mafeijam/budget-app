@@ -143,6 +143,163 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['description' => 'book']], ['Books']);
     }
 
+    public function test_it_searches_the_symbol_a_row_carries(): void
+    {
+        $this->buy0700();
+
+        // Whole, and part of it: a ticker is typed by whoever holds it, and nobody
+        // types the lot of it every time.
+        $this->assertListed(['filter' => ['symbol' => '0700.HK']], ['Buy 0700.HK']);
+        $this->assertListed(['filter' => ['symbol' => '700']], ['Buy 0700.HK']);
+    }
+
+    public function test_it_searches_several_symbols_at_once(): void
+    {
+        $broker = $this->broker();
+
+        $this->buy0700($broker);
+        $this->post('/transactions', $this->buyPayload([
+            'date' => '2026-03-06',
+            'description' => 'Buy 0005.HK',
+            'meta_data' => ['symbol' => '0005.HK', 'quantity' => '200', 'unit_price' => '80.00'],
+        ], $broker))->assertSessionHasNoErrors();
+
+        // Or, not and: rows carrying both tickers are none, so an and would report that
+        // this card has never traded either of them.
+        $this->assertListed(
+            ['filter' => ['symbol' => '0700.HK,0005.HK']],
+            ['Buy 0005.HK', 'Buy 0700.HK']
+        );
+
+        // One of the two on its own, which is what the field holds after one is removed.
+        $this->assertListed(['filter' => ['symbol' => '0005.HK']], ['Buy 0005.HK']);
+
+        // A ticker nothing carries, beside one that is, still finds the one that is.
+        $this->assertListed(
+            ['filter' => ['symbol' => '0700.HK,9999.HK']],
+            ['Buy 0700.HK']
+        );
+    }
+
+    public function test_the_symbol_search_finds_only_a_symbol_not_the_row_around_it(): void
+    {
+        $this->buy0700();
+
+        // Every row in these accounts is in HKD, and every one of them is dated in 2026,
+        // and a search that reached past the bag for either would list all of them. It
+        // must not: the one key the filter reads is the only one it can see.
+        $this->assertListed(['filter' => ['symbol' => 'HKD']], []);
+        $this->assertListed(['filter' => ['symbol' => '2026']], []);
+    }
+
+    public function test_the_symbol_search_finds_a_row_whose_description_says_something_else(): void
+    {
+        // The description search usually finds a trade too, since a description is
+        // written with its ticker in it. This is the case it cannot: the description was
+        // typed as something else, and the symbol is the field that says what was held.
+        $broker = $this->broker();
+
+        $this->post('/transactions', $this->buyPayload(['description' => 'Top up'], $broker))
+            ->assertSessionHasNoErrors();
+
+        $this->assertListed(['filter' => ['description' => '0700']], []);
+        $this->assertListed(['filter' => ['symbol' => '0700.HK']], ['Top up']);
+    }
+
+    public function test_a_symbol_filter_holding_nothing_usable_filters_nothing(): void
+    {
+        $this->buy0700();
+
+        // A field the user cleared, and a list whose only entry is blank. Both mean "not
+        // filtering by a symbol", and both must leave the list whole: the branches are
+        // built from what is in the value, and a where with no branch in it adds no
+        // constraint at all -- which would answer a filter that was asked for with the
+        // one answer it looks like it gave.
+        foreach (['filter%5Bsymbol%5D=', 'filter%5Bsymbol%5D%5B%5D='] as $query) {
+            $this->get("/transactions?{$query}&per_page=20")
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('data.data', fn ($rows) => $rows->pluck('description')->all() === ['Buy 0700.HK', 'Salary', 'Rent', 'Books', 'Coffee, tea'])
+                );
+        }
+    }
+
+    public function test_a_blank_among_several_symbols_is_dropped_and_the_rest_still_filter(): void
+    {
+        $this->buy0700();
+
+        // A picker that has been cleared and retyped in leaves a blank behind it. The
+        // blank is not a ticker, and treating it as one -- LIKE '%%', which matches
+        // everything -- would make the list the answer to a filter that names a ticker.
+        $this->assertListed(
+            ['filter' => ['symbol' => '0700.HK,']],
+            ['Buy 0700.HK']
+        );
+    }
+
+    public function test_every_ticker_on_file_is_offered_to_the_symbol_filter(): void
+    {
+        $broker = $this->broker();
+
+        $this->buy0700($broker);
+        $this->post('/transactions', $this->buyPayload([
+            'date' => '2026-03-06',
+            'description' => 'Buy 0005.HK',
+            'meta_data' => ['symbol' => '0005.HK', 'quantity' => '200', 'unit_price' => '80.00'],
+        ], $broker))->assertSessionHasNoErrors();
+
+        // A trade years old, and its ticker offered anyway: a name does not go stale the
+        // way a merchant's does, and the row it finds is one somebody made and may still
+        // be asking about. Distinct, and sorted so the list does not shuffle per load.
+        $this->post('/transactions', $this->buyPayload([
+            'date' => today()->subYears(5)->toDateString(),
+            'description' => 'Buy 9988.HK',
+            'meta_data' => ['symbol' => '9988.HK', 'quantity' => '50', 'unit_price' => '400.00'],
+        ], $broker))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('filterOptions.symbols', ['0005.HK', '0700.HK', '9988.HK'])
+        );
+    }
+
+    public function test_a_row_without_a_ticker_offers_none(): void
+    {
+        // A charge carries a bag with a due date in it and no symbol, so reading the key
+        // off every bag must not put an empty suggestion in the list.
+        $this->buy0700();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('filterOptions.symbols', ['0700.HK'])
+        );
+    }
+
+    /** A brokerage to trade on, created on demand so a test that needs one asks for it. */
+    private function broker(): Account
+    {
+        return Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+    }
+
+    /** What the transaction form posts for a buy of 100 0700.HK at 150.50. */
+    private function buyPayload(array $overrides = [], ?Account $broker = null): array
+    {
+        return array_merge([
+            'account_id' => ($broker ?? $this->broker())->id,
+            'category_id' => null,
+            'date' => '2026-03-05',
+            'type' => 'buy',
+            'description' => 'Buy 0700.HK',
+            'ccy' => 'HKD',
+            'meta_data' => ['symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '150.50'],
+        ], $overrides);
+    }
+
+    /** A recorded buy, for the tests that only care that the row exists. */
+    private function buy0700(?Account $broker = null): void
+    {
+        $this->post('/transactions', $this->buyPayload(overrides: [], broker: $broker))
+            ->assertSessionHasNoErrors();
+    }
+
     public function test_the_date_range_is_inclusive_at_both_ends(): void
     {
         $this->assertListed(
@@ -273,6 +430,16 @@ class TransactionFilterTest extends TestCase
             ->where('params.filter', ['unpaid' => '1'])
         );
     }
+
+    public function test_the_symbol_search_comes_back_so_the_page_can_keep_it(): void
+    {
+        // The field seeds itself from the same place the other filters do, so a shared
+        // link arrives with the phrase still in it.
+        $this->get('/transactions?filter[symbol]=0700')->assertInertia(fn (Assert $page) => $page
+            ->where('params.filter', ['symbol' => '0700'])
+        );
+    }
+
     public function test_the_statement_panel_ignores_the_filter(): void
     {
         // Filtered to the bank, the card still owes what it owes.

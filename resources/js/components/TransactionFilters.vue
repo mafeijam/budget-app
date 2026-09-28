@@ -232,6 +232,50 @@
       :display-value="shown(filters.category_id, categoryOptions)"
     />
 
+    <!--
+      A picker that can also be typed into, as the form's description field is, because
+      the tickers worth offering are the ones already traded and the one being asked
+      about is a fragment of one of those or none of them at all. add-unique is what lets
+      a fragment through, and the server searches it as a phrase rather than as a ticker,
+      so "700" finds 0700.HK.
+
+      Multiple, like every other filter in this row, and for the same reason: a person
+      reconciling a set of trades wants two tickers rather than the search twice. The
+      comma carries them, which is what every other field's value already looks like in
+      the URL, and which the server splits back out.
+
+      input-debounce rather than debounce: this is a QSelect, and it is the model update
+      that has to wait, since each one of them sends a request. The list still narrows as
+      the field is typed into, since that is filterInto's own work and costs nothing.
+
+      Dense, which the form's own description field is not: nothing in that form is dense,
+      so there was nothing there to match. Every other field in this row is, and a
+      standard filled field is 56px against their 40 -- one field in a row of equals
+      standing a third taller, which reads as the row being wrong rather than as this
+      field being the odd one.
+    -->
+    <q-select
+      v-model="filters.symbol"
+      :options="shownSymbols"
+      class="col-12 col-sm-6 col-md-3"
+      label="Symbol"
+      filled
+      dense
+      options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="300"
+      new-value-mode="add-unique"
+      multiple
+      clearable
+      @filter="filterSymbols"
+    >
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey"> Nothing matches; Enter adds it </q-item-section>
+        </q-item>
+      </template>
+    </q-select>
   </div>
 </template>
 
@@ -247,6 +291,17 @@ const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
 const accountTypeOptions = computed(() => page.props.filterOptions?.accountTypes ?? [])
 
+// Every ticker on file, as bare strings, so the symbol field's options and its value are
+// the same thing and need no label to pair with.
+const symbolOptions = computed(() => page.props.filterOptions?.symbols ?? [])
+
+// Narrowed as the field is typed into, through the shared helper rather than a second
+// copy of it. A ticker is a string, so it matches on itself.
+const shownSymbols = ref([])
+
+const filterSymbols = filterInto(shownSymbols, symbolOptions, (symbol, needle) =>
+  symbol.toLowerCase().includes(needle),
+)
 const statusOptions = computed(() => page.props.statusOptions ?? [])
 const categoryOptions = computed(() => page.props.options?.categories ?? [])
 const currencyOptions = computed(() => page.props.currencyOptions ?? [])
@@ -294,6 +349,9 @@ const filters = reactive({
   status: list(seeded.status),
   category_id: ids(seeded.category_id),
   ccy: list(seeded.ccy),
+  // A list, like every other multi-valued filter here, so the value in the URL is the
+  // comma-joined one the server's exact filters split on.
+  symbol: list(seeded.symbol),
   date_from: seeded.date_from ?? null,
   date_to: seeded.date_to ?? null,
   // A string rather than a boolean, since that is what it is in the URL: query() drops
@@ -368,6 +426,7 @@ const clear = () => {
     status: [],
     category_id: [],
     ccy: [],
+    symbol: [],
     date_from: null,
     date_to: null,
     unpaid: '',
