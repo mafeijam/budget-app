@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Meta;
 use App\Models\Price;
 use App\Models\Transaction;
+use App\Models\TransactionTemplate;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -47,6 +48,7 @@ class MassAssignmentTest extends TestCase
         Meta::class => ['table' => 'meta', 'not_client_set' => ['model_id', 'model_type']],
         Price::class => ['table' => 'prices', 'not_client_set' => []],
         Transaction::class => ['table' => 'transactions', 'not_client_set' => []],
+        TransactionTemplate::class => ['table' => 'transaction_templates', 'not_client_set' => []],
     ];
 
     /** Every model shares these: the key is the database's, the timestamps Eloquent's. */

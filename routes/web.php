@@ -27,6 +27,18 @@ Route::get('positions', [PositionController::class, 'index'])->name('positions.i
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');
 
+// A transaction template is a saved set of the transaction form's values, so it is made
+// and used from that form: the list rides along on the transactions page and there is no
+// /transaction-templates row to show, edit or index. Only the three verbs the form
+// actually calls, which is what makes them worth naming rather than deriving from a
+// resource the other half of which would 404.
+Route::post('transaction-templates', [TransactionController::class, 'storeTemplate'])
+    ->name('templates.store');
+Route::put('transaction-templates/{transactionTemplate}', [TransactionController::class, 'updateTemplate'])
+    ->name('templates.update');
+Route::delete('transaction-templates/{transactionTemplate}', [TransactionController::class, 'destroyTemplate'])
+    ->name('templates.destroy');
+
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');

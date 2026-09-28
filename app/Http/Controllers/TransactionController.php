@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTO\TransactionData;
 use App\DTO\TransactionMetaData;
+use App\DTO\TransactionTemplateData;
 use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Enums\TransactionStatus;
@@ -12,6 +13,7 @@ use App\Models\Account;
 use App\Models\Category;
 use App\Models\Meta;
 use App\Models\Transaction;
+use App\Models\TransactionTemplate;
 use App\Support\CardStatement;
 use App\Support\Positions;
 use App\Support\TradeCash;
@@ -262,6 +264,27 @@ class TransactionController extends Controller
         // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
+        // The saved form states, for the transaction form's template menu. Read on every
+        // page load rather than on demand: it is a handful of rows, and a menu that had
+        // to be fetched is a menu that is not there when the dialog opens.
+        //
+        // Ordered by name, which is what makes the suffixed ones readable as a run:
+        // "Coffee", "Coffee 2", "Coffee 3" rather than three scattered names, and a name
+        // the server chose should be findable by eye.
+        $templates = TransactionTemplate::query()
+            ->with('account')
+            ->orderBy('name')
+            ->get(['id', 'name', 'account_id', 'category_id', 'payload'])
+            ->map(fn (TransactionTemplate $template) => [
+                'id' => $template->id,
+                'name' => $template->name,
+                'account_id' => $template->account_id,
+                'account_name' => $template->account?->name,
+                'category_id' => $template->category_id,
+                'payload' => $template->payload,
+            ])
+            ->all();
+
         $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
 
         // `sort` is the order AppTable leaves out of the URL, since the server applies it
@@ -290,6 +313,7 @@ class TransactionController extends Controller
             'typeDefaults',
             'statusOptions',
             'currencyOptions',
+            'templates',
         ));
     }
 
@@ -403,6 +427,107 @@ class TransactionController extends Controller
 
         // fresh(), not the instance: name what the row is now, not what was sent.
         return back()->with('message', "Transaction [{$transaction->fresh()->type}] updated");
+    }
+
+    /**
+     * Save the form's current values as a reusable template.
+     *
+     * The payload arrives whole -- the browser sends the form as it stands -- and is
+     * narrowed to the keys a template keeps before it is stored, so nothing the form
+     * happens to hold can be written just because it was sent.
+     *
+     * No transaction write and no transaction lock around it: nothing here touches the
+     * accounts table's rows or any balance, so the two writes that matter are this one
+     * and the deletion a cascade may bring with it.
+     */
+    public function storeTemplate(TransactionTemplateData $data)
+    {
+        $template = TransactionTemplate::create([
+            'name' => self::freeName($data->name),
+            'account_id' => $data->account_id,
+            'category_id' => $data->category_id,
+            'payload' => $data->keptPayload(),
+        ]);
+
+        // The name as it ended up, not the one asked for: "Netflix 2" is the name this
+        // template now answers to and the toast is the only place the user is told.
+        return back()->with('message', "Template [{$template->name}] saved");
+    }
+
+    /**
+     * Replace a template's values with the form's, which is how a template that has
+     * drifted is put right without deleting and retyping it.
+     *
+     * The whole payload is replaced rather than merged into, so a field the user has
+     * since cleared is cleared here too. Merging would keep the old value on a key the
+     * new form left null, and the template would go on filling in something the user
+     * deliberately removed.
+     */
+    public function updateTemplate(TransactionTemplate $transactionTemplate, TransactionTemplateData $data)
+    {
+        $transactionTemplate->update([
+            // Excluding the row being updated is what keeps a plain update from
+            // renaming "Netflix" to "Netflix 2" and the one after that to "Netflix 3":
+            // the name is taken by this very template.
+            'name' => self::freeName($data->name, $transactionTemplate),
+            'account_id' => $data->account_id,
+            'category_id' => $data->category_id,
+            'payload' => $data->keptPayload(),
+        ]);
+
+        return back()->with('message', "Template [{$transactionTemplate->name}] updated");
+    }
+
+    /**
+     * Remove a template.
+     *
+     * One click away from a shortcut somebody was about to use, and nothing else here
+     * loses it, so -- as with a transaction or a category -- the button confirms and the
+     * confirmation names the thing rather than asking whether you are sure.
+     */
+    public function destroyTemplate(TransactionTemplate $transactionTemplate)
+    {
+        $name = $transactionTemplate->name;
+
+        $transactionTemplate->delete();
+
+        return back()->with('message', "Template [$name] deleted");
+    }
+
+    /**
+     * The name as given, or that name with a number on the end while it is taken.
+     *
+     * A loop of one-row lookups rather than a single query over the names in use,
+     * because it is the column's collation that decides "netflix" collides with
+     * "Netflix", and only the database knows that. Comparing in PHP instead would agree
+     * with the unique index about some pairs and not others, and a pair it disagreed
+     * about becomes a 500 on insert -- a name the app thought was free and the database
+     * did not.
+     *
+     * $except is the row being updated, so keeping a template's own name is not a
+     * collision.
+     */
+    private static function freeName(string $name, ?TransactionTemplate $except = null): string
+    {
+        $inUse = TransactionTemplate::query()
+            ->when($except, fn (Builder $query) => $query->whereKeyNot($except->getKey()))
+            ->where('name', $name);
+
+        if (! $inUse->exists()) {
+            return $name;
+        }
+
+        // mb_substr because the column counts characters and a suffix must not push the
+        // name past it: a 255-character name would otherwise become a name too long for
+        // the column that holds it, which is a 500 rather than a template.
+        for ($n = 2; ; $n++) {
+            $suffix = " {$n}";
+            $candidate = mb_substr($name, 0, 255 - strlen($suffix)).$suffix;
+
+            if (! TransactionTemplate::where('name', $candidate)->exists()) {
+                return $candidate;
+            }
+        }
     }
 
     /**

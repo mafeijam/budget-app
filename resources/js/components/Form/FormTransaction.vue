@@ -14,6 +14,83 @@
         </q-banner>
       </div>
 
+      <!--
+        Save the form as it stands, or fill it from one saved before. The two are the
+        same shortcut read in two directions, and both are here rather than on a page of
+        their own because a template is only ever made by filling this form in and only
+        ever used by filling it in again.
+
+        Update replaces the values of the template the form was filled from, so a
+        template that has drifted is corrected rather than deleted and retyped. It is
+        offered only once the form has moved off what it was filled with, since
+        overwriting a template with the values it already holds is a way of losing one
+        for nothing.
+      -->
+      <div class="col-12 row items-center q-gutter-sm">
+        <q-btn
+          flat
+          dense
+          no-caps
+          size="sm"
+          icon="bookmark_add"
+          label="Save as template"
+          :disable="!canTemplate"
+          @click="saveTemplate"
+        />
+
+        <q-btn
+          flat
+          dense
+          no-caps
+          size="sm"
+          icon="bookmark"
+          label="Use template"
+          :disable="templates.length === 0 || !!target"
+        >
+          <q-menu ref="templateMenu" anchor="bottom left" self="top left">
+            <q-list separator class="scroll" style="min-width: 260px; max-height: 320px">
+              <template v-for="group in templateGroups" :key="group.account_id">
+                <q-item-label header class="app-tint app-tint--muted text-caption">
+                  {{ group.account_name }}
+                </q-item-label>
+
+                <q-item
+                  v-for="template in group.templates"
+                  :key="template.id"
+                  clickable
+                  @click="applyTemplate(template)"
+                >
+                  <q-item-section>{{ template.name }}</q-item-section>
+                  <q-item-section side>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      icon="delete"
+                      color="negative"
+                      @click.stop="destroyTemplate(template)"
+                    />
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-list>
+          </q-menu>
+        </q-btn>
+
+        <q-btn
+          v-if="loadedTemplate"
+          flat
+          dense
+          no-caps
+          size="sm"
+          icon="save"
+          :label="`Update ${loadedTemplate.name}`"
+          :disable="!form.isDirty"
+          @click="updateTemplate"
+        />
+      </div>
+
       <q-select
         v-model="form.account_id"
         :options="accountOptionList"
@@ -254,6 +331,11 @@
 </template>
 
 <script setup>
+// Imported, not auto-registered: both are handed to Dialog.create() as objects rather
+// than used as tags in this template, which is the case the resolver cannot see.
+import { Dialog } from 'quasar'
+import DeleteDialog from '../DeleteDialog.vue'
+
 const props = defineProps({
   options: { type: Object, default: Object },
 })
@@ -377,6 +459,151 @@ const needsCardAmount = computed(
 const title = computed(() => {
   return target.value ? 'Edit transaction' : 'Create new transaction'
 })
+
+// ---------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------
+
+const templates = computed(() => usePage().props.templates ?? [])
+
+// The template menu, so choosing one can close it -- a template ref rather than
+// $refs, which does not exist under <script setup>. Same reason the calendar's menu is
+// closed by hand rather than with v-close-popup.
+const templateMenu = ref(null)
+
+// Which template the form was filled from, so Update knows what it is overwriting.
+// Null until one is applied, and not cleared by a Reset: the button that depends on it
+// is disabled while the form is clean, which is what a reset makes it, so a stale name
+// here can never overwrite a template with an emptied form.
+const loadedTemplate = ref(null)
+
+// One heading per account, in the order the accounts come back. A map rather than a
+// groupBy, because the order is the controller's and rebuilding it here would be a
+// second statement of it.
+const templateGroups = computed(() => {
+  const groups = new Map()
+
+  templates.value.forEach(template => {
+    if (!groups.has(template.account_id)) {
+      groups.set(template.account_id, {
+        account_id: template.account_id,
+        account_name: template.account_name,
+        templates: [],
+      })
+    }
+
+    groups.get(template.account_id).templates.push(template)
+  })
+
+  return [...groups.values()]
+})
+
+// The two things a template cannot be without, and both of which the server requires:
+// an account to file the transaction against, and a type, which is what decides what
+// the form can then offer. Checked here because the dialog this opens settles the moment
+// OK is pressed -- the request runs after it is gone -- so a refusal would land in an
+// error bag belonging to a dialog that is no longer there, on a field this form has no
+// control for. Better that the button is not offered than that the answer is invisible.
+const canTemplate = computed(() => Boolean(form.account_id && form.type))
+
+// The form as a template body. The whole form, not the keys a template keeps: that list
+// belongs to the server, which is the only place a server-owned key can be left out by
+// name, and restating it here would be a second copy free to drift from the first.
+const templateBody = name => ({
+  name,
+  account_id: form.account_id,
+  category_id: form.category_id,
+  payload: { ...form },
+})
+
+// preserveState and preserveScroll together, and both matter: without the first Inertia
+// re-renders the page and closes the dialog the user is still filling in, and without
+// the second the list scrolls out from under them.
+const saveTemplate = () => {
+  Dialog.create({
+    title: 'Save as template',
+    message: 'A name for these values, so they can be filled in again.',
+    prompt: {
+      model: '',
+      type: 'text',
+      label: 'Name',
+      outlined: true,
+      // The column is 255 and the server appends a number to a name in use, trimming to
+      // fit -- so the cap is what stops the dialog offering a name the request will
+      // refuse, on a prompt that has already closed by then.
+      maxlength: 255,
+      isValid: value => value.trim() !== '',
+    },
+    ok: 'Save',
+    cancel: true,
+  }).onOk(name => {
+    router.post('/transaction-templates', templateBody(name.trim()), {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => notifySuccess(),
+    })
+  })
+}
+
+// Replace the loaded template with what the form holds now.
+//
+// defaults() and reset() rather than assigning field by field, which is how useWatchTarget
+// fills the form from a row: one call, and the form's idea of its clean state moves with
+// the values rather than leaving the button enabled for values that were never touched.
+const applyTemplate = template => {
+  form.defaults({
+    ...schema,
+    ...template.payload,
+
+    // From the columns rather than the payload, which does not carry them -- one copy of
+    // each, and no way for the two to disagree about which account a template is for.
+    account_id: template.account_id,
+    category_id: template.category_id,
+
+    // Merged, not replaced. A template stores only the bag keys it keeps, so replacing
+    // would leave due_date, paired_transaction_id and settled_by undefined rather than
+    // null, and the form binds all three.
+    meta_data: { ...schema.meta_data, ...template.payload.meta_data },
+  })
+
+  form.reset()
+  form.clearErrors()
+
+  loadedTemplate.value = template
+  templateMenu.value?.hide()
+}
+
+const updateTemplate = () =>
+  router.put(
+    `/transaction-templates/${loadedTemplate.value.id}`,
+    templateBody(loadedTemplate.value.name),
+    {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => notifySuccess(),
+    },
+  )
+
+const destroyTemplate = template => {
+  templateMenu.value?.hide()
+
+  Dialog.create({
+    component: DeleteDialog,
+    componentProps: {
+      title: 'delete template',
+      message: `[${template.name}] will be deleted permanently.`,
+    },
+  }).onOk(() => {
+    // Cleared first: the button it hides names a template that is about to stop existing.
+    if (loadedTemplate.value?.id === template.id) loadedTemplate.value = null
+
+    router.delete(`/transaction-templates/${template.id}`, {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => notifySuccess(),
+    })
+  })
+}
 
 // Two resets, and both are needed because the rules prohibit rather than ignore.
 // Changing the account invalidates the type, since the new account may not accept it;
