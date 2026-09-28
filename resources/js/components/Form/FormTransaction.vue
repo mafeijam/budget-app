@@ -16,7 +16,7 @@
 
       <q-select
         v-model="form.account_id"
-        :options="accountOptions"
+        :options="accountOptionList"
         class="col-6"
         label="Account"
         filled
@@ -27,18 +27,26 @@
         :error-message="form.errors.account_id"
       >
         <!--
-          The account's type beside its name, in the transactions table's tint. The type
-          decides what the picker then offers -- a brokerage has buy, sell and dividend
-          where a bank has expense, income -- and a name alone does not say which is
-          which, so the user picks first and finds out after.
+          Accounts under a heading per kind, and the kind beside each name in the
+          transactions table's tint. The type decides what the picker then offers -- a
+          brokerage has buy, sell and dividend where a bank has expense, income -- so a
+          list of names alone makes the user pick an account and find out after.
 
           Only in the list: the closed field keeps the bare name, since a badge in the
-          value would be read as a filter and there is nothing to filter. `?? {}` as the
+          value would read as a filter and there is nothing to filter. `?? {}` as the
           column uses, so an account type the map does not know shows plainly instead of
           failing the render.
         -->
         <template #option="scope">
-          <q-item v-bind="scope.itemProps">
+          <q-item
+            v-if="scope.opt.heading"
+            v-bind="scope.itemProps"
+            dense
+            class="app-tint app-tint--muted"
+          >
+            <q-item-section class="text-caption">{{ scope.opt.label }}</q-item-section>
+          </q-item>
+          <q-item v-else v-bind="scope.itemProps">
             <q-item-section>{{ scope.opt.label }}</q-item-section>
             <q-item-section side>
               <q-badge v-bind="accountTypeBadges[scope.opt.type] ?? {}" :label="scope.opt.type" />
@@ -300,6 +308,27 @@ const statusOptions = computed(() => usePage().props.statusOptions ?? [])
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
 const accountOptions = computed(() => props.options?.accounts ?? [])
+
+// The account types in the order the enum declares them, which is the order the groups
+// are read in -- cash, card, security. Taken from the keys rather than sorted by name or
+// by how many accounts each holds, so adding an account cannot move a heading.
+const accountTypeOrder = computed(() => Object.keys(typeOptionsByAccountType.value))
+
+// One flat list with the headings in it, because QSelect has no grouped options: it
+// draws one item per entry in the array it is given, so a heading has to be an entry.
+// Disabled, since that is what stops QSelect handing a value back for it, and carrying a
+// value of its own so a heading can never be read as the account that is selected. A type
+// with no accounts contributes no heading at all rather than an empty one.
+const accountOptionList = computed(() =>
+  accountTypeOrder.value.flatMap(type => {
+    const accounts = accountOptions.value.filter(account => account.type === type)
+
+    return accounts.length === 0
+      ? []
+      : [{ label: type, value: `type:${type}`, disable: true, heading: true }, ...accounts]
+  }),
+)
+
 const categoryOptions = computed(() => props.options?.categories ?? [])
 
 // A trade's amount is computed on the server and TransactionData prohibits a
