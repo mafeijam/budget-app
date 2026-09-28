@@ -67,7 +67,7 @@
     -->
     <q-input
       :model-value="rangeLabel"
-      class="col-10 col-md-2"
+      class="col-12 col-sm-8 col-md-2"
       label="Date"
       dense
       filled
@@ -84,10 +84,22 @@
       </template>
     </q-input>
 
-    <div class="col-2 col-md-auto">
-      <q-btn v-if="active" flat dense no-caps color="grey-7" icon="filter_alt_off" @click="clear">
-        <q-tooltip :delay="500">Clear every filter</q-tooltip>
-      </q-btn>
+    <!--
+      Always there, and disabled while nothing is set, so it is findable before it is
+      needed -- a control that appears only once a filter is on is one nobody learns.
+    -->
+    <div class="col-12 col-sm-4 col-md-auto">
+      <q-btn
+        class="full-width text-weight-bold"
+        color="grey-2"
+        text-color="grey-9"
+        unelevated
+        no-caps
+        icon="filter_alt_off"
+        label="Clear all"
+        :disable="!active"
+        @click="clear"
+      />
     </div>
   </div>
 </template>
