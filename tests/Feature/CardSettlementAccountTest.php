@@ -200,7 +200,8 @@ class CardSettlementAccountTest extends TestCase
         ]))->assertSessionHasNoErrors();
 
         $this->delete("/accounts/{$this->bank->id}")
-            ->assertSessionHas('message', 'Account [Bank] is the settlement account for [Card H] and cannot be deleted');
+            ->assertSessionHas('message', 'Account [Bank] is the settlement account for [Card H] and cannot be deleted. '
+                .'Point it at another account first.');
 
         $this->assertDatabaseHas('accounts', ['id' => $this->bank->id]);
     }
