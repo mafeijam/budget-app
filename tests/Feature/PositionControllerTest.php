@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Price;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -45,6 +47,69 @@ class PositionControllerTest extends TestCase
             ->where('brokerages.0.open_cost', '1000.0000')
             ->where('brokerages.0.realised', '100.0000')
         );
+    }
+
+    public function test_an_open_position_is_valued_at_its_latest_price(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', 'AAPL', '1', '200');
+
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-04', 'close' => '120.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-05', 'close' => '125.5000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        // Tomorrow's is not today's latest.
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-07', 'close' => '999.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.1.symbol', 'NVDA')
+            ->where('brokerages.0.positions.1.price', '125.5000')
+            ->where('brokerages.0.positions.1.price_date', '2026-03-05')
+            ->where('brokerages.0.positions.1.market_value', '1255.0000')
+            ->where('brokerages.0.positions.1.unrealised', '255.0000')
+            // AAPL has no price, so the totals are over NVDA alone and say so.
+            ->where('brokerages.0.positions.0.market_value', null)
+            ->where('brokerages.0.market_value', '1255.0000')
+            ->where('brokerages.0.unrealised', '255.0000')
+            ->where('brokerages.0.unpriced', 1)
+        );
+    }
+
+    public function test_a_price_in_another_currency_is_not_used(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        Price::create(['symbol' => 'NVDA', 'date' => today()->toDateString(), 'close' => '900.0000', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.0.market_value', null)
+            ->where('brokerages.0.unpriced', 1)
+        );
+    }
+
+    public function test_a_price_set_by_hand_is_filed_for_today_and_marked_manual(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        $this->post('/prices', ['account_id' => $this->broker->id, 'symbol' => 'nvda', 'close' => '130.25'])
+            ->assertSessionHasNoErrors();
+
+        $price = Price::sole();
+
+        $this->assertSame(['NVDA', '2026-03-06', '130.2500', 'USD', 'manual'], [
+            $price->symbol, $price->date, $price->close, $price->ccy, $price->source,
+        ]);
+    }
+
+    public function test_a_price_set_by_hand_must_be_a_positive_figure_on_a_brokerage(): void
+    {
+        $bank = Account::where('type', 'cash')->firstOrFail();
+
+        $this->post('/prices', ['account_id' => $bank->id, 'symbol' => 'NVDA', 'close' => '-1'])
+            ->assertSessionHasErrors(['account_id', 'close']);
+
+        $this->assertSame(0, Price::count());
     }
 
     public function test_only_received_dividends_are_totalled(): void

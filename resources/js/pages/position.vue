@@ -40,6 +40,9 @@
             <th class="text-right">Quantity</th>
             <th class="text-right">Average cost</th>
             <th class="text-right">Cost</th>
+            <th class="text-right">Price</th>
+            <th class="text-right">Market value</th>
+            <th class="text-right">Unrealised</th>
             <th class="text-right">Fees</th>
             <th class="text-right">Realised</th>
             <th class="text-right">Trades</th>
@@ -67,6 +70,41 @@
               {{ position.average_cost ? money(position.average_cost) : '' }}
             </td>
             <td class="text-right">{{ position.open ? money(position.cost) : '' }}</td>
+            <!-- Click to set today's price by hand; see PositionController::store(). -->
+            <td class="text-right cursor-pointer">
+              <template v-if="position.price">
+                {{ money(position.price) }}
+                <div class="text-caption text-grey-6">
+                  {{ formatDate(position.price_date)
+                  }}{{ position.price_source === 'manual' ? ' · manual' : '' }}
+                </div>
+              </template>
+              <span v-else-if="position.open" class="text-grey-5">set price</span>
+              <q-popup-edit
+                v-if="position.open"
+                v-slot="scope"
+                :model-value="position.price"
+                buttons
+                label-set="Save"
+                @save="value => savePrice(broker, position, value)"
+              >
+                <q-input
+                  v-model="scope.value"
+                  type="number"
+                  step="0.0001"
+                  dense
+                  autofocus
+                  :label="`${position.symbol} today, ${broker.ccy}`"
+                  @keyup.enter="scope.set"
+                />
+              </q-popup-edit>
+            </td>
+            <td class="text-right">
+              {{ position.market_value ? money(position.market_value) : '' }}
+            </td>
+            <td class="text-right" :class="signClass(position.unrealised)">
+              {{ position.unrealised ? money(position.unrealised) : '' }}
+            </td>
             <td class="text-right text-grey-7">{{ money(position.fees) }}</td>
             <td class="text-right" :class="signClass(position.realised)">
               {{ money(position.realised) }}
@@ -104,6 +142,21 @@ const quantity = value => {
   return trimmed === '' ? '0' : trimmed
 }
 
+const $q = useQuasar()
+
+// Today's price, typed in. The server files it under its own today and marks it manual
+// so the next fetch leaves it alone.
+const savePrice = (broker, position, close) => {
+  router.post(
+    '/prices',
+    { account_id: broker.id, symbol: position.symbol, close },
+    {
+      preserveScroll: true,
+      onError: errors => $q.notify({ type: 'negative', message: Object.values(errors)[0] }),
+    },
+  )
+}
+
 // Profit green, loss red, nothing plain.
 const signClass = value => {
   if (String(value).startsWith('-')) return 'text-negative'
@@ -112,9 +165,16 @@ const signClass = value => {
 }
 
 // What the brokerage's header totals, each in its own currency: the cost of what is
-// still held, what selling has realised, the fees paid dealing, and the dividends
-// received. Fees stand apart from cost and realised, so each reads as what it is.
+// still held, what it is worth at the latest price and what that is up or down, what
+// selling has realised, the fees paid dealing, and the dividends received. Fees stand
+// apart from cost and realised, so each reads as what it is.
 const figures = broker => [
+  {
+    label: broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value',
+    value: money(broker.market_value),
+    class: 'text-grey-9',
+  },
+  { label: 'Unrealised', value: money(broker.unrealised), class: signClass(broker.unrealised) },
   { label: 'Cost held', value: money(broker.open_cost), class: 'text-grey-9' },
   { label: 'Realised', value: money(broker.realised), class: signClass(broker.realised) },
   { label: 'Fees', value: money(broker.fees), class: 'text-grey-9' },
