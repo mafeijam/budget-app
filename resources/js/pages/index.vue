@@ -3,15 +3,6 @@
     <div>
       <div class="row items-center q-mb-sm">
         <div class="text-h6 text-weight-medium">Cash accounts</div>
-        <q-space />
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="blue-9"
-          label="All accounts"
-          @click="router.visit('/accounts')"
-        />
       </div>
 
       <div v-if="cash.length" class="row q-col-gutter-md">
@@ -45,15 +36,6 @@
     <div>
       <div class="row items-center q-mb-sm">
         <div class="text-h6 text-weight-medium">Card statements owing</div>
-        <q-space />
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="blue-9"
-          label="Settle on Transactions"
-          @click="router.visit('/transactions')"
-        />
       </div>
 
       <div v-if="statements.length" class="row q-col-gutter-md">
