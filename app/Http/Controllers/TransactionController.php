@@ -253,6 +253,10 @@ class TransactionController extends Controller
             $transaction
         );
 
+        // After the move guard, whose message is the better one when a charge changes
+        // card out of a paid statement.
+        $data->guardSettledFigures($transaction);
+
         $data->keepPairingOf($transaction);
 
         // The bag is replaced rather than added, or a corrected charge would sit

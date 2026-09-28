@@ -10,6 +10,7 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
+use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
@@ -349,6 +350,86 @@ class TransactionData extends Data
 
         $this->meta_data ??= new TransactionMetaData;
         $this->meta_data->paired_transaction_id = $paired;
+    }
+
+    /**
+     * Refuse an edit that changes what a settled statement is made of.
+     *
+     * guardPeriodCanMove() covers a row leaving or entering a paid period. This is the
+     * row staying put while its figure changes -- a charge's amount corrected, a payment
+     * marked pending -- which leaves the paid bill owing or in credit all the same, and
+     * as silently. The fields are the ones CardStatement::forAccount() reads, so
+     * description and category stay editable; a charge's date is the move guard's.
+     *
+     * Keyed on the first field that changed, which is the control the user touched.
+     */
+    public function guardSettledFigures(Transaction $row): void
+    {
+        $dueDate = $row->meta?->meta['due_date'] ?? null;
+
+        if ($dueDate === null) {
+            return;
+        }
+
+        $changed = $this->changedFigure($row);
+
+        // Checked before the statement is read, since nearly every edit changes none.
+        if ($changed === null) {
+            return;
+        }
+
+        $card = $row->account;
+
+        if ($card?->type !== AccountType::Card->value) {
+            return;
+        }
+
+        if (! CardStatement::forAccount($card)->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            return;
+        }
+
+        [$field, $label] = $changed;
+
+        throw ValidationException::withMessages([
+            $field => sprintf(
+                'The statement due %s has been settled, so this %s\'s %s cannot be changed. %s',
+                $dueDate,
+                $row->type,
+                $label,
+                $row->type === TransactionType::Payment->value
+                    ? 'Delete this payment and settle the statement again.'
+                    : 'Delete the payment that settled it, make the change, and settle it again.'
+            ),
+        ]);
+    }
+
+    /**
+     * The first field this payload changes that a statement's figures are built from,
+     * as the error key and the words for it, or null when it changes none.
+     *
+     * Amounts compared as decimals: the column reads back '120.0000' and a form may
+     * send '120', which is no change.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function changedFigure(Transaction $row): ?array
+    {
+        $differ = fn (?string $a, ?string $b) => $a === null || $b === null
+            ? $a !== $b
+            : ! BigDecimal::of($a)->isEqualTo(BigDecimal::of($b));
+
+        return match (true) {
+            $this->account_id !== $row->account_id => ['account_id', 'account'],
+            $this->type->value !== $row->type => ['type', 'type'],
+            $differ($this->amount, $row->amount) => ['amount', 'amount'],
+            $this->ccy->value !== $row->ccy => ['ccy', 'currency'],
+            $this->status->value !== $row->status => ['status', 'status'],
+            $differ($this->meta_data?->card_amount, $row->meta?->meta['card_amount'] ?? null) => [
+                'meta_data.card_amount',
+                'amount in the card\'s currency',
+            ],
+            default => null,
+        };
     }
 
     /**

@@ -1082,6 +1082,63 @@ class TransactionControllerTest extends TestCase
         $this->assertTrue(CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-03-12')->isSettled());
     }
 
+    public function test_a_charge_in_a_settled_statement_keeps_its_amount(): void
+    {
+        // The charge stays in its period and its figure moves instead, which leaves the
+        // paid bill owing the difference just as a move would -- and the panel is the
+        // only place that shows.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'amount' => '150.0000',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors([
+            'amount' => 'The statement due 2026-02-09 has been settled, so this charge\'s amount cannot be '
+                .'changed. Delete the payment that settled it, make the change, and settle it again.',
+        ]);
+
+        $this->assertSame('120.0000', $transaction->fresh()->amount);
+        $this->assertTrue(CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled());
+    }
+
+    public function test_the_payment_that_settled_a_statement_cannot_be_marked_pending(): void
+    {
+        // A pending payment stops counting, and the statement it paid owes again.
+        $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+
+        $this->put("/transactions/{$payment->id}", array_merge(
+            TransactionData::from($payment->load('meta', 'account'))->toArray(),
+            ['status' => 'pending']
+        ))->assertSessionHasErrors([
+            'status' => 'The statement due 2026-02-09 has been settled, so this payment\'s status cannot be '
+                .'changed. Delete this payment and settle the statement again.',
+        ]);
+
+        $this->assertSame('posted', $payment->fresh()->status);
+    }
+
+    public function test_an_amount_written_differently_is_not_a_change(): void
+    {
+        // The column reads back at four places and a form may send fewer. Comparing the
+        // strings would refuse a description fix on every paid charge typed as '120'.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'amount' => '120',
+            'description' => 'Cafe, corrected',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('Cafe, corrected', $transaction->fresh()->description);
+    }
+
     public function test_a_charge_cannot_be_moved_into_a_settled_statement(): void
     {
         // The other direction, and the one a guard written only for the period being
