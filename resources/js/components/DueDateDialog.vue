@@ -113,9 +113,8 @@
               @click="open = false"
             />
             <q-btn
-              class="text-weight-bold"
+              class="text-weight-bold app-btn app-btn--positive"
               padding="sm md"
-              color="primary"
               unelevated
               no-caps
               icon="done"

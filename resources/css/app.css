@@ -20,6 +20,9 @@
   it sits on or the row shows a seam under the mouse. The rest are read by this file
   alone. The greys are slate, so the Quasar palette a component still names -- grey-7 on
   an icon, blue-1 on a fill -- sits in the same family as these rather than against it.
+
+  Only plain values belong in this block. Anything derived from a --q- variable has to
+  go in the body block below, and that split is not tidiness -- see the note there.
 */
 :root {
   --app-ground: #f1f5f9;
@@ -28,24 +31,33 @@
   --app-header-bg: #f8fafc;
   --app-row-hover: #f8fafc;
   --app-muted: #64748b;
-  --app-heading: #0f172a;
   --app-content-max: 1680px;
+  --app-muted-tint: #f1f5f9;
+  --app-muted-ink: #475569;
+}
 
-  /*
-    Tints off the brand, for the surfaces Quasar has no palette entry for. Quasar's
-    ramp is fixed at 10 shades, and the brand colours here are not on it, so there is
-    no `bg-primary-1` to reach for -- only `bg-primary`, which at full strength is far
-    too loud behind body text. Mixing off the --q- variable is what keeps these tied to
-    the palette in plugins/quasar.js: re-theme the brand and these follow.
-  */
+/*
+  The brand-derived tints and inks, declared on body and NOT on :root.
+
+  Quasar writes its --q-* variables onto document.body as inline styles, not onto the
+  root element. A custom property is substituted where it is declared, so a color-mix()
+  on :root that reads var(--q-primary) resolves against a root element where --q-primary
+  does not exist yet: the mix comes out invalid, the variable holding it computes to the
+  guaranteed-invalid value, and every property that uses it falls back to unset. Nothing
+  throws and nothing logs -- the buttons simply lose their fill and go transparent, and
+  the badges lose theirs, which is exactly what it looked like.
+
+  Declaring them on body puts the substitution inside the scope where --q-primary
+  actually lives, and the resolved colours then inherit down to everything inside it.
+*/
+body {
+  background: var(--app-ground);
+
   --app-primary-tint: color-mix(in srgb, var(--q-primary) 9%, transparent);
   --app-positive-tint: color-mix(in srgb, var(--q-positive) 12%, transparent);
   --app-warning-tint: color-mix(in srgb, var(--q-warning) 15%, transparent);
   --app-negative-tint: color-mix(in srgb, var(--q-negative) 10%, transparent);
   --app-info-tint: color-mix(in srgb, var(--q-info) 9%, transparent);
-
-  --app-muted-tint: #f1f5f9;
-  --app-muted-ink: #475569;
 
   /*
     The ink that goes on a tint, at 60% of the brand and 40% black, for all five alike.
@@ -60,10 +72,16 @@
   --app-warning-ink: color-mix(in srgb, var(--q-warning) 60%, #000);
   --app-negative-ink: color-mix(in srgb, var(--q-negative) 60%, #000);
   --app-info-ink: color-mix(in srgb, var(--q-info) 60%, #000);
-}
 
-body {
-  background: var(--app-ground);
+  /*
+    The button fills, at roughly the strength of the Quasar "-1" fills the buttons used
+    to be built from -- indigo-1 and green-1 were the primary colour at about an eighth
+    over white. Mixed onto the surface rather than onto transparency, so the fill is a
+    colour of its own and the same on the grey page ground as on a white card.
+  */
+  --app-btn-tint: color-mix(in srgb, var(--q-primary) 13%, var(--app-surface));
+  --app-btn-negative-tint: color-mix(in srgb, var(--q-negative) 13%, var(--app-surface));
+  --app-btn-positive-tint: color-mix(in srgb, var(--q-positive) 13%, var(--app-surface));
 }
 
 /*

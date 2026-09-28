@@ -1,8 +1,7 @@
 <template>
   <q-btn
     icon="add"
-    class="text-weight-bold"
-    color="primary"
+    class="text-weight-bold app-btn"
     unelevated
     no-caps
     label="Add"

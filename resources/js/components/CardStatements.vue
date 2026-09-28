@@ -98,10 +98,9 @@
                 dense
                 unelevated
                 no-caps
-                color="primary"
                 icon="payments"
                 label="Settle"
-                class="q-px-sm text-weight-bold"
+                class="q-px-sm text-weight-bold app-btn app-btn--positive"
                 :disable="!settleable(group, period)"
                 @click="openSettle(group, period)"
               >

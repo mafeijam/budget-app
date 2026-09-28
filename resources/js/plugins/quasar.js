@@ -1,6 +1,12 @@
 import { Quasar, LoadingBar, Notify, Dialog } from 'quasar'
 
 import '@quasar/extras/material-icons/material-icons.css'
+// Quasar's stylesheet names Roboto as the first family in every font stack it sets
+// (quasar.css), and the whole type scale is measured against it -- the 48px table row,
+// the 14px button, the 12px header. Nothing was loading it, so the app was getting
+// Roboto's metrics with whatever glyphs the machine happened to fall back to, which is
+// why the fallback chain and not the intended face is what the spacing was tuned around.
+import '@quasar/extras/roboto-font/roboto-font.css'
 import 'quasar/dist/quasar.css'
 
 let timeout = null

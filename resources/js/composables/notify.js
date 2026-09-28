@@ -5,8 +5,7 @@ export const notifySuccess = () => {
   Notify.create({
     message: page.props.message,
     position: 'bottom-right',
-    color: 'positive',
-    textColor: 'white',
+    class: 'app-btn app-btn--positive',
     icon: 'check_circle_outline',
     timeout: 3000,
   })

@@ -30,8 +30,7 @@
         <q-btn
           unelevated
           no-caps
-          color="negative"
-          class="text-weight-bold"
+          class="text-weight-bold app-btn app-btn--negative"
           icon="delete"
           label="Delete"
           @click="onDialogOK"

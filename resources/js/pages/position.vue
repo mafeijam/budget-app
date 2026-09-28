@@ -16,8 +16,7 @@
       <q-btn
         unelevated
         no-caps
-        color="primary"
-        class="text-weight-bold"
+        class="text-weight-bold app-btn"
         icon="sync"
         label="Fetch prices"
         :loading="fetching"
