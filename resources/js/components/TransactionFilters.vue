@@ -1,8 +1,15 @@
 <template>
-  <div class="row q-col-gutter-sm full-width q-mt-sm items-center">
+  <!--
+    The table's whole header, since the search sits in the title row: the title, the
+    search, Clear all, and whatever the page puts in #actions (its Add button).
+  -->
+  <div class="row full-width items-center q-col-gutter-sm">
+    <div class="col-auto text-h6 text-weight-medium q-mr-md">{{ title }}</div>
+
     <q-input
       v-model="filters.description"
-      class="col-12 col-md-3"
+      class="col-12 col-sm"
+      style="max-width: 360px"
       label="Search description"
       dense
       filled
@@ -14,58 +21,32 @@
       </template>
     </q-input>
 
-    <q-select
-      v-model="filters.account_id"
-      :options="accountOptions"
-      class="col-6 col-md-2"
-      label="Account"
-      dense
-      filled
-      multiple
-      clearable
-      emit-value
-      map-options
-      :display-value="shown(filters.account_id, accountOptions)"
-    />
+    <q-space />
 
-    <q-select
-      v-model="filters.type"
-      :options="typeOptions"
-      class="col-6 col-md-2"
-      label="Type"
-      dense
-      filled
-      multiple
-      clearable
-      :display-value="shown(filters.type)"
-    />
+    <!--
+      Always there, and disabled while nothing is set, so it is findable before it is
+      needed and says at a glance whether the list is filtered.
+    -->
+    <div class="col-auto">
+      <q-btn
+        class="text-weight-bold"
+        color="grey-2"
+        text-color="grey-9"
+        unelevated
+        no-caps
+        icon="filter_alt_off"
+        label="Clear all"
+        :disable="!active"
+        @click="clear"
+      />
+    </div>
 
-    <q-select
-      v-model="filters.status"
-      :options="statusOptions"
-      class="col-6 col-md-1"
-      label="Status"
-      dense
-      filled
-      multiple
-      clearable
-      :display-value="shown(filters.status)"
-    />
+    <div class="col-auto">
+      <slot name="actions" />
+    </div>
+  </div>
 
-    <q-select
-      v-model="filters.category_id"
-      :options="categoryOptions"
-      class="col-6 col-md-2"
-      label="Category"
-      dense
-      filled
-      multiple
-      clearable
-      emit-value
-      map-options
-      :display-value="shown(filters.category_id, categoryOptions)"
-    />
-
+  <div class="row q-col-gutter-sm full-width q-mt-xs items-center">
     <!--
       A read-only field showing the range, with the calendar in a menu, as the forms do.
       The mask is on the q-date: a q-input mask is a different parser whose only token is
@@ -73,7 +54,7 @@
     -->
     <q-input
       :model-value="rangeLabel"
-      class="col-12 col-md-2"
+      class="col-12 col-md"
       label="Date"
       dense
       filled
@@ -89,10 +70,66 @@
         </q-btn>
       </template>
     </q-input>
+
+    <q-select
+      v-model="filters.account_id"
+      :options="accountOptions"
+      class="col-6 col-md"
+      label="Account"
+      dense
+      filled
+      multiple
+      clearable
+      emit-value
+      map-options
+      :display-value="shown(filters.account_id, accountOptions)"
+    />
+
+    <q-select
+      v-model="filters.type"
+      :options="typeOptions"
+      class="col-6 col-md"
+      label="Type"
+      dense
+      filled
+      multiple
+      clearable
+      :display-value="shown(filters.type)"
+    />
+
+    <q-select
+      v-model="filters.status"
+      :options="statusOptions"
+      class="col-6 col-md"
+      label="Status"
+      dense
+      filled
+      multiple
+      clearable
+      :display-value="shown(filters.status)"
+    />
+
+    <q-select
+      v-model="filters.category_id"
+      :options="categoryOptions"
+      class="col-6 col-md"
+      label="Category"
+      dense
+      filled
+      multiple
+      clearable
+      emit-value
+      map-options
+      :display-value="shown(filters.category_id, categoryOptions)"
+    />
   </div>
 </template>
 
 <script setup>
+defineProps({
+  title: { type: String, default: '' },
+})
+
 const page = usePage()
 const pagination = inject('pagination')
 
@@ -201,8 +238,4 @@ const clear = () => {
 }
 
 watch(filters, apply, { deep: true })
-
-// For the Clear all button, which sits in the table's header beside Add rather than in
-// this row.
-defineExpose({ clear, active })
 </script>
