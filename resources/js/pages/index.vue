@@ -89,14 +89,15 @@
                   {{ statement.card.name }}
                 </div>
                 <q-space />
-                <q-badge v-bind="dueBadge(statement)" />
+                <q-badge outline color="grey-7" :label="statement.card.ccy" />
               </div>
-              <div class="text-caption text-grey-7 q-mt-xs">
+              <!-- The day and how far off it is, read together. -->
+              <div class="row items-center text-caption text-grey-7 q-mt-xs">
                 Due {{ formatDate(statement.due_date) }}
+                <q-badge v-bind="dueBadge(statement)" class="q-ml-sm" />
               </div>
               <div class="text-h4 text-weight-bold text-negative q-mt-sm">
                 {{ money(statement.owed) }}
-                <span class="text-subtitle2 text-grey-7">{{ statement.card.ccy }}</span>
               </div>
               <div class="text-caption text-grey-7">
                 {{ count(statement.charge_count, 'charge') }} · {{ money(statement.charged) }}
