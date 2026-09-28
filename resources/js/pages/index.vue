@@ -99,10 +99,14 @@
               <div class="text-h4 text-weight-bold text-negative q-mt-sm">
                 {{ money(statement.owed) }}
               </div>
+              <!--
+                The totals only once something is paid: before that, what was charged is the
+                figure above, and saying it twice says nothing.
+              -->
               <div class="text-caption text-grey-7">
-                {{ count(statement.charge_count, 'charge') }} · {{ money(statement.charged) }}
+                {{ count(statement.charge_count, 'charge') }}
                 <template v-if="statement.payment_count">
-                  · {{ money(statement.paid) }} paid
+                  · {{ money(statement.charged) }} charged · {{ money(statement.paid) }} paid
                 </template>
               </div>
               <!-- A total with pending rows is not final, and cannot be settled yet. -->
