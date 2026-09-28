@@ -288,7 +288,7 @@ class TransactionFilterTest extends TestCase
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
             ->where('filterOptions.accounts', fn ($accounts) => $accounts->pluck('value')->contains($closed->id))
-            ->where('filterOptions.types', ['withdraw', 'charge', 'payment', 'buy', 'sell', 'deposit'])
+            ->where('filterOptions.types', ['deposit', 'withdraw', 'charge', 'payment', 'buy', 'sell'])
         );
     }
 

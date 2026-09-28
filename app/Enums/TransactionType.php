@@ -133,6 +133,34 @@ enum TransactionType: string
     }
 
     /**
+     * Every case, in the order the transactions filter offers them.
+     *
+     * Not the declaration order, which belongs to the form: that list decides what may
+     * be recorded on an account, and it reads the way a person expects of the account
+     * they are on -- a withdrawal before a deposit on a bank, a buy and a sell before a
+     * dividend on a brokerage. The filter narrows a list that already exists rather
+     * than offering the choices, so it wants the type a person reaches for first and
+     * not the order the types pair with account types in.
+     *
+     * A deposit leads, being the one type accountTypes() allows on more than one kind of
+     * account. Lifting it out of the sequence leaves what follows grouped by the account
+     * type each belongs to -- cash, then card, then security -- which is a grouping the
+     * declaration order happens to have anyway.
+     *
+     * @return array<int, self>
+     */
+    public static function filterOrder(): array
+    {
+        // sortBy rather than an array_filter of the rest: it leaves the remaining cases
+        // in declaration order by itself, and PHP's sort being stable is what makes that
+        // true rather than a second thing to keep in step.
+        return collect(self::cases())
+            ->sortBy(fn (self $type) => $type === self::Deposit ? 0 : 1)
+            ->values()
+            ->all();
+    }
+
+    /**
      * Whether recording one of these writes a row in the settlement account.
      *
      * A trade, and a deposit on a brokerage -- which is a dividend, and is money
