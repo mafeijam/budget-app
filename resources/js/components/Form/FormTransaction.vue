@@ -26,17 +26,22 @@
         overwriting a template with the values it already holds is a way of losing one
         for nothing.
 
-        Padding rather than size="sm", and grey rather than no colour at all, which is
-        the Reset button's treatment in this same dialog and the reason for it: size="sm"
-        drops the label below the 14px the rest of the app sets its body copy at, and a
-        button with no colour prop takes the full-strength text colour rather than the
-        muted one every other unemphasised control here uses.
+        Tinted buttons rather than flat grey ones, which is the Add button's treatment
+        and the reason for it: grey text is the colour a disabled control is painted in,
+        so a grey label reads as unavailable however available it is, and these three were
+        grey at two shades before that was tried. The fill is a 13% wash of the brand
+        colour, so they are quieter than the Submit button without borrowing its
+        disabled grey to say so.
+
+        app-btn and not app-btn--positive, though Update writes: Submit is the dialog's
+        action and these are not, and a second button in the positive tint beside it
+        would leave the eye with two answers to "what does this dialog commit".
       -->
       <div class="col-12 row items-center q-gutter-sm">
         <q-btn
-          flat
+          class="text-weight-bold app-btn"
+          unelevated
           no-caps
-          color="grey-6"
           padding="sm md"
           icon="bookmark_add"
           label="Save as template"
@@ -45,9 +50,9 @@
         />
 
         <q-btn
-          flat
+          class="text-weight-bold app-btn"
+          unelevated
           no-caps
-          color="grey-6"
           padding="sm md"
           icon="bookmark"
           label="Use template"
@@ -87,9 +92,9 @@
 
         <q-btn
           v-if="loadedTemplate"
-          flat
+          class="text-weight-bold app-btn"
+          unelevated
           no-caps
-          color="grey-6"
           padding="sm md"
           icon="save"
           :label="`Update ${loadedTemplate.name}`"
