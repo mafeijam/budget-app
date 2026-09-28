@@ -18,6 +18,11 @@ use App\Models\Transaction;
  * uses: destroy() deletes the pair together, and the cash row's figures are locked,
  * since they are the trade's and follow it.
  *
+ * A trade may opt out with meta_data.no_cash, for a position back-dated from before
+ * the settlement account existed. The shares are the position either way -- Positions
+ * replays the trades, not the cash -- so what is skipped is the invention of a
+ * bank row for money that moved outside these accounts.
+ *
  * The trade is the record and this follows it. An edit to the trade rewrites the cash
  * row -- its amount, date, currency, status, and the bank if the trade moved to another
  * brokerage -- rather than locking the trade, because correcting a trade's price is
@@ -123,6 +128,19 @@ class TradeCash
         }
 
         if ($trade->account?->type !== AccountType::Security->value) {
+            return null;
+        }
+
+        // The trade saying its money moved somewhere these accounts do not hold, so
+        // there is no bank to take it out of. Null rather than an early return, so
+        // sync() finds the branch it already has for a brokerage naming no bank and
+        // takes a cash row back off one that has since been flagged.
+        //
+        // `=== true` rather than filled(), which reads this backwards: blank(false) is
+        // false, so filled(false) is true, and a payload carrying an explicit false --
+        // which the form does not send, but a request can -- would drop the cash side of
+        // a trade that did move money. Comparing to true fails closed instead.
+        if (($trade->meta?->meta['no_cash'] ?? null) === true) {
             return null;
         }
 

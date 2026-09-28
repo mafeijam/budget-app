@@ -198,6 +198,28 @@
           :error="!!form.errors['meta_data.fees']"
           :error-message="form.errors['meta_data.fees']"
         />
+
+        <!--
+          The money side is skipped rather than the trade, so a position back-dated from
+          before the settlement account was tracked can be recorded without inventing a
+          bank row for money that moved outside these accounts. The shares still count.
+
+          false-value, because Quasar's off value is false and ticking then unticking
+          would store one -- a second spelling of "not skipped" beside an absent key, and
+          the one value TradeCash's own check has to be careful of, since Laravel reads
+          filled(false) as true. Naming null as the off value leaves absence the only way
+          to say no.
+        -->
+        <q-toggle
+          v-model="form.meta_data.no_cash"
+          :false-value="null"
+          class="col-12"
+          label="No cash side"
+          color="primary"
+          dense
+          :error="!!form.errors['meta_data.no_cash']"
+          :error-message="form.errors['meta_data.no_cash']"
+        />
       </template>
     </q-form>
   </FormDialog>

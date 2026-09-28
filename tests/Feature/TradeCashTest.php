@@ -166,6 +166,63 @@ class TradeCashTest extends TestCase
         $this->assertSame(0, Transaction::where('type', 'transfer')->count());
     }
 
+    public function test_a_trade_can_be_recorded_without_its_cash_side(): void
+    {
+        // The bank is left as it was found: a position back-dated from before it was
+        // tracked is recorded as shares, not as money that moved in these accounts.
+        $buy = $this->trade('buy', '2026-01-05', '10', '100', '5', noCash: true);
+
+        $this->assertTrue($buy->fresh()->load('meta')->meta->meta['no_cash']);
+        $this->assertSame(0, Transaction::where('type', 'transfer')->count());
+        $this->assertSame('10000.0000', $this->balance());
+    }
+
+    public function test_ticking_it_afterwards_removes_the_cash_row_it_had_written(): void
+    {
+        $buy = $this->trade('buy', '2026-01-05', '10', '100');
+        $cash = $this->cashOf($buy);
+
+        $this->put("/transactions/{$buy->id}", $this->payload('buy', '2026-01-05', '10', '100', null, 'posted', true))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($cash->fresh());
+        $this->assertSame('10000.0000', $this->balance());
+        $this->assertArrayNotHasKey('paired_transaction_id', $buy->fresh()->load('meta')->meta->meta->getArrayCopy());
+    }
+
+    public function test_clearing_it_writes_the_cash_side_on_the_trade_date(): void
+    {
+        $buy = $this->trade('buy', '2026-01-05', '10', '100', noCash: true);
+
+        $this->put("/transactions/{$buy->id}", $this->payload('buy', '2026-01-05', '10', '100'))
+            ->assertSessionHasNoErrors();
+
+        $cash = $this->cashOf($buy->fresh());
+
+        $this->assertSame('transfer', $cash->type);
+        $this->assertSame('2026-01-05', $cash->date);
+        $this->assertSame('1000.0000', $cash->amount);
+        $this->assertSame('9000.0000', $this->balance());
+    }
+
+    public function test_the_flag_is_refused_on_a_type_that_has_no_cash_side(): void
+    {
+        // Income, so a missing category is not also in the way of the message under test.
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id,
+            'date' => '2026-01-02',
+            'type' => 'income',
+            'description' => 'Refund',
+            'amount' => '40.0000',
+            'ccy' => 'USD',
+            'meta_data' => ['no_cash' => true],
+        ])->assertSessionHasErrors([
+            'meta_data.no_cash' => 'Only a buy or a sell has a cash side to skip.',
+        ]);
+
+        $this->assertSame(0, Transaction::where('type', 'income')->where('description', 'Refund')->count());
+    }
+
     // ---------------------------------------------------------------------
 
     /** @return array{0: Account, 1: Account} the bank, then the brokerage settling into it */
@@ -178,9 +235,15 @@ class TradeCashTest extends TestCase
         return [$cash, $security];
     }
 
-    private function trade(string $type, string $date, string $quantity, string $price, ?string $fees = null): Transaction
-    {
-        $this->post('/transactions', $this->payload($type, $date, $quantity, $price, $fees))
+    private function trade(
+        string $type,
+        string $date,
+        string $quantity,
+        string $price,
+        ?string $fees = null,
+        bool $noCash = false
+    ): Transaction {
+        $this->post('/transactions', $this->payload($type, $date, $quantity, $price, $fees, 'posted', $noCash))
             ->assertSessionHasNoErrors();
 
         return Transaction::whereIn('type', ['buy', 'sell'])->latest('id')->firstOrFail();
@@ -192,7 +255,8 @@ class TradeCashTest extends TestCase
         string $quantity,
         string $price,
         ?string $fees = null,
-        string $status = 'posted'
+        string $status = 'posted',
+        bool $noCash = false
     ): array {
         return [
             'account_id' => $this->broker->id,
@@ -202,7 +266,16 @@ class TradeCashTest extends TestCase
             'ccy' => 'USD',
             'status' => $status,
             'meta_data' => array_filter(
-                ['symbol' => 'NVDA', 'quantity' => $quantity, 'unit_price' => $price, 'fees' => $fees],
+                [
+                    'symbol' => 'NVDA',
+                    'quantity' => $quantity,
+                    'unit_price' => $price,
+                    'fees' => $fees,
+                    // Absent rather than false, as the form submits it: null is what a
+                    // toggle left alone sends, and false is the one value that reads
+                    // backwards in TradeCash.
+                    'no_cash' => $noCash ?: null,
+                ],
                 fn ($value) => $value !== null
             ),
         ];

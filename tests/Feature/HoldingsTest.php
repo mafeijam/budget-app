@@ -101,6 +101,18 @@ class HoldingsTest extends TestCase
         $this->assertSame(0, Transaction::where('type', 'sell')->count());
     }
 
+    public function test_a_buy_with_no_cash_side_still_holds_its_shares_and_still_guards_a_short_sell(): void
+    {
+        // The flag skips the money, not the shares: a position is replayed from the
+        // trades, so skipping the bank row must not make a brokerage hold less.
+        $this->trade('buy', '2026-01-05', '10', '100', noCash: true);
+
+        $this->assertSame('10.00000000', Positions::forAccount($this->broker)['NVDA']['quantity']);
+
+        $this->post('/transactions', $this->payload('sell', '2026-02-01', '15', '120', noCash: true))
+            ->assertSessionHasErrors('meta_data.quantity');
+    }
+
     public function test_a_sell_of_what_is_held_is_recorded(): void
     {
         $this->trade('buy', '2026-01-05', '10', '100');
@@ -168,9 +180,10 @@ class HoldingsTest extends TestCase
         string $quantity,
         string $price,
         ?string $fees = null,
-        string $symbol = 'NVDA'
+        string $symbol = 'NVDA',
+        bool $noCash = false
     ): Transaction {
-        $this->post('/transactions', $this->payload($type, $date, $quantity, $price, $fees, $symbol))
+        $this->post('/transactions', $this->payload($type, $date, $quantity, $price, $fees, $symbol, $noCash))
             ->assertSessionHasNoErrors();
 
         // The trade, not the cash row TradeCash writes after it.
@@ -183,7 +196,8 @@ class HoldingsTest extends TestCase
         string $quantity,
         string $price,
         ?string $fees = null,
-        string $symbol = 'NVDA'
+        string $symbol = 'NVDA',
+        bool $noCash = false
     ): array {
         return [
             'account_id' => $this->broker->id,
@@ -196,6 +210,7 @@ class HoldingsTest extends TestCase
                 'quantity' => $quantity,
                 'unit_price' => $price,
                 'fees' => $fees,
+                'no_cash' => $noCash ?: null,
             ], fn ($value) => $value !== null),
         ];
     }

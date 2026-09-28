@@ -187,6 +187,7 @@ const metaChips = row => {
     'quantity',
     'unit_price',
     'fees',
+    'no_cash',
   ]
 
   Object.entries(meta)

@@ -173,6 +173,16 @@ class TransactionMetaDataTest extends TestCase
                     "{$field} is not required for any type, so {$type->value} must not demand it."
                 );
             }
+
+            // The other side of the same trade list: no_cash is refused on everything
+            // that has no cash side to skip, which is the same derivesAmount() decision
+            // read the other way round. Without this the rule's list could be written by
+            // hand and nothing would say so.
+            $this->assertSame(
+                ! $needsTradeFields,
+                $this->rejects('no_cash', ['no_cash' => true], ['type' => $type->value]),
+                "no_cash prohibited for {$type->value} disagrees with derivesAmount()."
+            );
         }
 
         // And the four keys that do exist, so a field cannot be added to the DTO
@@ -211,8 +221,10 @@ class TransactionMetaDataTest extends TestCase
         //
         // This is a whitelist rather than a lookup, so a rule new to this bag
         // has to be added here deliberately -- which is the point. `date_format`
-        // arrived with due_date; the rest predate it.
-        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
+        // arrived with due_date, `prohibited_unless` with no_cash; the rest predate both.
+        $supported = [
+            'nullable', 'required_unless', 'prohibited_unless', 'max', 'decimal', 'gt', 'min', 'date_format',
+        ];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {

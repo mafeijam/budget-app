@@ -36,6 +36,15 @@ class TransactionMetaData extends Data
         public ?string $unit_price = null,
         public ?string $fees = null,
 
+        // On a trade: that its money side is not in these accounts, so TradeCash writes
+        // no cash row for it. For a position back-dated from before the bank was
+        // tracked, or a trade settling through a bank this app does not hold.
+        //
+        // Null rather than false when the cash side *is* recorded, so the default is
+        // what a trade has always done and a bag written before this field existed
+        // needs no backfill.
+        public ?bool $no_cash = null,
+
         // The statement period a charge rolls up into, and so the day it is payable.
         // Derived for a charge, supplied by a payment naming the statement it
         // settles, NULL otherwise. A column while MySQL could index it, a bag now
@@ -84,6 +93,19 @@ class TransactionMetaData extends Data
             ],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
 
+            // Prohibited rather than ignored on every other type, which is what
+            // card_amount does for the same reason: a flag left sitting in the bag of a
+            // row that has no cash side is a claim nothing downstream would ever
+            // contradict, so a type change that should have cleared it is caught here.
+            //
+            // The trades and not the two named, since `prohibited_unless` permits what
+            // it lists -- and the trades are already decided by derivesAmount(), which is
+            // the same answer TradeCash gives when it asks whether a row has a cash side.
+            'no_cash' => [
+                'nullable',
+                'prohibited_unless:type,'.self::typesWhere(fn (TransactionType $type) => $type->derivesAmount()),
+            ],
+
             // `nullable` first, as on every other key here. Not required for a charge
             // even though the constructor fills it in, because it is filled in after
             // validation and a card with no statement day has none.
@@ -113,8 +135,20 @@ class TransactionMetaData extends Data
      */
     private static function typesExcept(TransactionType ...$permitted): string
     {
+        return self::typesWhere(fn (TransactionType $type) => ! in_array($type, $permitted, true));
+    }
+
+    /**
+     * The transaction types matching a predicate, as a comma-separated list.
+     *
+     * For the rules that name what a field is *for*, where the complement is the wrong
+     * way round: `prohibited_unless` permits the types it lists, so listing everything
+     * but the trades would permit no_cash on a dividend and refuse it on a buy.
+     */
+    private static function typesWhere(callable $predicate): string
+    {
         return collect(TransactionType::cases())
-            ->reject(fn (TransactionType $type) => in_array($type, $permitted, true))
+            ->filter($predicate)
             ->map(fn (TransactionType $type) => $type->value)
             ->implode(',');
     }
@@ -126,8 +160,24 @@ class TransactionMetaData extends Data
             'quantity' => 'quantity',
             'unit_price' => 'unit price',
             'fees' => 'fees',
+            'no_cash' => 'no cash side',
             'due_date' => 'due date',
             'card_amount' => 'amount in the card\'s currency',
+        ];
+    }
+
+    /**
+     * What a refusal says, where the rule's own message does not.
+     *
+     * Laravel's message for prohibited_unless restates the condition -- "prohibited
+     * unless type is in buy, sell" -- which tells the user the rule rather than why
+     * their row was turned down. There is no `prohibited_if_in` to say it in one word,
+     * so the sentence is written here.
+     */
+    public static function messages()
+    {
+        return [
+            'no_cash.prohibited_unless' => 'Only a buy or a sell has a cash side to skip.',
         ];
     }
 
