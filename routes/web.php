@@ -25,6 +25,7 @@ Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveD
 
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
+Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');
 
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');

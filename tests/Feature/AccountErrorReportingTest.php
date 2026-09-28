@@ -113,12 +113,10 @@ class AccountErrorReportingTest extends TestCase
 
     public function test_the_exception_actually_reaches_the_log(): void
     {
-        // Ends-to-end: report() routes through App\Exceptions\Handler, which
-        // registers an empty reportable() callback. That callback returns null
-        // rather than false, so reporting continues to the default logger --
-        // but only because of that detail, which is worth pinning down here.
-        // If someone ever makes the callback return false, or adds the
-        // exception to $dontReport, this fails.
+        // Ends-to-end: report() routes through the exception handler, which
+        // bootstrap/app.php gives no reportable() callback, so reporting reaches the
+        // default logger. If someone adds one that returns false, or adds the
+        // exception to dontReport, this fails.
         $log = storage_path('logs/laravel-testing-error-reporting.log');
 
         config()->set('logging.default', 'single');
