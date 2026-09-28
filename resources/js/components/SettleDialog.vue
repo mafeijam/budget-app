@@ -3,9 +3,7 @@
     <q-card flat class="card-form-dialog">
       <q-card-section>
         <div class="row justify-between items-center">
-          <div class="text-h6 text-capitalize text-blue-grey-8 text-weight-bold">
-            settle statement
-          </div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Settle statement</div>
           <q-btn flat round color="grey-6" icon="close" @click="open = false" />
         </div>
       </q-card-section>
@@ -111,7 +109,7 @@
                     :model-value="paidOn"
                     mask="YYYY-MM-DD"
                     minimal
-                    color="green-7"
+                    color="primary"
                     @update:model-value="pickDate"
                   />
                 </q-menu>
@@ -128,8 +126,8 @@
           implying the transfer happened whenever, and the account is named as chosen so
           the sentence stays true while the picker is being used.
         -->
-        <div class="row no-wrap bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
-          <q-icon name="info" size="xs" class="q-mr-sm q-mt-xs" />
+        <div class="app-note row no-wrap">
+          <q-icon name="info" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
           <div>
             This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
             <template v-if="chosenName">
@@ -146,11 +144,8 @@
           open turns into a message and a second look, not a payment the user did not
           agree to.
         -->
-        <div
-          v-if="error"
-          class="row no-wrap bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md"
-        >
-          <q-icon name="error_outline" size="xs" class="q-mr-sm q-mt-xs" />
+        <div v-if="error" class="app-note app-note--negative row no-wrap">
+          <q-icon name="error_outline" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
           <div>{{ error }}</div>
         </div>
       </q-card-section>
@@ -166,17 +161,16 @@
               color="grey-6"
               padding="sm md"
               flat
-              label="cancel"
+              no-caps
+              label="Cancel"
               @click="open = false"
             />
             <q-btn
-              class="text-weight-bold"
+              class="text-weight-bold app-btn app-btn--positive"
               padding="sm md"
-              color="green-1"
-              text-color="green-9"
               unelevated
-              icon="done"
-              :label="settling ? 'settling' : `settle ${money(period?.owed)}`"
+              no-caps
+              :label="settling ? 'Settling' : `Settle ${money(period?.owed)}`"
               :loading="settling"
               :disable="!settleable"
               @click="confirm"

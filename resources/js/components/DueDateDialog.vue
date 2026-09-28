@@ -3,9 +3,7 @@
     <q-card flat class="card-form-dialog">
       <q-card-section>
         <div class="row justify-between items-center">
-          <div class="text-h6 text-capitalize text-blue-grey-8 text-weight-bold">
-            statement issued
-          </div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Statement issued</div>
           <q-btn flat round color="grey-6" icon="close" @click="open = false" />
         </div>
       </q-card-section>
@@ -67,7 +65,7 @@
                   :model-value="stated"
                   mask="YYYY-MM-DD"
                   minimal
-                  color="green-7"
+                  color="primary"
                   @update:model-value="pickDate"
                 />
               </q-menu>
@@ -83,7 +81,7 @@
           Cheaper to say here than to let the next charge fall due on the old day and look
           like a late payment.
         -->
-        <div v-if="changed" class="bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
+        <div v-if="changed" class="app-note">
           Every charge and payment in this statement moves to
           {{ formatDate(stated) }}. The amount does not change.
         </div>
@@ -94,7 +92,7 @@
           statement. All three are decided by the server from state the panel does not
           carry, so the button below can only disable for the one it can see.
         -->
-        <div v-if="error" class="bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md">
+        <div v-if="error" class="app-note app-note--negative">
           {{ error }}
         </div>
       </q-card-section>
@@ -110,17 +108,16 @@
               color="grey-6"
               padding="sm md"
               flat
-              label="cancel"
+              no-caps
+              label="Cancel"
               @click="open = false"
             />
             <q-btn
-              class="text-weight-bold"
+              class="text-weight-bold app-btn app-btn--positive"
               padding="sm md"
-              color="green-1"
-              text-color="green-9"
               unelevated
-              icon="done"
-              :label="saving ? 'saving' : 'save due date'"
+              no-caps
+              :label="saving ? 'Saving' : 'Save due date'"
               :loading="saving"
               :disable="!saveable"
               @click="confirm"

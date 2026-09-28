@@ -32,7 +32,7 @@
         its currency beside it. A pending row is greyed, since it moves nothing yet.
       -->
       <template #body-cell-amount="cell">
-        <q-td :props="cell" :class="amountClass(cell.row)">
+        <q-td :props="cell" class="money" :class="amountClass(cell.row)">
           <span class="text-weight-medium">{{ signed(cell.row) }}</span>
           <span class="text-caption text-grey-7 q-ml-xs">{{ cell.row.ccy }}</span>
         </q-td>
@@ -46,13 +46,16 @@
 
       <template #body-cell-metaData="cell">
         <q-td :props="cell">
-          <q-chip
+          <!--
+            Badges, not chips: q-chip--dense is 1.5em of its own 14px -- 21px -- against
+            the 16px of q-badge, so a chip here reads as a different kind of thing from
+            the badges either side of it. q-mr-xs is the gap the chip's 4px margin gave.
+          -->
+          <q-badge
             v-for="chip in metaChips(cell.row)"
             :key="chip.label"
-            dense
-            square
-            :color="chip.color"
-            :text-color="chip.textColor"
+            class="q-mr-xs"
+            :class="chip.class"
             :label="chip.label"
           />
         </q-td>
@@ -87,6 +90,12 @@ const formatMoney = useMoney()
 
 // Light fills in three distinct hues, the status badges' style, so the type reads by
 // colour and does not compete with the Type column's icons beside it.
+//
+// Left on Quasar's own ramp rather than moved onto the brand like the status badges
+// below, and that is the point of them: these three hues mean nothing in particular. They
+// are here so a card row parts from a bank row at a glance, and drawing them from the
+// brand would tie three arbitrary hues to one palette and make them look like meaning
+// they do not carry.
 const accountTypeBadges = {
   cash: { color: 'teal-1', textColor: 'teal-9' },
   card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
@@ -105,10 +114,14 @@ const typeIcons = {
   dividend: 'paid',
 }
 
+// Posted, not yet posted and settled are the brand's positive, warning and info, which
+// is a real mapping rather than three colours that happen to differ: green-1/green-9 sat
+// next to text-positive on the same row, and the two greens were visibly not the same
+// green. A class, because Quasar's ramp has no entry for a brand colour.
 const statusBadges = {
-  posted: { color: 'green-1', textColor: 'green-9' },
-  pending: { color: 'amber-2', textColor: 'amber-10' },
-  settled: { color: 'blue-1', textColor: 'blue-9' },
+  posted: { class: 'app-tint app-tint--positive' },
+  pending: { class: 'app-tint app-tint--warning' },
+  settled: { class: 'app-tint app-tint--info' },
 }
 
 // 1, -1 or 0 from the server's movesBalanceOn(). Zero for a trade, which moves no
@@ -134,10 +147,10 @@ const amountClass = row => {
 const metaChips = row => {
   const meta = row.meta_data ?? {}
   const chips = []
-  const plain = label => chips.push({ label, color: 'grey-2', textColor: 'grey-9' })
+  const plain = label => chips.push({ label, class: 'app-tint app-tint--muted' })
 
   if (meta.due_date) plain(`Due ${meta.due_date}`)
-  if (meta.settled_by) chips.push({ label: 'Paid', color: 'green-1', textColor: 'green-9' })
+  if (meta.settled_by) chips.push({ label: 'Paid', class: 'app-tint app-tint--positive' })
 
   if (meta.card_amount) {
     const figure = formatMoney(meta.card_amount)
@@ -155,8 +168,7 @@ const metaChips = row => {
 
     chips.push({
       label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
-      color: 'blue-1',
-      textColor: 'blue-9',
+      class: 'app-tint app-tint--info',
     })
   }
 

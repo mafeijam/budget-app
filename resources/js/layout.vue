@@ -3,8 +3,8 @@
     <q-header bordered class="bg-white text-grey-9">
       <q-toolbar class="q-px-md">
         <q-btn dense flat round icon="menu" color="grey-8" @click="show = !show" />
-        <q-avatar size="32px" color="blue-10" text-color="white" icon="savings" class="q-ml-sm" />
-        <q-toolbar-title class="text-weight-bold text-blue-10">Budget</q-toolbar-title>
+        <q-avatar size="32px" color="primary" text-color="white" icon="savings" class="q-ml-sm" />
+        <q-toolbar-title class="text-weight-bold text-primary">Budget</q-toolbar-title>
       </q-toolbar>
     </q-header>
 
@@ -17,7 +17,7 @@
           clickable
           :active="menu.active"
           class="rounded-borders q-mb-xs"
-          active-class="bg-blue-1 text-blue-10 text-weight-bold"
+          active-class="app-nav-active"
           @click="menu.to"
         >
           <q-item-section avatar>

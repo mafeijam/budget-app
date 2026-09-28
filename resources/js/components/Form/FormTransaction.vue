@@ -6,9 +6,9 @@
         would sit offset from every field below it.
       -->
       <div v-if="lock" class="col-12">
-        <q-banner rounded dense class="bg-amber-1 text-amber-10">
+        <q-banner rounded dense class="app-tint app-tint--warning">
           <template #avatar>
-            <q-icon name="lock" color="amber-8" />
+            <q-icon name="lock" />
           </template>
           {{ lock.message }}
         </q-banner>
@@ -68,7 +68,7 @@
                 :model-value="form.date"
                 mask="YYYY-MM-DD"
                 minimal
-                color="green-7"
+                color="primary"
                 @update:model-value="pickDate"
               />
             </q-menu>
@@ -294,7 +294,7 @@ const needsCardAmount = computed(
 )
 
 const title = computed(() => {
-  return target.value ? 'edit transaction' : 'create new transaction'
+  return target.value ? 'Edit transaction' : 'Create new transaction'
 })
 
 // Two resets, and both are needed because the rules prohibit rather than ignore.

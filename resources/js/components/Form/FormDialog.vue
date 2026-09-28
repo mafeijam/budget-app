@@ -10,7 +10,7 @@
     <q-card flat class="card-form-dialog">
       <q-card-section>
         <div class="row justify-between items-center">
-          <div class="text-h6 text-capitalize text-blue-grey-8 text-weight-bold">
+          <div class="text-h6 text-grey-9 text-weight-bold">
             {{ title }}
           </div>
           <q-btn flat round color="grey-6" icon="close" @click="dialog = false" />
@@ -22,7 +22,7 @@
       </q-card-section>
 
       <q-card-section v-if="$page.props.message_csrf">
-        <div class="bg-amber-1 rounded-borders text-amber-8 text-body2 q-pa-md">
+        <div class="app-note app-note--warning">
           {{ $page.props.message_csrf }}
         </div>
       </q-card-section>
@@ -40,19 +40,17 @@
                 color="grey-6 text-weight-bold"
                 padding="sm md"
                 flat
-                icon="undo"
-                label="reset"
+                no-caps
+                label="Reset"
                 @click="(form.reset(), form.clearErrors())"
               />
               <q-btn
                 type="submit"
-                class="text-weight-bold"
+                class="text-weight-bold app-btn app-btn--positive"
                 padding="sm md"
-                color="green-1"
-                text-color="green-9"
                 unelevated
-                icon="done"
-                label="submit"
+                no-caps
+                label="Submit"
                 :loading="form.processing"
                 :form="$page.props.meta.form"
               />

@@ -1,11 +1,9 @@
 <template>
   <q-btn
-    icon="add"
-    class="text-weight-bold"
-    color="indigo-1"
-    text-color="blue-9"
+    class="text-weight-bold app-btn"
     unelevated
-    label="add"
+    no-caps
+    label="Add"
     @click="$eventBus.formDialog.emit($page.props.meta.form)"
   />
 </template>

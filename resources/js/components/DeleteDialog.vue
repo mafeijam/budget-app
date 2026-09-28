@@ -9,8 +9,8 @@
       <q-card-section class="row items-start no-wrap q-pb-sm">
         <q-avatar
           icon="delete_outline"
-          color="red-1"
-          text-color="red-8"
+          color="negative"
+          text-color="white"
           size="44px"
           class="q-mr-md"
         />
@@ -30,10 +30,7 @@
         <q-btn
           unelevated
           no-caps
-          color="red-1"
-          text-color="red-9"
-          class="text-weight-bold"
-          icon="delete"
+          class="text-weight-bold app-btn app-btn--negative"
           label="Delete"
           @click="onDialogOK"
         />

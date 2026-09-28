@@ -24,19 +24,19 @@
     <q-space />
 
     <!--
-      Always there, and disabled while nothing is set, so it is findable before it is
-      needed and says at a glance whether the list is filtered.
+      Only when there is something to clear, and its appearing is what says the list is
+      filtered -- which a button that is always there cannot say, because a permanently
+      visible control reads as merely being disabled and the eye stops giving it the
+      second look that would catch it being live.
     -->
-    <div class="col-auto">
+    <div v-if="active" class="col-auto">
       <q-btn
         class="text-weight-bold"
         color="grey-2"
         text-color="grey-9"
         unelevated
         no-caps
-        icon="filter_alt_off"
         label="Clear all"
-        :disable="!active"
         @click="clear"
       />
     </div>
@@ -65,7 +65,7 @@
       <template #append>
         <q-btn flat dense round icon="event">
           <q-menu :offset="[10, 15]" anchor="bottom right" self="top right">
-            <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="green-7" />
+            <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="primary" />
           </q-menu>
         </q-btn>
       </template>

@@ -15,15 +15,16 @@
                 <q-space />
                 <q-badge outline color="grey-7" :label="account.ccy" />
               </div>
-              <div class="text-h4 text-weight-bold q-mt-md" :class="amountClass(account.balance)">
+              <div
+                class="text-h4 text-weight-bold money q-mt-md"
+                :class="amountClass(account.balance)"
+              >
                 {{ money(account.balance) }}
               </div>
               <!-- Shown only while it still holds money; see HomeController. -->
               <q-badge
                 v-if="account.status !== 'active'"
-                color="grey-3"
-                text-color="grey-8"
-                class="q-mt-sm"
+                class="q-mt-sm app-tint app-tint--muted"
                 :label="`${account.status}, still holding money`"
               />
             </q-card-section>
@@ -54,7 +55,7 @@
               </div>
               <!-- Market value, not a balance: what the holdings are worth at the latest price. -->
               <div class="text-caption text-grey-7 q-mt-md">Market value</div>
-              <div class="text-h4 text-weight-bold text-grey-9">
+              <div class="text-h4 text-weight-bold text-grey-9 money">
                 {{ money(broker.market_value) }}
               </div>
               <div class="text-body2 text-weight-medium" :class="gainClass(broker.unrealised)">
@@ -96,7 +97,7 @@
                 Due {{ formatDate(statement.due_date) }}
                 <q-badge v-bind="dueBadge(statement)" class="q-ml-sm" />
               </div>
-              <div class="text-h4 text-weight-bold text-negative q-mt-sm">
+              <div class="text-h4 text-weight-bold text-negative money q-mt-sm">
                 {{ money(statement.owed) }}
               </div>
               <!--
@@ -112,8 +113,7 @@
               <!-- A total with pending rows is not final, and cannot be settled yet. -->
               <q-badge
                 v-if="statement.pending_count"
-                color="amber-9"
-                class="q-mt-sm"
+                class="q-mt-sm app-tint app-tint--warning"
                 :label="`${statement.pending_count} not yet posted`"
               />
             </q-card-section>
