@@ -71,10 +71,12 @@ class TransactionData extends Data
 
         $this->account_name = $account?->name;
 
-        // Dropped rather than refused: the edit form round-trips the row's real link,
-        // and a rule cannot tell that from a forged one. keepPairingOf() restores it.
+        // Dropped rather than refused: the edit form round-trips the row's real links,
+        // and a rule cannot tell those from forged ones. keepLinksOf() restores them.
         if ($this->meta_data !== null) {
-            $this->meta_data->paired_transaction_id = null;
+            foreach (self::SERVER_LINKS as $key) {
+                $this->meta_data->{$key} = null;
+            }
         }
 
         $this->guardAccountType($account);
@@ -336,22 +338,31 @@ class TransactionData extends Data
     }
 
     /**
-     * Carry the stored row's settlement pairing into the bag that replaces its own.
+     * The bag keys only settle() writes, linking a row to another: the other half of a
+     * settlement, and on a charge the payment that settled it.
+     */
+    private const SERVER_LINKS = ['paired_transaction_id', 'settled_by'];
+
+    /**
+     * Carry the stored row's links into the bag that replaces its own.
      *
      * update() replaces the bag outright, and the constructor has dropped the payload's
-     * link, so without this any edit to either half of a settlement -- a description
-     * fix -- cuts the pair, and destroy() then deletes one row of two.
+     * links, so without this any edit to a settled row -- a description fix -- cuts
+     * them: the pair comes apart and destroy() then deletes one row of two, and a paid
+     * charge forgets which payment paid it.
      */
-    public function keepPairingOf(Transaction $row): void
+    public function keepLinksOf(Transaction $row): void
     {
-        $paired = $row->meta?->meta['paired_transaction_id'] ?? null;
+        foreach (self::SERVER_LINKS as $key) {
+            $stored = $row->meta?->meta[$key] ?? null;
 
-        if ($paired === null) {
-            return;
+            if ($stored === null) {
+                continue;
+            }
+
+            $this->meta_data ??= new TransactionMetaData;
+            $this->meta_data->{$key} = $stored;
         }
-
-        $this->meta_data ??= new TransactionMetaData;
-        $this->meta_data->paired_transaction_id = $paired;
     }
 
     /**

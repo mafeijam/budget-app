@@ -88,6 +88,10 @@ class FormContractTest extends TestCase
         // because it links the two rows of a settlement and only that method may
         // create the link. There is no control that could write it.
         'meta_data.paired_transaction_id',
+
+        // The payment that settled a charge's statement, written by settle() beside the
+        // pairing and for the same reason nothing on the form can write it.
+        'meta_data.settled_by',
     ];
 
     /**

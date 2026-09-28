@@ -664,6 +664,73 @@ class CardSettlementTest extends TestCase
         $this->assertArrayNotHasKey('paired_transaction_id', $forged->fresh()->meta_data->getArrayCopy());
     }
 
+    public function test_settling_marks_each_charge_with_the_payment_that_paid_it(): void
+    {
+        // Every charge in the period, and only those: a charge a statement later is
+        // still owing and must not claim a payment. The rest of the bag survives the
+        // merge -- the due date is what the statement groups on.
+        $first = $this->charge('2026-01-01', '120.0000');
+        $second = $this->charge('2026-01-10', '30.0000');
+        $later = $this->charge('2026-03-01', '80.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '150.0000'])->assertSessionHasNoErrors();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+
+        foreach ([$first, $second] as $charge) {
+            $this->assertSame($payment->id, (int) $charge->fresh()->meta_data['settled_by']);
+            $this->assertSame(self::PERIOD, $charge->fresh()->meta_data['due_date']);
+        }
+
+        $this->assertArrayNotHasKey('settled_by', $later->fresh()->meta_data->getArrayCopy());
+    }
+
+    public function test_deleting_the_settlement_takes_the_mark_off_its_charges(): void
+    {
+        // The statement reopens, so its charges are owing again, and a marker left
+        // behind would name a payment that no longer exists. Deleted from the bank's
+        // half, which takes the payment with it, so the clearing cannot depend on
+        // which half was clicked.
+        $charge = $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        $this->delete("/transactions/{$transfer->id}")->assertSessionHasNoErrors();
+
+        $bag = $charge->fresh()->meta_data->getArrayCopy();
+
+        $this->assertArrayNotHasKey('settled_by', $bag);
+        $this->assertSame(self::PERIOD, $bag['due_date']);
+    }
+
+    public function test_the_mark_survives_an_edit_and_cannot_be_forged(): void
+    {
+        // Server-owned like the pairing: the edit form round-trips the real one, which
+        // is kept, and a payload naming another is dropped.
+        $charge = $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+
+        $this->put("/transactions/{$charge->id}", array_merge(
+            TransactionData::from($charge->fresh()->load('meta', 'account'))->toArray(),
+            ['description' => 'Corrected']
+        ))->assertSessionHasNoErrors();
+
+        $this->assertSame($payment->id, (int) $charge->fresh()->meta_data['settled_by']);
+
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-03-01',
+            'meta_data' => ['settled_by' => $payment->id],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertArrayNotHasKey(
+            'settled_by',
+            Transaction::latest('id')->firstOrFail()->meta_data->getArrayCopy()
+        );
+    }
+
     public function test_the_bank_half_of_a_settlement_keeps_the_payments_amount(): void
     {
         // The transfer has no due date, so no statement guard sees it. Changing its

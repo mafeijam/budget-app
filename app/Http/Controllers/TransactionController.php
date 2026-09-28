@@ -10,6 +10,7 @@ use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
@@ -263,7 +264,7 @@ class TransactionController extends Controller
         // card out of a paid statement.
         $data->guardFigures($transaction);
 
-        $data->keepPairingOf($transaction);
+        $data->keepLinksOf($transaction);
 
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
@@ -458,7 +459,7 @@ class TransactionController extends Controller
                 'status' => TransactionStatus::Posted->value,
             ]);
 
-            // Written here, not through the DTO, which prohibits the field: the ids do
+            // Written here, not through the DTO, which drops the field: the ids do
             // not exist until both rows do. The transfer's bag carries no due_date, or a
             // bank would fall into a card's arithmetic.
             $payment->meta()->create([
@@ -468,6 +469,24 @@ class TransactionController extends Controller
             $transfer->meta()->create([
                 'meta' => ['paired_transaction_id' => $payment->id],
             ]);
+
+            // Which payment paid each charge, so a charge says so on its own row. Inside
+            // the write, so a settlement cannot exist with its charges unmarked. Merged,
+            // because the bag also holds the due_date the statement groups on and any
+            // card_amount it sums -- a blind write would drop the charge out of the very
+            // bill being paid.
+            $covered = Transaction::query()
+                ->with('meta')
+                ->where('account_id', $account->id)
+                ->where('type', TransactionType::Charge->value)
+                ->whereHas('meta', fn ($q) => $q->where('meta->due_date', $figures['due_date']))
+                ->get();
+
+            foreach ($covered as $charge) {
+                $charge->meta->update([
+                    'meta' => array_merge($charge->meta->meta->getArrayCopy(), ['settled_by' => $payment->id]),
+                ]);
+            }
 
             DB::commit();
         } catch (Exception $e) {
@@ -557,6 +576,13 @@ class TransactionController extends Controller
 
         try {
             foreach ($rows as $row) {
+                // A deleted payment reopens its statement, so the charges stop claiming
+                // it paid them. Left behind, the marker would name a row that no longer
+                // exists on charges that are owing again.
+                if ($row->type === TransactionType::Payment->value) {
+                    $this->forgetSettlement($row);
+                }
+
                 $row->meta()->delete();
                 $row->delete();
             }
@@ -577,6 +603,24 @@ class TransactionController extends Controller
         return back()->with('message', $period === null
             ? 'Card settlement deleted in full: 2 transactions'
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * Remove a payment's settled_by from every charge that names it.
+     *
+     * Found by the marker rather than by the payment's period, so a charge carrying it
+     * is cleared wherever it has since been filed.
+     */
+    private function forgetSettlement(Transaction $payment): void
+    {
+        $bags = Meta::query()
+            ->where('model_type', Transaction::class)
+            ->where('meta->settled_by', $payment->id)
+            ->get();
+
+        foreach ($bags as $bag) {
+            $bag->update(['meta' => Arr::except($bag->meta->getArrayCopy(), 'settled_by')]);
+        }
     }
 
     /**

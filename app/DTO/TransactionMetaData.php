@@ -50,9 +50,16 @@ class TransactionMetaData extends Data
         // The other half of a card settlement, which is two rows and not one. Written
         // by TransactionController::settle() and nothing else, since destroy() deletes
         // whatever this points at: the link is the difference between deleting one row
-        // and deleting two. A payload's value never lands -- see keepPairingOf() in
+        // and deleting two. A payload's value never lands -- see keepLinksOf() in
         // TransactionData.
         public ?int $paired_transaction_id = null,
+
+        // On a charge: the payment that settled the statement it is in. Written by
+        // settle() and removed by destroy() with that payment, so it is a record of
+        // which payment closed the bill -- never the test of whether it is paid, which
+        // CardStatement derives, because a claim on one row cannot see the others.
+        // Server-owned like the pairing, and kept through an edit the same way.
+        public ?int $settled_by = null,
     ) {}
 
     public static function rules()
