@@ -13,14 +13,10 @@
         </TransactionFilters>
       </template>
 
+      <!-- A tint per kind of account, so card rows and bank rows part at a glance. -->
       <template #body-cell-accountType="cell">
         <q-td :props="cell">
-          <q-icon
-            :name="accountTypeIcons[cell.value] ?? 'help_outline'"
-            size="xs"
-            class="q-mr-xs"
-          />
-          {{ cell.value }}
+          <q-badge v-bind="accountTypeBadges[cell.value] ?? {}" :label="cell.value" />
         </q-td>
       </template>
 
@@ -89,8 +85,13 @@ const props = defineProps({
 const pagination = usePagination()
 const formatMoney = useMoney()
 
-// The icons the accounts list uses, so a type looks the same on both pages.
-const accountTypeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
+// Light fills in three distinct hues, the status badges' style, so the type reads by
+// colour and does not compete with the Type column's icons beside it.
+const accountTypeBadges = {
+  cash: { color: 'teal-1', textColor: 'teal-9' },
+  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
+  security: { color: 'orange-1', textColor: 'orange-10' },
+}
 
 const typeIcons = {
   expense: 'shopping_cart',
