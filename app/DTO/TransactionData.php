@@ -46,14 +46,22 @@ class TransactionData extends Data
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
 
-        // The owning account's name, read off the model the constructor already
-        // loaded. Not a client's to decide -- rules() has no rule for it, and says why.
-        // Last and defaulted because an optional parameter ahead of the required ones
-        // gets no default at all.
+        // The owning account's name: the model's accessor on a read, the account row
+        // on a write. Not a client's to decide -- rules() has no rule for it, and says
+        // why. Last and defaulted because an optional parameter ahead of the required
+        // ones gets no default at all.
         public ?string $account_name = null,
     ) {
         $this->created_at ??= now();
         $this->status ??= TransactionStatus::Posted;
+
+        // A stored row is shown as stored. The guards judge a payload against the
+        // account as it is now, and an account edited since -- a card moved into the
+        // currency of its foreign charges -- makes rows that were valid when written
+        // throw here, which takes the whole transactions page down with a redirect.
+        if (self::$readingStoredRow) {
+            return;
+        }
 
         // One account read serves the pairing check, the due date and the name.
         $account = Account::find($this->account_id);
@@ -64,6 +72,28 @@ class TransactionData extends Data
         $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
+    }
+
+    /** Set while fromModel() runs; the constructor has no other way to know. */
+    private static bool $readingStoredRow = false;
+
+    /**
+     * A stored row, read back for display or for the edit form to round-trip.
+     *
+     * Picked by spatie/laravel-data for any Transaction, so Data::collect() over the
+     * index's paginator comes through here. The flag rather than a constructor
+     * parameter, which would be a DTO field the form contract then demands a control
+     * for.
+     */
+    public static function fromModel(Transaction $row): self
+    {
+        self::$readingStoredRow = true;
+
+        try {
+            return self::factory()->ignoreMagicalMethod('fromModel')->from($row);
+        } finally {
+            self::$readingStoredRow = false;
+        }
     }
 
     /**
@@ -258,10 +288,9 @@ class TransactionData extends Data
      * Put a charge in the statement period its date falls in, overwriting whichever
      * period the payload carried.
      *
-     * Called on the way to an update and not from the constructor, which also runs
-     * when a stored row is read back: re-deriving on a read would show a period the
-     * statement panel does not group by, the moment somebody edits a card's statement
-     * day. A read shows what is stored; a write recomputes.
+     * Called on the way to an update and not from the constructor, because whether
+     * the period moves is a question about the stored row, which the constructor has
+     * not got.
      *
      * Overwritten rather than kept, as in deriveAmount(): the period a date falls in is
      * the only correct one. A charge whose card no longer has terms keeps the period it

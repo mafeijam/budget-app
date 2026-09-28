@@ -539,6 +539,48 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_still_renders_rows_an_account_edit_has_made_invalid(): void
+    {
+        // A USD charge on an HKD card carries its card-currency figure. Moving the card
+        // to USD afterwards makes that figure one the DTO would refuse on a write -- and
+        // when the guards also ran on a read, the whole page answered with a redirect
+        // instead of the list.
+        $this->post('/transactions', $this->chargePayload([
+            'ccy' => 'USD',
+            'amount' => '100.0000',
+            'meta_data' => ['card_amount' => '780.0000'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->card->update(['ccy' => 'USD']);
+
+        $this->get('/transactions')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->has('data.data', 1)
+            ->where('data.data.0.meta_data.card_amount', '780.0000')
+            ->where('data.data.0.account_name', 'Card')
+        );
+    }
+
+    public function test_index_shows_a_stored_row_as_stored(): void
+    {
+        // A charge recorded before its card had terms has no period. Deriving one on
+        // the way out would show a statement the panel does not group it under.
+        Transaction::create([
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Bare',
+            'amount' => '30.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data.0.description', 'Bare')
+            ->where('data.data.0.meta_data', null)
+        );
+    }
+
     public function test_a_supplied_account_name_does_not_rename_the_account(): void
     {
         // The name is derived from the account, so a payload carrying one is inert --
