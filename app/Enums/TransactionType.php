@@ -33,6 +33,12 @@ enum TransactionType: string
     // second name for it.
     case Transfer = 'transfer';
 
+    // Money arriving in a bank from somewhere that is not income -- the proceeds of a
+    // sell, written by TradeCash beside the trade. Transfer's counterpart, and a case of
+    // its own for the reason Transfer is: recorded as income, a sale would count the
+    // return of the user's own money as money earned in every income total.
+    case Deposit = 'deposit';
+
     // Credit card accounts. A charge spends the card's credit and rolls up into
     // a statement period; a payment reduces what is owed and is deliberately
     // not an expense, so it need not be categorised -- though a payment may
@@ -55,7 +61,7 @@ enum TransactionType: string
     public function accountTypes(): array
     {
         return match ($this) {
-            self::Expense, self::Income, self::Transfer => [AccountType::Cash],
+            self::Expense, self::Income, self::Transfer, self::Deposit => [AccountType::Cash],
             self::Charge, self::Payment => [AccountType::Card],
             self::Buy, self::Sell, self::Dividend => [AccountType::Security],
         };
@@ -88,7 +94,7 @@ enum TransactionType: string
     {
         return match ($accountType) {
             AccountType::Cash => match ($this) {
-                self::Income => 1,
+                self::Income, self::Deposit => 1,
                 self::Expense, self::Transfer => -1,
 
                 // Unreachable -- accountTypes() permits none of these on a cash
@@ -101,7 +107,7 @@ enum TransactionType: string
                 self::Charge => -1,
                 self::Payment => 1,
 
-                self::Expense, self::Income, self::Transfer, self::Buy, self::Sell, self::Dividend => 0,
+                self::Expense, self::Income, self::Transfer, self::Deposit, self::Buy, self::Sell, self::Dividend => 0,
             },
 
             AccountType::Security => 0,
