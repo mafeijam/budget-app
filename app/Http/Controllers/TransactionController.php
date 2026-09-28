@@ -25,6 +25,11 @@ use Spatie\LaravelData\PaginatedDataCollection;
 
 class TransactionController extends Controller
 {
+    private const DEFAULT_SORT = 'date';
+
+    /** The columns the transactions table marks sortable. */
+    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status', 'created_at'];
+
     public function index(Request $r)
     {
         // Seeded with today, the way AccountController seeds the account form's status.
@@ -62,10 +67,20 @@ class TransactionController extends Controller
             'value' => $category->id,
         ]);
 
+        // By the day the money moved, newest first, rather than by when the row was typed
+        // in: a charge entered a week late belongs among that week's rows. Only the
+        // columns the table offers to sort, so a request cannot order by anything else.
+        $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
+        $dir = $r->input('dir') === 'asc' ? 'asc' : 'desc';
+
         $transactions = Transaction::query()
             // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
-            ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
+            ->orderBy($sort, $dir)
+            // Then by id, so rows sharing a date keep one order from page to page. MySQL
+            // returns a tie in whatever order it likes, and a row could then show on two
+            // pages or on none.
+            ->orderBy('id', $dir)
             ->paginate($r->input('per_page', 5));
 
         $page = $transactions->getCollection();
@@ -207,11 +222,14 @@ class TransactionController extends Controller
         // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
-        $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
+        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
 
+        // `sort` is the order AppTable leaves out of the URL, since the server applies it
+        // unasked.
         $meta = [
             'form' => 'transaction-form',
             'path' => '/transactions',
+            'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'desc'],
         ];
 
         return inertia('transaction', compact(

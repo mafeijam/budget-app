@@ -57,21 +57,19 @@ function getQuery(pagination) {
     query.page = page
   }
 
-  if (sortBy) {
+  // The page's own default order, which the server applies when the URL names none --
+  // so it is left out of the URL, and clearing the sort falls back to it. Created-at
+  // newest first for a page that does not say.
+  const fallback = usePage().props.meta?.sort ?? { by: 'created_at', dir: 'desc' }
+  const isDefault = sortBy === fallback.by && descending === (fallback.dir === 'desc')
+
+  if (sortBy && !isDefault) {
     query.sort = sortBy
     query.dir = descending ? 'desc' : 'asc'
-  } else {
-    query.sort = 'created_at'
-    query.dir = 'asc'
   }
 
   if (rowsPerPage !== 5) {
     query.per_page = rowsPerPage
-  }
-
-  if (sortBy === 'created_at' && descending === true) {
-    delete query.sort
-    delete query.dir
   }
 
   return query

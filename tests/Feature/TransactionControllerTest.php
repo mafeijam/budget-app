@@ -667,6 +667,48 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_lists_by_the_day_the_money_moved_newest_first(): void
+    {
+        // Entered out of order: the late entry belongs among its own week's rows, not at
+        // the top because it was typed in last.
+        $this->post('/transactions', $this->expense(['date' => '2026-03-01', 'description' => 'March']));
+        $this->post('/transactions', $this->expense(['date' => '2026-01-01', 'description' => 'January']));
+        $this->post('/transactions', $this->expense(['date' => '2026-02-01', 'description' => 'February']));
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data', fn ($rows) => $rows->pluck('description')->all() === ['March', 'February', 'January'])
+            ->where('params.sort', 'date')
+            ->where('params.dir', 'desc')
+            ->where('meta.sort', ['by' => 'date', 'dir' => 'desc'])
+        );
+    }
+
+    public function test_rows_sharing_a_date_keep_one_order_across_pages(): void
+    {
+        // Six rows on one day over pages of five: every row on exactly one page.
+        foreach (range(1, 6) as $n) {
+            $this->post('/transactions', $this->expense(['description' => "Row {$n}"]))->assertSessionHasNoErrors();
+        }
+
+        $seen = collect([1, 2])->flatMap(fn (int $page) => $this->get("/transactions?page={$page}")
+            ->viewData('page')['props']['data']['data'])
+            ->pluck('description');
+
+        $this->assertSame(['Row 6', 'Row 5', 'Row 4', 'Row 3', 'Row 2', 'Row 1'], $seen->all());
+    }
+
+    public function test_an_unknown_sort_falls_back_to_the_date(): void
+    {
+        $this->post('/transactions', $this->expense(['date' => '2026-01-01', 'description' => 'First']));
+        $this->post('/transactions', $this->expense(['date' => '2026-03-01', 'description' => 'Third']));
+
+        $this->get('/transactions?sort=account_id&dir=sideways')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data.0.description', 'Third')
+            ->where('params.sort', 'date')
+            ->where('params.dir', 'desc')
+        );
+    }
+
     public function test_index_seeds_the_form_with_todays_date(): void
     {
         // A new transaction is almost always dated today, and an empty calendar is a
