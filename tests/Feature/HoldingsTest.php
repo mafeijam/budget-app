@@ -95,7 +95,8 @@ class HoldingsTest extends TestCase
                     .'day. A sell cannot be more than is held.',
             ]);
 
-        $this->assertSame(1, Transaction::count());
+        $this->assertSame(1, Transaction::where('type', 'buy')->count());
+        $this->assertSame(0, Transaction::where('type', 'sell')->count());
     }
 
     public function test_a_sell_of_what_is_held_is_recorded(): void
@@ -105,7 +106,7 @@ class HoldingsTest extends TestCase
         $this->post('/transactions', $this->payload('sell', '2026-02-01', '10', '120'))
             ->assertSessionHasNoErrors();
 
-        $this->assertSame(2, Transaction::count());
+        $this->assertSame(2, Transaction::whereIn('type', ['buy', 'sell'])->count());
     }
 
     public function test_a_sell_dated_before_the_buy_it_sells_from_is_refused(): void
@@ -170,7 +171,8 @@ class HoldingsTest extends TestCase
         $this->post('/transactions', $this->payload($type, $date, $quantity, $price, $fees, $symbol))
             ->assertSessionHasNoErrors();
 
-        return Transaction::latest('id')->firstOrFail();
+        // The trade, not the cash row TradeCash writes after it.
+        return Transaction::whereIn('type', ['buy', 'sell'])->latest('id')->firstOrFail();
     }
 
     private function payload(

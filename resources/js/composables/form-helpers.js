@@ -109,9 +109,18 @@ export function useDestroy(pagination) {
         // Naming the settlement rather than the row when there is one: the thing being
         // undone is a statement, and the row clicked is only the half of it the list
         // happened to show.
-        title: other ? 'delete card settlement' : `delete ${things[meta.path] ?? 'row'}`,
+        //
+        // A trade's pair is the trade and its cash, which the server says by kind rather
+        // than this restating which types are trades.
+        title: other
+          ? other.kind === 'trade'
+            ? 'delete trade'
+            : 'delete card settlement'
+          : `delete ${things[meta.path] ?? 'row'}`,
         message: other
-          ? `${describe(other)} is the other half of this settlement. Both rows will be deleted permanently.`
+          ? other.kind === 'trade'
+            ? `${describe(other)} is this trade's cash side. Both rows will be deleted permanently.`
+            : `${describe(other)} is the other half of this settlement. Both rows will be deleted permanently.`
           : `[${labelOf(row)}] will be deleted permanently.`,
       },
     }).onOk(() => {

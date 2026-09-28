@@ -1231,6 +1231,7 @@ class TransactionControllerTest extends TestCase
                     'amount' => '120.0000',
                     'ccy' => 'HKD',
                     'account_name' => 'Bank',
+                    'kind' => 'settlement',
                 ],
                 $transfer->id => [
                     'id' => $payment->id,
@@ -1239,6 +1240,7 @@ class TransactionControllerTest extends TestCase
                     'amount' => '120.0000',
                     'ccy' => 'HKD',
                     'account_name' => 'Card',
+                    'kind' => 'settlement',
                 ],
             ])
         );

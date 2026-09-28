@@ -11,6 +11,7 @@ use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
 use App\Support\Positions;
+use App\Support\TradeCash;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
@@ -453,7 +454,7 @@ class TransactionData extends Data
      *                                                            card, null off a card
      * @return array{fields: list<string>, message: string, refusal: string}|null
      */
-    public static function figureLock(Transaction $row, ?Collection $cardPeriods, bool $partnerExists): ?array
+    public static function figureLock(Transaction $row, ?Collection $cardPeriods, ?Transaction $partner): ?array
     {
         $dueDate = $row->meta?->meta['due_date'] ?? null;
         $isCharge = $row->type === TransactionType::Charge->value;
@@ -488,7 +489,27 @@ class TransactionData extends Data
             ];
         }
 
-        if ($partnerExists) {
+        // A trade edits freely: its cash is written from it and follows the edit.
+        if ($partner !== null && TradeCash::isTrade($row)) {
+            return null;
+        }
+
+        // The cash side of a trade: every figure is the trade's, and the date too.
+        if (TradeCash::isTrade($partner)) {
+            $cash = ['account_id' => 'account', 'type' => 'type', 'date' => 'date']
+                + Arr::except(self::FIGURES, ['account_id', 'type', 'meta_data.card_amount']);
+            $trade = TradeCash::describe($partner);
+
+            return [
+                'fields' => array_keys($cash),
+                'message' => "This {$row->type} is the cash side of the trade {$trade}, so its "
+                    .Arr::join(array_values($cash), ', ', ' and ').' follow the trade. Edit the trade instead.',
+                'refusal' => "This {$row->type} is the cash side of the trade {$trade}, so its %s "
+                    .'cannot be changed here. Edit the trade instead.',
+            ];
+        }
+
+        if ($partner !== null) {
             $remedy = 'Delete the settlement and settle the statement again.';
 
             return [
@@ -521,7 +542,7 @@ class TransactionData extends Data
         $lock = self::figureLock(
             $row,
             $card?->type === AccountType::Card->value ? CardStatement::forAccount($card) : null,
-            $paired !== null && Transaction::whereKey($paired)->exists(),
+            $paired === null ? null : Transaction::with(['meta', 'account'])->find($paired),
         );
 
         $changed = $lock === null ? null : $this->changedFigure($row, $lock['fields']);
