@@ -1,7 +1,9 @@
 <template>
   <!--
     The table's whole header, since the search sits in the title row: the title, the
-    search, Clear all, and whatever the page puts in #actions (its Add button).
+    search, the button that opens and shuts the row of pickers below, the one filter
+    worth always having in reach, Clear all, and whatever the page puts in #actions (its
+    Add button).
   -->
   <div class="row full-width items-center q-col-gutter-sm">
     <div class="col-auto text-h6 text-weight-medium q-mr-md">{{ title }}</div>
@@ -78,8 +80,11 @@
       filtered -- which a button that is always there cannot say, because a permanently
       visible control reads as merely being disabled and the eye stops giving it the
       second look that would catch it being live.
+
+      Aligned on the search's text line, and the only control in this row that is -- see
+      app-align-text-line, which says why this one and not the two beside the field.
     -->
-    <div v-if="active" class="col-auto">
+    <div v-if="active" class="col-auto app-align-text-line">
       <q-btn
         class="text-weight-bold"
         color="grey-2"
@@ -91,12 +96,34 @@
       />
     </div>
 
+    <!--
+      The page's own Add button, left where the page renders it. Deliberately not aligned
+      with the rest of the row: the class above is for the controls this bar owns, and
+      nudging a button the page brought in is a change to somebody else's control that
+      this bar has no stake in.
+    -->
     <div class="col-auto">
       <slot name="actions" />
     </div>
   </div>
 
-  <div class="row q-col-gutter-sm full-width q-mt-xs items-center">
+  <!--
+    v-if rather than v-show, so the pickers' menus and the calendar's go with it: a
+    hidden one keeps whatever was open inside it.
+
+    Four to a row on a desktop, two on a tablet, one on a phone, which is what the
+    col-sm-6 and col-md-3 say. The bare col-md these replace was not a no-op: it sets
+    width auto and a large flex-grow at 1024px and up, and being later in Quasar's
+    stylesheet than col-6 it won, so every field shared one row at a fraction of the
+    page's width and each label truncated inside it.
+
+    options-dense on every picker, which is a separate prop from dense and has to be
+    named: dense makes the field 40px and says nothing about the menu, which drops out of
+    it at the standard item height. A dense row of fields opening a list of tall items is
+    the same mismatch one level down, and it is the level the eye is on while choosing
+    from it.
+  -->
+  <div v-if="rowOpen" class="row q-col-gutter-sm full-width q-mt-xs items-center">
     <!--
       A read-only field showing the range, with the calendar in a menu, as the forms do.
       The mask is on the q-date: a q-input mask is a different parser whose only token is
@@ -104,7 +131,7 @@
     -->
     <q-input
       :model-value="rangeLabel"
-      class="col-12 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Date"
       dense
       filled
@@ -124,10 +151,11 @@
     <q-select
       v-model="filters.account_id"
       :options="accountOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Account"
       dense
       filled
+      options-dense
       multiple
       clearable
       emit-value
@@ -138,10 +166,11 @@
     <q-select
       v-model="filters.account_type"
       :options="accountTypeOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Account type"
       dense
       filled
+      options-dense
       multiple
       clearable
       :display-value="shown(filters.account_type)"
@@ -150,10 +179,11 @@
     <q-select
       v-model="filters.type"
       :options="typeOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Type"
       dense
       filled
+      options-dense
       multiple
       clearable
       :display-value="shown(filters.type)"
@@ -162,10 +192,11 @@
     <q-select
       v-model="filters.status"
       :options="statusOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Status"
       dense
       filled
+      options-dense
       multiple
       clearable
       :display-value="shown(filters.status)"
@@ -174,10 +205,11 @@
     <q-select
       v-model="filters.ccy"
       :options="currencyOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Currency"
       dense
       filled
+      options-dense
       multiple
       clearable
       emit-value
@@ -188,16 +220,18 @@
     <q-select
       v-model="filters.category_id"
       :options="categoryOptions"
-      class="col-6 col-md"
+      class="col-12 col-sm-6 col-md-3"
       label="Category"
       dense
       filled
+      options-dense
       multiple
       clearable
       emit-value
       map-options
       :display-value="shown(filters.category_id, categoryOptions)"
     />
+
   </div>
 </template>
 
@@ -212,6 +246,7 @@ const pagination = inject('pagination')
 const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
 const accountTypeOptions = computed(() => page.props.filterOptions?.accountTypes ?? [])
+
 const statusOptions = computed(() => page.props.statusOptions ?? [])
 const categoryOptions = computed(() => page.props.options?.categories ?? [])
 const currencyOptions = computed(() => page.props.currencyOptions ?? [])
@@ -236,6 +271,21 @@ const shown = (chosen, options = null) => {
 // opens on the same filter it was taken with.
 const seeded = page.props.params?.filter ?? {}
 
+// Whether the row of pickers is on screen. Shut on arrival, so the table and its title
+// row are the first thing on the page and the pickers are opened by asking for them.
+//
+// Open when the URL carries a filter, which is the one arrival where shut would hide the
+// reason for the list being what it is: someone who followed a link to a filtered page
+// would be looking at Clear all and nothing saying what was applied. Everything else
+// arrives shut, so this is the exception rather than the rule.
+//
+// A ref and not the URL: it is a view rather than a filter, and the URL is read by the
+// server and by the table when it pages, so putting it there would spend a query
+// parameter to say something about this browser. Survives paging and sorting without any
+// help, since this bar's apply() and AppTable's own navigation both go with preserveState
+// and the component is not remounted.
+const rowOpen = ref(Object.keys(seeded).length > 0)
+
 const filters = reactive({
   description: seeded.description ?? null,
   account_id: ids(seeded.account_id),
@@ -246,6 +296,10 @@ const filters = reactive({
   ccy: list(seeded.ccy),
   date_from: seeded.date_from ?? null,
   date_to: seeded.date_to ?? null,
+  // A string rather than a boolean, since that is what it is in the URL: query() drops
+  // the empty value and keeps '1', which is what makes the toggle an off filter rather
+  // than a filter on false.
+  unpaid: seeded.unpaid ?? '',
 })
 
 // q-date's range model is a string for a single day and {from, to} for a span; the
@@ -316,6 +370,7 @@ const clear = () => {
     ccy: [],
     date_from: null,
     date_to: null,
+    unpaid: '',
   })
 }
 
