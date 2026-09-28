@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Price;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -89,12 +90,37 @@ class HomeTest extends TestCase
         );
     }
 
-    public function test_a_brokerage_is_neither_cash_nor_a_card(): void
+    public function test_a_brokerage_is_shown_at_market_value_beside_the_cash_not_in_it(): void
     {
-        Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->post('/transactions', [
+            'account_id' => $broker->id,
+            'date' => '2026-01-05',
+            'type' => 'buy',
+            'description' => 'Buy 0700.HK',
+            'ccy' => 'HKD',
+            'meta_data' => ['symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '400'],
+        ])->assertSessionHasNoErrors();
+
+        Price::create(['symbol' => '0700.HK', 'date' => today()->toDateString(), 'close' => '440.0000', 'ccy' => 'HKD', 'source' => 'yahoo']);
 
         $this->get('/')->assertInertia(fn (Assert $page) => $page
             ->where('cash', fn ($rows) => $rows->pluck('name')->all() === ['Bank'])
+            ->has('brokerages', 1)
+            ->where('brokerages.0.name', 'Broker')
+            ->where('brokerages.0.market_value', '44000.0000')
+            ->where('brokerages.0.unrealised', '4000.0000')
+            ->where('brokerages.0.open', 1)
+            ->where('brokerages.0.unpriced', 0)
         );
+    }
+
+    public function test_a_closed_brokerage_holding_nothing_is_not_shown(): void
+    {
+        Account::create(['name' => 'Old broker', 'status' => 'inactive', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page->has('brokerages', 0));
     }
 }
