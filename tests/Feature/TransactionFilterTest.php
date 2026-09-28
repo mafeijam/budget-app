@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsACard;
 use Tests\TestCase;
@@ -53,6 +54,42 @@ class TransactionFilterTest extends TestCase
     public function test_it_filters_by_account(): void
     {
         $this->assertListed(['filter' => ['account_id' => $this->bank->id]], ['Salary', 'Rent']);
+    }
+
+    public function test_it_filters_by_several_accounts_at_once(): void
+    {
+        $other = Account::create(['name' => 'Other', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->post('/transactions', [
+            'account_id' => $other->id,
+            'date' => '2026-03-01',
+            'type' => 'income',
+            'description' => 'Refund',
+            'amount' => '10.0000',
+            'ccy' => 'HKD',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertListed(
+            ['filter' => ['account_id' => "{$other->id},{$this->card->id}"]],
+            ['Refund', 'Books', 'Coffee, tea']
+        );
+    }
+
+    public function test_it_filters_by_several_categories_at_once(): void
+    {
+        $travel = DB::table('categories')->insertGetId(['name' => 'TRAVEL']);
+
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-01-10',
+            'description' => 'Flight',
+            'category_id' => $travel,
+        ]))->assertSessionHasNoErrors();
+
+        // Salary has no category and is left out; everything else is in one of the two.
+        $this->assertListed(
+            ['filter' => ['category_id' => "{$this->category},{$travel}"]],
+            ['Rent', 'Books', 'Flight', 'Coffee, tea']
+        );
     }
 
     public function test_it_filters_by_several_types_at_once(): void

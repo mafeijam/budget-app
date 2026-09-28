@@ -21,9 +21,11 @@
       label="Account"
       dense
       filled
+      multiple
       clearable
       emit-value
       map-options
+      :display-value="shown(filters.account_id, accountOptions)"
     />
 
     <q-select
@@ -35,6 +37,7 @@
       filled
       multiple
       clearable
+      :display-value="shown(filters.type)"
     />
 
     <q-select
@@ -46,6 +49,7 @@
       filled
       multiple
       clearable
+      :display-value="shown(filters.status)"
     />
 
     <q-select
@@ -55,9 +59,11 @@
       label="Category"
       dense
       filled
+      multiple
       clearable
       emit-value
       map-options
+      :display-value="shown(filters.category_id, categoryOptions)"
     />
 
     <!--
@@ -98,7 +104,18 @@ const categoryOptions = computed(() => page.props.options?.categories ?? [])
 // A comma-separated list in the URL, since that is what the server's exact filter
 // splits on; an array here, which is what a multiple select binds.
 const list = value => (value ? String(value).split(',') : [])
-const id = value => (value ? Number(value) : null)
+const ids = value => list(value).map(Number)
+
+// What a multiple select shows closed: the one choice by name, or a count once there
+// are several, since a row of names runs out of room in a field this narrow. Options
+// are {label, value} for ids and bare strings for the enums.
+const shown = (chosen, options = null) => {
+  if (!chosen?.length) return ''
+
+  if (chosen.length > 1) return `${chosen.length} selected`
+
+  return options?.find(option => option.value === chosen[0])?.label ?? String(chosen[0])
+}
 
 // Seeded from the URL the server echoes back as params, so a reload or a shared link
 // opens on the same filter it was taken with.
@@ -106,10 +123,10 @@ const seeded = page.props.params?.filter ?? {}
 
 const filters = reactive({
   description: seeded.description ?? null,
-  account_id: id(seeded.account_id),
+  account_id: ids(seeded.account_id),
   type: list(seeded.type),
   status: list(seeded.status),
-  category_id: id(seeded.category_id),
+  category_id: ids(seeded.category_id),
   date_from: seeded.date_from ?? null,
   date_to: seeded.date_to ?? null,
 })
@@ -174,10 +191,10 @@ const apply = () => {
 const clear = () => {
   Object.assign(filters, {
     description: null,
-    account_id: null,
+    account_id: [],
     type: [],
     status: [],
-    category_id: null,
+    category_id: [],
     date_from: null,
     date_to: null,
   })
