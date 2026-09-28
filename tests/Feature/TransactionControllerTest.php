@@ -1062,6 +1062,66 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_a_new_charge_cannot_be_recorded_into_a_settled_statement(): void
+    {
+        // A charge found after the bill was paid, dated where it belongs. Accepting it
+        // makes the paid statement owe money again, which the panel shows as a figure
+        // with no explanation -- the same harm as moving a charge in, so the same answer.
+        $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-01-02',
+            'description' => 'Forgotten',
+        ]))->assertSessionHasErrors('date');
+
+        $this->assertSame(0, Transaction::where('description', 'Forgotten')->count());
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
+            'A new charge reopened a statement that has been paid.'
+        );
+    }
+
+    public function test_a_new_charge_in_an_open_statement_is_still_recorded(): void
+    {
+        // The counterpart: one settled period on the card does not close the others.
+        $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->post('/transactions', $this->chargePayload(['date' => '2026-01-26']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(2, Transaction::where('type', 'charge')->count());
+    }
+
+    public function test_a_charge_with_no_period_cannot_be_re_dated_into_a_settled_statement(): void
+    {
+        // A charge recorded before its card had terms carries no period, so there is
+        // nothing for it to leave -- and that is no reason to skip checking the one it
+        // arrives in.
+        $bare = Transaction::create([
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2025-12-01',
+            'type' => 'charge',
+            'description' => 'Bare',
+            'amount' => '30.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$bare->id}", $this->chargePayload([
+            'date' => '2026-01-02',
+            'description' => 'Bare',
+            'amount' => '30.0000',
+        ]))->assertSessionHasErrors('date');
+
+        $this->assertSame('2025-12-01', $bare->fresh()->date);
+    }
+
     public function test_editing_a_charge_without_moving_it_leaves_its_statement_alone(): void
     {
         // The counterpart to the refusal above, and the reason the re-derivation is

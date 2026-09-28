@@ -298,6 +298,42 @@ class TransactionData extends Data
     }
 
     /**
+     * Refuse a new charge filed under a statement that has been settled.
+     *
+     * The harm guardPeriodCanMove() refuses for a move, arriving by the other door: a
+     * paid bill owes money again, and the panel shows a figure nobody can account for.
+     * Whatever the charge's status, since a pending one counts the moment it posts, and
+     * posting it is an edit touching neither the date nor the account, so nothing would
+     * look again then.
+     *
+     * Read off the bag rather than recomputed, because the bag is what the row will be
+     * filed under -- a period the payload supplied included. Called from store() for
+     * the reason placeChargeInItsPeriod() is called from update().
+     */
+    public function guardNewChargePeriod(?Account $account): void
+    {
+        if ($account === null || $this->type !== TransactionType::Charge) {
+            return;
+        }
+
+        $dueDate = $this->meta_data?->due_date;
+
+        if ($dueDate === null) {
+            return;
+        }
+
+        if (CardStatement::forAccount($account)->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            throw ValidationException::withMessages([
+                'date' => sprintf(
+                    'The statement due %s has been settled, so this charge cannot be added to it. '
+                        .'Delete the payment that settled it, record the charge, and settle it again.',
+                    $dueDate
+                ),
+            ]);
+        }
+    }
+
+    /**
      * The statement period this charge's date falls in, or null when there is none.
      *
      * Null for two reasons, and both mean the same thing to every caller: the card has
@@ -349,11 +385,12 @@ class TransactionData extends Data
 
         $changingCard = $charge->account_id !== $account->id;
 
-        // Nothing to leave, or leaving for the period it is in: nothing moves. Only on
-        // the same card -- two cards closing on the same day share every due date, so on
-        // another card the same date is another bill, and matching it here would let a
-        // charge walk out of a paid statement unchecked.
-        if ($leaving === null || ($leaving === $dueDate && ! $changingCard)) {
+        // Staying in the period it is in: nothing moves. Only on the same card -- two
+        // cards closing on the same day share every due date, so on another card the
+        // same date is another bill, and matching it here would let a charge walk out of
+        // a paid statement unchecked. A charge with no period to leave still has one to
+        // arrive in, so it falls through to the second check.
+        if ($leaving === $dueDate && ! $changingCard) {
             return;
         }
 
@@ -371,7 +408,7 @@ class TransactionData extends Data
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['date' => $message]);
 
-        if ($leavingPeriod?->isSettled()) {
+        if ($leaving !== null && $leavingPeriod?->isSettled()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so this charge cannot be moved out of it. '
                     .'Delete it and record it again.',

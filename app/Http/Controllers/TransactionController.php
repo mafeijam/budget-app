@@ -205,6 +205,9 @@ class TransactionController extends Controller
 
     public function store(TransactionData $data)
     {
+        // Outside the try, for the reason given in update().
+        $data->guardNewChargePeriod(Account::with('meta')->find($data->account_id));
+
         // Two writes, so a failure between them must leave neither. As
         // AccountController::store().
         DB::beginTransaction();
