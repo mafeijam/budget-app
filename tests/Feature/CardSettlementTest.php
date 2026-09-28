@@ -7,11 +7,9 @@ use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
-use App\Support\CardStatementCycle;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsACard;
 use Tests\TestCase;
 
 /**
@@ -30,26 +28,13 @@ use Tests\TestCase;
  */
 class CardSettlementTest extends TestCase
 {
-    use RefreshDatabase;
-
-    private Account $bank;
-
-    private Account $card;
-
-    private int $category;
-
-    private const PERIOD = '2026-02-09';
+    use BuildsACard, RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        $this->card = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
-        $this->card->meta()->create([
-            'meta' => ['term_days' => 15, 'statement_day' => 25, 'settlement_account_id' => $this->bank->id],
-        ]);
-        $this->category = DB::table('categories')->insertGetId(['name' => 'FOOD']);
+        $this->setUpCard();
     }
 
     // ---------------------------------------------------------------------
@@ -842,72 +827,5 @@ class CardSettlementTest extends TestCase
         $this->assertSame(1, Transaction::count());
         $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
         $this->assertSame('120.0000', CardStatement::forAccount($this->card)->sole()->owed());
-    }
-
-    // ---------------------------------------------------------------------
-
-    private function settle(array $payload)
-    {
-        return $this->post("/accounts/{$this->card->id}/settle", $payload);
-    }
-
-    private function charge(string $date, string $amount, string $status = 'posted'): Transaction
-    {
-        return $this->chargeOn($this->card, $date, $amount, $status);
-    }
-
-    private function chargeOn(Account $card, string $date, string $amount, string $status = 'posted'): Transaction
-    {
-        $transaction = Transaction::create([
-            'account_id' => $card->id,
-            'category_id' => $this->category,
-            'date' => $date,
-            'type' => 'charge',
-            'description' => 'Cafe',
-            'amount' => $amount,
-            'ccy' => 'HKD',
-            'status' => $status,
-        ]);
-
-        // Derived from the card's own terms rather than hardcoded, so a charge that
-        // falls after the closing day lands in a different period -- which is the only
-        // way to test that settling one period leaves the others alone.
-        $cycle = CardStatementCycle::fromMeta($card->meta?->meta);
-
-        $transaction->meta()->create([
-            'meta' => ['due_date' => $cycle?->dueDateFor(Carbon::parse($date))->toDateString()],
-        ]);
-
-        return $transaction;
-    }
-
-    private function payment(string $date, string $amount, string $dueDate): void
-    {
-        $payment = Transaction::create([
-            'account_id' => $this->card->id,
-            'category_id' => null,
-            'date' => $date,
-            'type' => 'payment',
-            'description' => 'Payment',
-            'amount' => $amount,
-            'ccy' => 'HKD',
-            'status' => 'posted',
-        ]);
-
-        $payment->meta()->create(['meta' => ['due_date' => $dueDate]]);
-    }
-
-    private function chargePayload(array $overrides = []): array
-    {
-        return array_merge([
-            'account_id' => $this->card->id,
-            'category_id' => $this->category,
-            'date' => '2026-01-01',
-            'type' => 'charge',
-            'description' => 'Cafe',
-            'amount' => '120.0000',
-            'ccy' => 'HKD',
-            'meta_data' => [],
-        ], $overrides);
     }
 }

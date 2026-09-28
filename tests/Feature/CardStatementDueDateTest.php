@@ -5,11 +5,9 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
-use App\Support\CardStatementCycle;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsACard;
 use Tests\TestCase;
 
 /**
@@ -27,16 +25,7 @@ use Tests\TestCase;
  */
 class CardStatementDueDateTest extends TestCase
 {
-    use RefreshDatabase;
-
-    private Account $bank;
-
-    private Account $card;
-
-    private int $category;
-
-    /** A charge on 1 Jan falls in the period closing on 25 Jan, due 9 Feb. */
-    private const PERIOD = '2026-02-09';
+    use BuildsACard, RefreshDatabase;
 
     /** A charge on 26 Jan closes the following month, due 12 Mar. */
     private const LATER = '2026-03-12';
@@ -45,12 +34,7 @@ class CardStatementDueDateTest extends TestCase
     {
         parent::setUp();
 
-        $this->bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        $this->card = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
-        $this->card->meta()->create([
-            'meta' => ['term_days' => 15, 'statement_day' => 25, 'settlement_account_id' => $this->bank->id],
-        ]);
-        $this->category = DB::table('categories')->insertGetId(['name' => 'FOOD']);
+        $this->setUpCard();
     }
 
     // ---------------------------------------------------------------------
@@ -342,53 +326,5 @@ class CardStatementDueDateTest extends TestCase
     private function dueDateOf(Transaction $transaction): ?string
     {
         return $transaction->fresh()->meta?->meta?->getArrayCopy()['due_date'] ?? null;
-    }
-
-    private function charge(string $date, string $amount, string $status = 'posted'): Transaction
-    {
-        return $this->chargeOn($this->card, $date, $amount, $status);
-    }
-
-    private function chargeOn(Account $card, string $date, string $amount, string $status = 'posted'): Transaction
-    {
-        $transaction = Transaction::create([
-            'account_id' => $card->id,
-            'category_id' => $this->category,
-            'date' => $date,
-            'type' => 'charge',
-            'description' => 'Cafe',
-            'amount' => $amount,
-            'ccy' => 'HKD',
-            'status' => $status,
-        ]);
-
-        // Derived from the card's own terms rather than hardcoded, so a charge that
-        // falls after the closing day lands in a different period -- which is the only
-        // way to test that moving one period leaves the others alone.
-        $cycle = CardStatementCycle::fromMeta($card->meta?->meta);
-
-        $transaction->meta()->create([
-            'meta' => ['due_date' => $cycle?->dueDateFor(Carbon::parse($date))->toDateString()],
-        ]);
-
-        return $transaction;
-    }
-
-    private function payment(string $date, string $amount, string $dueDate): Transaction
-    {
-        $payment = Transaction::create([
-            'account_id' => $this->card->id,
-            'category_id' => null,
-            'date' => $date,
-            'type' => 'payment',
-            'description' => 'Payment',
-            'amount' => $amount,
-            'ccy' => 'HKD',
-            'status' => 'posted',
-        ]);
-
-        $payment->meta()->create(['meta' => ['due_date' => $dueDate]]);
-
-        return $payment;
     }
 }
