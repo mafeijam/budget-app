@@ -45,19 +45,32 @@
   does not exist yet: the mix comes out invalid, the variable holding it computes to the
   guaranteed-invalid value, and every property that uses it falls back to unset. Nothing
   throws and nothing logs -- the buttons simply lose their fill and go transparent, and
-  the badges lose theirs, which is exactly what it looked like.
+  the label goes black because the ink has fallen back to inherited. That is the whole
+  symptom, and it is why the plain values beside the mixes here are not belt and braces.
 
   Declaring them on body puts the substitution inside the scope where --q-primary
   actually lives, and the resolved colours then inherit down to everything inside it.
+
+  The two blocks below are the same eleven values, and both are needed. The hexes are what
+  a browser without color-mix uses; the mixes are what re-themes with the brand. They are
+  in an @supports rather than declared twice in a row on purpose: two identical custom
+  property declarations in one block are collapsed by the minifier to the last one, which
+  silently deleted the hexes and shipped the color-mix on its own the first time this was
+  written. Separate rules, the second overriding the first, are the only shape that
+  survives a build.
+
+  The hexes are the price of that and they are the one thing here that can drift from the
+  brand: change a colour in plugins/quasar.js and its pair below needs the same treatment,
+  or that button keeps the old tint forever.
 */
 body {
   background: var(--app-ground);
 
-  --app-primary-tint: color-mix(in srgb, var(--q-primary) 9%, transparent);
-  --app-positive-tint: color-mix(in srgb, var(--q-positive) 12%, transparent);
-  --app-warning-tint: color-mix(in srgb, var(--q-warning) 15%, transparent);
-  --app-negative-tint: color-mix(in srgb, var(--q-negative) 10%, transparent);
-  --app-info-tint: color-mix(in srgb, var(--q-info) 9%, transparent);
+  --app-primary-tint: #ebf1fd;
+  --app-positive-tint: #e1f2ed;
+  --app-warning-tint: #f4e5da;
+  --app-negative-tint: #fce9e9;
+  --app-info-tint: #e8f4fa;
 
   /*
     The ink that goes on a tint, at 60% of the brand and 40% black, for all five alike.
@@ -67,11 +80,11 @@ body {
     luminance than a light green does. One number rather than five, so a tint and its ink
     cannot drift apart as the brand is changed.
   */
-  --app-primary-ink: color-mix(in srgb, var(--q-primary) 60%, #000);
-  --app-positive-ink: color-mix(in srgb, var(--q-positive) 60%, #000);
-  --app-warning-ink: color-mix(in srgb, var(--q-warning) 60%, #000);
-  --app-negative-ink: color-mix(in srgb, var(--q-negative) 60%, #000);
-  --app-info-ink: color-mix(in srgb, var(--q-info) 60%, #000);
+  --app-primary-ink: #163b8d;
+  --app-positive-ink: #035a3f;
+  --app-warning-ink: #6c3205;
+  --app-negative-ink: #841717;
+  --app-info-ink: #014f77;
 
   /*
     The button fills, at roughly the strength of the Quasar "-1" fills the buttons used
@@ -79,9 +92,29 @@ body {
     over white. Mixed onto the surface rather than onto transparency, so the fill is a
     colour of its own and the same on the grey page ground as on a white card.
   */
-  --app-btn-tint: color-mix(in srgb, var(--q-primary) 13%, var(--app-surface));
-  --app-btn-negative-tint: color-mix(in srgb, var(--q-negative) 13%, var(--app-surface));
-  --app-btn-positive-tint: color-mix(in srgb, var(--q-positive) 13%, var(--app-surface));
+  --app-btn-tint: #e3ebfc;
+  --app-btn-negative-tint: #fae3e3;
+  --app-btn-positive-tint: #dff1ec;
+}
+
+@supports (color: color-mix(in srgb, red, blue)) {
+  body {
+    --app-primary-tint: color-mix(in srgb, var(--q-primary) 9%, transparent);
+    --app-positive-tint: color-mix(in srgb, var(--q-positive) 12%, transparent);
+    --app-warning-tint: color-mix(in srgb, var(--q-warning) 15%, transparent);
+    --app-negative-tint: color-mix(in srgb, var(--q-negative) 10%, transparent);
+    --app-info-tint: color-mix(in srgb, var(--q-info) 9%, transparent);
+
+    --app-primary-ink: color-mix(in srgb, var(--q-primary) 60%, #000);
+    --app-positive-ink: color-mix(in srgb, var(--q-positive) 60%, #000);
+    --app-warning-ink: color-mix(in srgb, var(--q-warning) 60%, #000);
+    --app-negative-ink: color-mix(in srgb, var(--q-negative) 60%, #000);
+    --app-info-ink: color-mix(in srgb, var(--q-info) 60%, #000);
+
+    --app-btn-tint: color-mix(in srgb, var(--q-primary) 13%, var(--app-surface));
+    --app-btn-negative-tint: color-mix(in srgb, var(--q-negative) 13%, var(--app-surface));
+    --app-btn-positive-tint: color-mix(in srgb, var(--q-positive) 13%, var(--app-surface));
+  }
 }
 
 /*
@@ -174,6 +207,42 @@ body {
 }
 
 /*
+  Buttons: a pale fill with the hue at full strength for the label, which is the shape
+  they had before the palette was named -- indigo-1 on blue-9, green-1 on green-9 -- and
+  reads lighter on a page of white cards than a solid block does. Classes rather than
+  color props, for the reason the tints below give.
+
+  Three colours for three jobs, which is the part worth keeping straight:
+
+    app-btn           opens something -- Add, Fetch prices. Nothing is written yet.
+    app-btn--positive commits it -- Submit, Save due date, Settle.
+    app-btn--negative destroys it -- Delete.
+
+  One colour for all three was tried first and is worse than either extreme: with every
+  button the same, the one that writes to the ledger is no louder than the one that opens
+  a form, and the eye has nothing to land on. Green for the committing button is also the
+  older behaviour here, so this restores a distinction the app had and had lost.
+
+  No hover rules of their own: Quasar already darkens any hoverable button by a few
+  percent on hover, and one on top makes the two fight.
+
+  These are unelevated with no border, which is why they need a fill at all -- .q-btn
+  ships background: transparent and its own colour would otherwise be inherited black.
+*/
+.app-btn {
+  background: var(--app-btn-tint);
+  color: var(--app-primary-ink);
+}
+.app-btn--negative {
+  background: var(--app-btn-negative-tint);
+  color: var(--app-negative-ink);
+}
+.app-btn--positive {
+  background: var(--app-btn-positive-tint);
+  color: var(--app-positive-ink);
+}
+
+/*
   Tinted fills for the badges and the notice boxes. These are classes rather than
   Quasar color props because the colour is a mix of a brand variable and white, which
   there is no palette entry for -- Quasar's ramp is fixed at ten shades and does not
@@ -182,6 +251,11 @@ body {
   at an acceptable contrast.
 */
 .app-tint {
+  background: var(--app-muted-tint);
+  color: var(--app-muted-ink);
+}
+/* Same pair as the base, named so the modifier reads beside the others at the call site. */
+.app-tint--muted {
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
 }
