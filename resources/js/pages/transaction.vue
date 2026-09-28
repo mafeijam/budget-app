@@ -1,5 +1,5 @@
 <template>
-  <div class="column q-gutter-md">
+  <div class="column no-wrap q-gutter-md">
     <FormTransaction :options="options" />
 
     <CardStatements :groups="statements" :banks="cardBanks" />
