@@ -419,8 +419,10 @@ class TransactionData extends Data
      * that bill: the charges it covered and the payment that closed it. Re-dating a
      * charge out of one leaves it showing a credit against money already handed over;
      * re-dating one into one makes a paid bill owing money again. Both are silent --
-     * the panel would just show a figure nobody could account for -- and there is no
-     * un-settling, so the answer is to refuse and say what to do instead.
+     * the panel would just show a figure nobody could account for -- so the answer is
+     * to refuse, and to name the one way to reopen a period: deleting the payment that
+     * closed it. Not "delete the charge", which deleteRefusal() turns down for the
+     * same reason this does.
      *
      * Keyed on `date` rather than the bag's due_date, because that is the field the
      * user moved and the only one of the two with a control on the form to hang a
@@ -465,7 +467,7 @@ class TransactionData extends Data
         if ($leaving !== null && $leavingPeriod?->isSettled()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so this charge cannot be moved out of it. '
-                    .'Delete it and record it again.',
+                    .'Delete the payment that settled it, move the charge, and settle it again.',
                 $leaving
             ));
         }

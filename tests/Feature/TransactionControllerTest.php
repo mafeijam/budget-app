@@ -1051,6 +1051,37 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_the_refusal_to_re_date_names_a_way_out_that_works(): void
+    {
+        // The message used to say "delete it and record it again", and deleteRefusal()
+        // turns that delete down for a charge in a settled statement -- so the advice
+        // led to a second refusal. Followed as written, this one has to succeed.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-26',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors([
+            'date' => 'The statement due 2026-02-09 has been settled, so this charge cannot be moved out of it. '
+                .'Delete the payment that settled it, move the charge, and settle it again.',
+        ]);
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+
+        $this->delete("/transactions/{$payment->id}")->assertSessionHasNoErrors();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-26',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->settleTheStatementDue('2026-03-12', '120.0000');
+
+        $this->assertTrue(CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-03-12')->isSettled());
+    }
+
     public function test_a_charge_cannot_be_moved_into_a_settled_statement(): void
     {
         // The other direction, and the one a guard written only for the period being
