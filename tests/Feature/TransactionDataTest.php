@@ -95,6 +95,8 @@ class TransactionDataTest extends TestCase
         return $this->postRequest(array_merge([
             'account_id' => $this->securityId,
             'type' => $type,
+            // The brokerage's own currency, which a trade must be in.
+            'ccy' => 'HKD',
             'amount' => null,
             'category_id' => null,
             'meta_data' => [
@@ -654,6 +656,21 @@ class TransactionDataTest extends TestCase
         ], 'meta_data.unit_price');
     }
 
+    public function test_a_trade_is_refused_in_a_currency_other_than_its_brokerages(): void
+    {
+        // One currency per broker: a USD buy on the HKD brokerage would settle out of the
+        // HKD bank and add USD to an HKD position.
+        try {
+            TransactionData::from($this->tradeRequest('buy', ['ccy' => 'USD']));
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('ccy', $e->errors());
+
+            return;
+        }
+
+        $this->fail('A USD buy on the HKD brokerage was accepted.');
+    }
+
     public function test_a_dividend_keeps_its_supplied_amount(): void
     {
         // A dividend is recorded on a securities account but is not a trade: it
@@ -662,6 +679,7 @@ class TransactionDataTest extends TestCase
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->securityId,
             'type' => 'dividend',
+            'ccy' => 'HKD',
             'category_id' => null,
             'amount' => '312.4400',
         ]));
@@ -915,6 +933,12 @@ class TransactionDataTest extends TestCase
             'type' => $type->value,
             $field => $value,
         ];
+
+        // A row on the brokerage is refused in any currency but its HKD, which would
+        // otherwise be the field that fails.
+        if ($accountId === $this->securityId) {
+            $overrides['ccy'] = 'HKD';
+        }
 
         // Everything not under test has to be valid for this type, or it is the
         // thing that fails instead. Note that ??= is no use here: it treats null

@@ -85,6 +85,7 @@ class TransactionData extends Data
         }
 
         $this->guardAccountType($account);
+        $this->guardTradeCurrency($account);
         $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
@@ -190,6 +191,35 @@ class TransactionData extends Data
             ->filter($predicate)
             ->map(fn (TransactionType $type) => $type->value)
             ->implode(',');
+    }
+
+    /**
+     * Refuse a row on a brokerage in any currency but the brokerage's own.
+     *
+     * One currency per broker is the model: a brokerage settles into one cash account,
+     * which Account::guardSettledFrom() holds to the same currency, so a trade in
+     * another would take money out of an account in the wrong currency -- and the
+     * positions it adds to would sum USD with HKD. A broker trading both is two
+     * accounts here.
+     */
+    private function guardTradeCurrency(?Account $account): void
+    {
+        if ($account === null || $account->type !== AccountType::Security->value) {
+            return;
+        }
+
+        if ($this->ccy->value !== $account->ccy) {
+            throw ValidationException::withMessages([
+                'ccy' => sprintf(
+                    '[%s] trades in %s, so this %s must be in %s too. A broker trading in '
+                        .'several currencies is one account per currency.',
+                    $account->name,
+                    $account->ccy,
+                    $this->type->value,
+                    $account->ccy
+                ),
+            ]);
+        }
     }
 
     /**
