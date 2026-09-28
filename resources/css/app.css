@@ -220,34 +220,6 @@ body {
 }
 
 /*
-  Sit a control in a row of items-center on a labelled field's text line rather than on
-  the centre of that field's box, for a table's header row where a search field has a
-  button beside it.
-
-  A dense filled field is 40px tall and its label floats over the top of it, so the label
-  takes the upper part of the box and the input is padded down 14px to make room for it:
-  the text lands at y=26 of the 40, not at the y=20 the box centres on. Everything beside
-  it is centred on the box, so a button's label reads 6px high of the text next to it,
-  which is small enough to look like nothing is wrong and large enough to see.
-
-  On the wrapper rather than the control, so the wrapper is the whole of the alignment and
-  the control's own markup stays about what it does. A transform rather than a padding,
-  since padding is inside the box and the row centres the margin box: a q-pt-3 would grow
-  the header by 12px to move a label 6px, and re-centre everything else in the process.
-
-  One user, and the restraint is the point. Clear all is aligned because it appears in
-  this row beside the search and a button that shows up out of line with it is worse than
-  one that never moved. The Filters button and the Unpaid toggle are the controls nearest
-  the field and are left on the row's own centring: nudged, the toggle read as sitting
-  under the text rather than on it, and there was no reason to tune the button to match a
-  control that is not nudged either. A control the page brought in through a slot is not
-  this bar's to move at all, so Add is left as the page renders it.
-*/
-.app-align-text-line {
-  transform: translateY(6px);
-}
-
-/*
   Buttons: a pale fill with the hue at full strength for the label, which is the shape
   they had before the palette was named -- indigo-1 on blue-9, green-1 on green-9 -- and
   reads lighter on a page of white cards than a solid block does. Classes rather than

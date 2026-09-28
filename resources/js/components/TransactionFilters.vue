@@ -38,8 +38,7 @@
       shift what sits to its right.
 
       The div is the margin, so both sides of the gap belong to one element and the
-      control inside carries nothing but what it does. It is not aligned on the search's
-      text line: app-align-text-line is for Clear all only, and says why.
+      control inside carries nothing but what it does.
     -->
     <div class="col-auto q-mx-md">
       <q-btn
@@ -80,11 +79,8 @@
       filtered -- which a button that is always there cannot say, because a permanently
       visible control reads as merely being disabled and the eye stops giving it the
       second look that would catch it being live.
-
-      Aligned on the search's text line, and the only control in this row that is -- see
-      app-align-text-line, which says why this one and not the two beside the field.
     -->
-    <div v-if="active" class="col-auto app-align-text-line">
+    <div v-if="active" class="col-auto">
       <q-btn
         class="text-weight-bold"
         color="grey-2"
