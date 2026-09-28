@@ -953,7 +953,7 @@ class TransactionControllerTest extends TestCase
         // Asserted by what DISAPPEARS rather than what arrives, because a merge keeps
         // the old key and a replace drops it. That needs a field a client may write,
         // which for a charge leaves only card_amount: due_date is derived,
-        // paired_transaction_id is prohibited, and merchant is gone.
+        // paired_transaction_id is settle()'s alone, and merchant is gone.
         $transaction = $this->storedCharge();
 
         $this->put("/transactions/{$transaction->id}", $this->chargePayload([

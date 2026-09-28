@@ -84,7 +84,7 @@ class FormContractTest extends TestCase
         // overrules -- and the DTO prohibits it on any payload.
         'account_name',
 
-        // Written by TransactionController::settle() and prohibited on any payload,
+        // Written by TransactionController::settle() and dropped from any payload,
         // because it links the two rows of a settlement and only that method may
         // create the link. There is no control that could write it.
         'meta_data.paired_transaction_id',

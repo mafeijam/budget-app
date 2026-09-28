@@ -253,6 +253,8 @@ class TransactionController extends Controller
             $transaction
         );
 
+        $data->keepPairingOf($transaction);
+
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
         DB::beginTransaction();

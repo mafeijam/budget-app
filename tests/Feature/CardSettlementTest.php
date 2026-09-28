@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\DTO\TransactionData;
 use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
@@ -636,36 +637,70 @@ class CardSettlementTest extends TestCase
     public function test_a_client_cannot_forge_a_pair(): void
     {
         $first = $this->charge('2026-01-01', '120.0000');
-        $second = $this->charge('2026-01-02', '80.0000');
 
-        // The pairing is written by settle() straight to the bag, and the DTO refuses
-        // the field outright -- so a client claiming a pair gets rejected rather than
-        // a row that points at somebody else's transaction.
+        // The pairing is written by settle() straight to the bag, and a payload's claim
+        // to one is dropped -- so a client naming somebody else's transaction gets a row
+        // that points at nothing, rather than one whose delete takes that row with it.
         $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-01-02',
             'meta_data' => ['paired_transaction_id' => $first->id],
-        ]))->assertSessionHasErrors('meta_data.paired_transaction_id');
+        ]))->assertSessionHasNoErrors();
 
-        // The charge keeps its own bag -- the due_date the card's terms gave it --
-        // but nothing in it is a pair, and no row was created for the rejected
-        // request. The assertion is about the pair specifically: a bag is expected
-        // here, a forged link inside it is not.
+        $forged = Transaction::latest('id')->firstOrFail();
+
         $this->assertArrayNotHasKey(
             'paired_transaction_id',
-            $second->fresh()->meta_data,
+            $forged->meta_data->getArrayCopy(),
             'A client-supplied pair reached the bag.'
         );
-        $this->assertSame(self::PERIOD, $second->fresh()->meta_data['due_date']);
-        $this->assertSame(2, Transaction::count());
+        $this->assertSame(self::PERIOD, $forged->meta_data['due_date']);
+
+        // Nor on an edit, which is where the form sends a pairing legitimately.
+        $this->put("/transactions/{$forged->id}", $this->chargePayload([
+            'date' => '2026-01-02',
+            'meta_data' => ['paired_transaction_id' => $first->id],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertArrayNotHasKey('paired_transaction_id', $forged->fresh()->meta_data->getArrayCopy());
     }
 
-    public function test_the_pair_is_written_even_though_the_dto_forbids_the_field(): void
+    public function test_editing_either_half_of_a_settlement_keeps_the_pair(): void
+    {
+        // The edit form round-trips the whole row, bag and link included, and update()
+        // replaces the bag. Refusing the link broke every edit of a settlement row;
+        // dropping it without restoring would cut the pair, and a delete would then
+        // leave half a settlement behind.
+        $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        foreach ([$payment, $transfer] as $row) {
+            $sent = $row->fresh()->load('meta', 'account');
+
+            $this->put("/transactions/{$row->id}", array_merge(
+                TransactionData::from($sent)->toArray(),
+                ['description' => 'Corrected']
+            ))->assertSessionHasNoErrors();
+        }
+
+        $this->assertSame($transfer->id, (int) $payment->fresh()->meta_data['paired_transaction_id']);
+        $this->assertSame($payment->id, (int) $transfer->fresh()->meta_data['paired_transaction_id']);
+        $this->assertSame(self::PERIOD, $payment->fresh()->meta_data['due_date']);
+
+        $this->delete("/transactions/{$payment->id}")
+            ->assertSessionHas('message', 'Card settlement ['.self::PERIOD.'] deleted in full: 2 transactions');
+    }
+
+    public function test_the_pair_is_written_even_though_the_dto_drops_the_field(): void
     {
         $this->charge('2026-01-01', '120.0000');
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
-        // The prohibition is on the payload, not on the column. settle() writes the
-        // bag itself, which is the only way a field the client may not name can still
-        // be recorded.
+        // Dropped from the payload, not from the column. settle() writes the bag
+        // itself, which is the only way a field the client may not name can still be
+        // recorded.
         $payment = Transaction::where('type', 'payment')->firstOrFail();
 
         $this->assertNotNull($payment->meta);

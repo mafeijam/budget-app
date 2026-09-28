@@ -68,6 +68,12 @@ class TransactionData extends Data
 
         $this->account_name = $account?->name;
 
+        // Dropped rather than refused: the edit form round-trips the row's real link,
+        // and a rule cannot tell that from a forged one. keepPairingOf() restores it.
+        if ($this->meta_data !== null) {
+            $this->meta_data->paired_transaction_id = null;
+        }
+
         $this->guardAccountType($account);
         $this->guardCardAmount($account);
         $this->deriveAmount();
@@ -324,6 +330,25 @@ class TransactionData extends Data
 
         $this->meta_data ??= new TransactionMetaData;
         $this->meta_data->due_date = $dueDate;
+    }
+
+    /**
+     * Carry the stored row's settlement pairing into the bag that replaces its own.
+     *
+     * update() replaces the bag outright, and the constructor has dropped the payload's
+     * link, so without this any edit to either half of a settlement -- a description
+     * fix -- cuts the pair, and destroy() then deletes one row of two.
+     */
+    public function keepPairingOf(Transaction $row): void
+    {
+        $paired = $row->meta?->meta['paired_transaction_id'] ?? null;
+
+        if ($paired === null) {
+            return;
+        }
+
+        $this->meta_data ??= new TransactionMetaData;
+        $this->meta_data->paired_transaction_id = $paired;
     }
 
     /**
