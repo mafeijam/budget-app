@@ -1,5 +1,5 @@
 <template>
-  <div class="column q-gutter-md">
+  <div class="column no-wrap q-gutter-md">
     <FormCategory />
 
     <AppTable :rows="data.data" :columns="columns" title="Category">
