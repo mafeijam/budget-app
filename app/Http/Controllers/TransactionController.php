@@ -39,6 +39,15 @@ class TransactionController extends Controller
     /** The columns the transactions table marks sortable. */
     private const SORTABLE = ['date', 'type', 'description', 'amount', 'status'];
 
+    /**
+     * How far back the description hints reach.
+     *
+     * A const rather than a literal in the query so the window is one thing to change,
+     * and so the reason it is two years lives next to the number instead of in a
+     * sentence about a date.
+     */
+    private const HINT_YEARS = 2;
+
     public function index(Request $r)
     {
         // Seeded with today, the way AccountController seeds the account form's status.
@@ -264,6 +273,37 @@ class TransactionController extends Controller
         // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
+        // Hints for the description, which is the one field on this form a person types
+        // rather than picks: everything else is chosen from a list the enum builds, and a
+        // description is whatever the merchant was called that day.
+        //
+        // Two years, and the window is the point rather than a bound on the query. A
+        // personal finance app outlives the accounts, cards and merchants someone had
+        // four years ago, and a description from one of those is a suggestion nobody
+        // would take -- it costs a keystroke to ignore and it is in the way.
+        //
+        // Newest first, by the last day the description was used rather than by name.
+        // The thing about to be typed again is the thing last typed, and alphabetical
+        // order would bury it under every "Coffee" ever entered.
+        //
+        // Raw for the aggregate, and the only raw clause here: `date` is a MySQL keyword,
+        // so the grammar's own quoting never reaches inside MAX() and the statement fails
+        // with "Unknown column 'MAX(date)' in 'order clause'". The column the filter
+        // above uses goes through the grammar and needs nothing.
+        //
+        // Across every account, deliberately. A hint is "you have called this that
+        // before", and the same description on a card and on a bank is one thing the
+        // user thinks of rather than two. Narrowing it to the chosen account would also
+        // mean the list changed under the field as they picked an account, and before
+        // they picked one there would be nothing to offer at all.
+        $descriptionHints = Transaction::query()
+            ->where('date', '>=', today()->subYears(self::HINT_YEARS)->toDateString())
+            ->groupBy('description')
+            ->orderByRaw('MAX(`date`) DESC')
+            ->orderBy('description')
+            ->pluck('description')
+            ->values();
+
         // The saved form states, for the transaction form's template menu. Read on every
         // page load rather than on demand: it is a handful of rows, and a menu that had
         // to be fetched is a menu that is not there when the dialog opens.
@@ -314,6 +354,7 @@ class TransactionController extends Controller
             'statusOptions',
             'currencyOptions',
             'templates',
+            'descriptionHints',
         ));
     }
 

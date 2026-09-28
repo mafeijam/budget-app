@@ -230,12 +230,33 @@
         :error-message="form.errors.ccy"
       />
 
-      <q-input
+      <!--
+        The one field here a person types rather than picks, so it is the one that offers
+        what they have typed before: every description used in the last two years, newest
+        first, filtered as they type. Everything else on this form is chosen from a list
+        the enum builds, which is why this is the only field with hints.
+
+        A select rather than an input with an autocomplete attribute, because the browser's
+        own list cannot be ordered, filtered against the server's, or styled to match the
+        rest of this form -- and because the value must stay free text. add-unique is what
+        makes that true: it lets a description never seen before through, which is the
+        common case, and does not constrain the field to what is in the list. Without it
+        this would be a picker that could only record the past.
+
+        The clear button is off because a person correcting a description wants to type
+        over it, and because emptying the field is not a state this form can save -- the
+        server requires a description.
+      -->
+      <q-select
         v-model="form.description"
+        :options="descriptionHints"
         class="col-12"
         label="Description"
         filled
-        autofocus
+        autocomplete="off"
+        use-input
+        new-value-mode="add-unique"
+        :clearable="false"
         :error="!!form.errors.description"
         :error-message="form.errors.description"
       />
@@ -412,6 +433,11 @@ const statusOptions = computed(() => usePage().props.statusOptions ?? [])
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
 const accountOptions = computed(() => props.options?.accounts ?? [])
+
+// Descriptions used recently, to suggest as the field is typed into. `?? []` as on every
+// other list here, so a page that has not sent them shows an empty suggestion list
+// rather than a stale hardcoded one.
+const descriptionHints = computed(() => usePage().props.descriptionHints ?? [])
 
 // The account types in the order the enum declares them, which is the order the groups
 // are read in -- cash, card, security. Taken from the keys rather than sorted by name or

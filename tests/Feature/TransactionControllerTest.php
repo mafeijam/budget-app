@@ -916,6 +916,75 @@ class TransactionControllerTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // Description hints
+    // ---------------------------------------------------------------------
+
+    public function test_the_description_offers_what_has_been_used_before(): void
+    {
+        $this->post('/transactions', $this->expense([
+            'description' => 'Blue Bottle',
+            'date' => '2026-01-05',
+        ]))->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->expense([
+            'description' => 'Blue Bottle',
+            'date' => '2026-01-20',
+        ]))->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->expense([
+            'description' => 'Monthly rent',
+            'date' => '2026-02-01',
+        ]))->assertSessionHasNoErrors();
+
+        // Once each, most recently used first. A list with "Blue Bottle" twice is a list
+        // whose first suggestion is the same string twice, and a person typing "blue"
+        // sees no more than they would have from one.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('descriptionHints', ['Monthly rent', 'Blue Bottle'])
+        );
+    }
+
+    public function test_a_description_older_than_the_window_is_not_offered(): void
+    {
+        // Three years back, against a two-year window. A personal finance app outlives
+        // the merchant, and a suggestion nobody would take is in the way of the ones
+        // they would.
+        $this->post('/transactions', $this->expense([
+            'description' => 'Old cafe',
+            'date' => today()->subYears(3)->toDateString(),
+        ]))->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->expense([
+            'description' => 'Current cafe',
+            'date' => today()->subYear()->toDateString(),
+        ]))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('descriptionHints', ['Current cafe'])
+        );
+    }
+
+    public function test_a_description_already_in_the_list_is_offered_once(): void
+    {
+        // The column's collation makes these one description as far as the database is
+        // concerned, so GROUP BY collapses them. Two entries differing only in case would
+        // be indistinguishable in the suggestion list anyway.
+        $this->post('/transactions', $this->expense([
+            'description' => 'Coffee',
+            'date' => '2026-01-05',
+        ]))->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->expense([
+            'description' => 'coffee',
+            'date' => '2026-01-20',
+        ]))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('descriptionHints', 1)
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // Reading one back
     // ---------------------------------------------------------------------
 
