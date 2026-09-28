@@ -15,7 +15,7 @@
                 <q-space />
                 <q-badge outline color="grey-7" :label="account.ccy" />
               </div>
-              <div class="text-h5 text-weight-bold q-mt-md" :class="amountClass(account.balance)">
+              <div class="text-h4 text-weight-bold q-mt-md" :class="amountClass(account.balance)">
                 {{ money(account.balance) }}
               </div>
               <!-- Shown only while it still holds money; see HomeController. -->
@@ -54,10 +54,10 @@
               </div>
               <!-- Market value, not a balance: what the holdings are worth at the latest price. -->
               <div class="text-caption text-grey-7 q-mt-md">Market value</div>
-              <div class="text-h5 text-weight-bold text-grey-9">
+              <div class="text-h4 text-weight-bold text-grey-9">
                 {{ money(broker.market_value) }}
               </div>
-              <div class="text-caption" :class="gainClass(broker.unrealised)">
+              <div class="text-body2 text-weight-medium" :class="gainClass(broker.unrealised)">
                 {{ signed(broker.unrealised) }} unrealised
               </div>
               <div class="text-caption text-grey-7 q-mt-xs">
@@ -94,7 +94,7 @@
               <div class="text-caption text-grey-7 q-mt-xs">
                 Due {{ formatDate(statement.due_date) }}
               </div>
-              <div class="text-h5 text-weight-bold text-negative q-mt-sm">
+              <div class="text-h4 text-weight-bold text-negative q-mt-sm">
                 {{ money(statement.owed) }}
                 <span class="text-subtitle2 text-grey-7">{{ statement.card.ccy }}</span>
               </div>
