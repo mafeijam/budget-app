@@ -9,11 +9,26 @@
         <div class="row full-width">
           <div class="text-h6 text-weight-medium">Transactions</div>
           <q-space />
+          <!--
+            Always there, and disabled while nothing is set, so it is findable before it
+            is needed and says at a glance whether the list is filtered.
+          -->
+          <q-btn
+            class="text-weight-bold q-mr-sm"
+            color="grey-2"
+            text-color="grey-9"
+            unelevated
+            no-caps
+            icon="filter_alt_off"
+            label="Clear all"
+            :disable="!filterBar?.active"
+            @click="filterBar?.clear()"
+          />
           <div>
             <CreateBtn />
           </div>
         </div>
-        <TransactionFilters />
+        <TransactionFilters ref="filterBar" />
       </template>
 
       <template #body-cell-type="cell">
@@ -80,6 +95,9 @@ const props = defineProps({
 
 const pagination = usePagination()
 const formatMoney = useMoney()
+
+// The filter row, whose clear() and active the header's Clear all button drives.
+const filterBar = ref(null)
 const formatDate = useHongKongTime()
 
 const typeIcons = {
