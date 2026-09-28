@@ -1139,6 +1139,44 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('Cafe, corrected', $transaction->fresh()->description);
     }
 
+    public function test_index_tells_the_edit_form_which_figures_each_row_cannot_change(): void
+    {
+        // Sent so the form can say so before a save is refused, from the same decision
+        // the refusal makes. Every row a settlement touches is fixed: the charge it
+        // covered, the payment that closed it, and the bank's transfer, which no
+        // statement lists. A charge in a period still owing is not.
+        $paid = $this->storedCharge();
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->post('/transactions', $this->chargePayload(['date' => '2026-01-26']))->assertSessionHasNoErrors();
+        $open = Transaction::latest('id')->firstOrFail();
+
+        $payment = Transaction::where('type', 'payment')->firstOrFail();
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        $figures = ['account_id', 'type', 'amount', 'ccy', 'status'];
+
+        $this->get('/transactions?per_page=10')->assertInertia(fn (Assert $page) => $page
+            ->where("editLocks.{$paid->id}.fields", [...$figures, 'meta_data.card_amount'])
+            ->where(
+                "editLocks.{$paid->id}.message",
+                'The statement due 2026-02-09 has been settled, so this charge\'s account, type, amount, '
+                    .'currency, status and amount in the card\'s currency are fixed, and its date can only '
+                    .'move within that statement. Delete the payment that settled it, make the change, and '
+                    .'settle it again.'
+            )
+            ->where("editLocks.{$payment->id}.fields", $figures)
+            ->where("editLocks.{$transfer->id}.fields", $figures)
+            ->where(
+                "editLocks.{$transfer->id}.message",
+                'This transfer is one half of a card settlement, so its account, type, amount, currency '
+                    .'and status are fixed to match the other half. Delete the settlement and settle the '
+                    .'statement again.'
+            )
+            ->missing("editLocks.{$open->id}")
+        );
+    }
+
     public function test_a_charge_cannot_be_moved_into_a_settled_statement(): void
     {
         // The other direction, and the one a guard written only for the period being

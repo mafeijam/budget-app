@@ -15,6 +15,7 @@ use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -93,6 +94,10 @@ class TransactionController extends Controller
         // Why each row on this page cannot be deleted, keyed by its id. Sent so the
         // button can say so rather than being offered and then refused.
         $refusals = $this->deleteRefusals($page, $cardPeriods);
+
+        // Which figures each row on this page cannot change, and why, so the edit form
+        // can say so and disable them rather than let the save be refused.
+        $editLocks = $this->editLocks($page, $cardPeriods, $linked);
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
@@ -196,6 +201,7 @@ class TransactionController extends Controller
             'settlementOptions',
             'linked',
             'refusals',
+            'editLocks',
             'typeOptions',
             'typeDefaults',
             'statusOptions',
@@ -255,8 +261,7 @@ class TransactionController extends Controller
 
         // After the move guard, whose message is the better one when a charge changes
         // card out of a paid statement.
-        $data->guardSettledFigures($transaction);
-        $data->guardPairedFigures($transaction);
+        $data->guardFigures($transaction);
 
         $data->keepPairingOf($transaction);
 
@@ -651,6 +656,38 @@ class TransactionController extends Controller
         }
 
         return $refusals;
+    }
+
+    /**
+     * The figure locks for a page of rows, keyed by id, for the edit form.
+     *
+     * TransactionData::figureLock() decides, and update() asks it again, so the form
+     * and the refusal cannot disagree about which rows are fixed. A partner exists
+     * exactly when linkedCounterparts() found one, which is the question figureLock()
+     * asks of it.
+     *
+     * @param  Collection<int, Transaction>  $rows
+     * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
+     * @param  array<int, array<string, mixed>>  $linked
+     * @return array<int, array{fields: list<string>, message: string}>
+     */
+    private function editLocks(Collection $rows, array $cardPeriods, array $linked): array
+    {
+        $locks = [];
+
+        foreach ($rows as $row) {
+            $lock = TransactionData::figureLock(
+                $row,
+                $cardPeriods[$row->account_id] ?? null,
+                isset($linked[$row->id])
+            );
+
+            if ($lock !== null) {
+                $locks[$row->id] = Arr::only($lock, ['fields', 'message']);
+            }
+        }
+
+        return $locks;
     }
 
     /**

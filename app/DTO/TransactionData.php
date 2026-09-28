@@ -12,6 +12,8 @@ use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
 use Throwable;
@@ -353,100 +355,126 @@ class TransactionData extends Data
     }
 
     /**
-     * Refuse an edit that changes what a settled statement is made of.
+     * The fields a statement's figures, and a settlement's agreement with its other
+     * half, are built from: the error key, and the words for it.
      *
-     * guardPeriodCanMove() covers a row leaving or entering a paid period. This is the
-     * row staying put while its figure changes -- a charge's amount corrected, a payment
-     * marked pending -- which leaves the paid bill owing or in credit all the same, and
-     * as silently. The fields are the ones CardStatement::forAccount() reads, so
-     * description and category stay editable; a charge's date is the move guard's.
+     * The ones CardStatement::forAccount() reads, and a second statement of them the
+     * query cannot share. Description and category are absent so they stay editable; a
+     * charge's date is guardPeriodCanMove()'s.
+     */
+    public const FIGURES = [
+        'account_id' => 'account',
+        'type' => 'type',
+        'amount' => 'amount',
+        'ccy' => 'currency',
+        'status' => 'status',
+        'meta_data.card_amount' => 'amount in the card\'s currency',
+    ];
+
+    /**
+     * Why a stored row's figures are fixed, or null when they are not.
+     *
+     * One answer for the two places that ask: guardFigures() refusing a save, and the
+     * edit form saying so before the user tries. Two locks, the first winning when both
+     * hold:
+     *
+     * A row in a settled statement. Its figure changing leaves the paid bill owing or
+     * in credit -- a charge's amount corrected, a payment marked pending -- as silently
+     * as moving it would.
+     *
+     * One half of a card settlement. The two rows are one movement of money, and the
+     * transfer has no due date for the first lock to see: correcting its amount has the
+     * bank say one figure left and the card say another arrived. On the pairing rather
+     * than the period, because the halves have to agree whether or not the statement is
+     * still settled. A row whose partner has gone is half of nothing and edits freely,
+     * as destroy() already deletes it alone.
+     *
+     * `refusal` is a format taking the changed field's words; `message` is the form's.
+     *
+     * @param  Collection<int, CardStatement>|null  $cardPeriods  the periods of the row's
+     *                                                            card, null off a card
+     * @return array{fields: list<string>, message: string, refusal: string}|null
+     */
+    public static function figureLock(Transaction $row, ?Collection $cardPeriods, bool $partnerExists): ?array
+    {
+        $dueDate = $row->meta?->meta['due_date'] ?? null;
+        $isCharge = $row->type === TransactionType::Charge->value;
+
+        // Only a charge has a card-currency figure, so only a charge names it as fixed.
+        $figures = $isCharge ? self::FIGURES : Arr::except(self::FIGURES, 'meta_data.card_amount');
+        $fields = array_keys($figures);
+        $words = Arr::join(array_values($figures), ', ', ' and ');
+
+        if ($dueDate !== null && $cardPeriods?->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            $remedy = $row->type === TransactionType::Payment->value
+                ? 'Delete this payment and settle the statement again.'
+                : 'Delete the payment that settled it, make the change, and settle it again.';
+
+            return [
+                'fields' => $fields,
+                'message' => sprintf(
+                    'The statement due %s has been settled, so this %s\'s %s are fixed%s. %s',
+                    $dueDate,
+                    $row->type,
+                    $words,
+                    $isCharge ? ', and its date can only move within that statement' : '',
+                    $remedy
+                ),
+                'refusal' => "The statement due {$dueDate} has been settled, so this {$row->type}'s %s "
+                    ."cannot be changed. {$remedy}",
+            ];
+        }
+
+        if ($partnerExists) {
+            $remedy = 'Delete the settlement and settle the statement again.';
+
+            return [
+                'fields' => $fields,
+                'message' => "This {$row->type} is one half of a card settlement, so its {$words} "
+                    ."are fixed to match the other half. {$remedy}",
+                'refusal' => "This {$row->type} is one half of a card settlement, so its %s cannot "
+                    ."be changed on its own. {$remedy}",
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse an edit to a figure figureLock() says is fixed.
      *
      * Keyed on the first field that changed, which is the control the user touched.
      */
-    public function guardSettledFigures(Transaction $row): void
+    public function guardFigures(Transaction $row): void
     {
-        $dueDate = $row->meta?->meta['due_date'] ?? null;
-
-        if ($dueDate === null) {
-            return;
-        }
-
         $changed = $this->changedFigure($row);
 
-        // Checked before the statement is read, since nearly every edit changes none.
+        // Checked before anything is read, since nearly every edit changes none.
         if ($changed === null) {
             return;
         }
 
         $card = $row->account;
-
-        if ($card?->type !== AccountType::Card->value) {
-            return;
-        }
-
-        if (! CardStatement::forAccount($card)->firstWhere('dueDate', $dueDate)?->isSettled()) {
-            return;
-        }
-
-        [$field, $label] = $changed;
-
-        throw ValidationException::withMessages([
-            $field => sprintf(
-                'The statement due %s has been settled, so this %s\'s %s cannot be changed. %s',
-                $dueDate,
-                $row->type,
-                $label,
-                $row->type === TransactionType::Payment->value
-                    ? 'Delete this payment and settle the statement again.'
-                    : 'Delete the payment that settled it, make the change, and settle it again.'
-            ),
-        ]);
-    }
-
-    /**
-     * Refuse an edit to one half of a card settlement that the other half would not
-     * agree with.
-     *
-     * The two rows are one movement of money, the same amount in the same currency on
-     * each side, and nothing but this keeps them equal once written. The transfer has
-     * no due date, so guardSettledFigures() never sees it: correcting its amount leaves
-     * the bank saying one figure left and the card saying another arrived, and both
-     * balances read as plausible. On the pairing rather than the period, because the
-     * halves have to agree whether or not the statement is still settled.
-     *
-     * A row whose partner has gone is half of nothing and edits freely, as destroy()
-     * already deletes it alone.
-     */
-    public function guardPairedFigures(Transaction $row): void
-    {
         $paired = $row->meta?->meta['paired_transaction_id'] ?? null;
 
-        if ($paired === null) {
-            return;
-        }
-
-        $changed = $this->changedFigure($row);
-
-        if ($changed === null || ! Transaction::whereKey($paired)->exists()) {
-            return;
-        }
+        $lock = self::figureLock(
+            $row,
+            $card?->type === AccountType::Card->value ? CardStatement::forAccount($card) : null,
+            $paired !== null && Transaction::whereKey($paired)->exists(),
+        );
 
         [$field, $label] = $changed;
 
-        throw ValidationException::withMessages([
-            $field => sprintf(
-                'This %s is one half of a card settlement, so its %s cannot be changed on its own. '
-                    .'Delete the settlement and settle the statement again.',
-                $row->type,
-                $label
-            ),
-        ]);
+        if ($lock === null || ! in_array($field, $lock['fields'], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([$field => sprintf($lock['refusal'], $label)]);
     }
 
     /**
-     * The first field this payload changes that a statement's figures, or a
-     * settlement's agreement with its other half, are built from -- as the error key
-     * and the words for it, or null when it changes none.
+     * The first of FIGURES this payload changes, as the error key and the words for
+     * it, or null when it changes none.
      *
      * Amounts compared as decimals: the column reads back '120.0000' and a form may
      * send '120', which is no change.
@@ -455,22 +483,32 @@ class TransactionData extends Data
      */
     private function changedFigure(Transaction $row): ?array
     {
-        $differ = fn (?string $a, ?string $b) => $a === null || $b === null
-            ? $a !== $b
-            : ! BigDecimal::of($a)->isEqualTo(BigDecimal::of($b));
+        foreach (self::FIGURES as $field => $label) {
+            // A field added to FIGURES without a line here is an UnhandledMatchError,
+            // not a figure quietly never compared.
+            [$sent, $stored] = match ($field) {
+                'account_id' => [(string) $this->account_id, (string) $row->account_id],
+                'type' => [$this->type->value, $row->type],
+                'amount' => [$this->amount, $row->amount],
+                'ccy' => [$this->ccy->value, $row->ccy],
+                'status' => [$this->status->value, $row->status],
+                'meta_data.card_amount' => [$this->meta_data?->card_amount, $row->meta?->meta['card_amount'] ?? null],
+            };
 
-        return match (true) {
-            $this->account_id !== $row->account_id => ['account_id', 'account'],
-            $this->type->value !== $row->type => ['type', 'type'],
-            $differ($this->amount, $row->amount) => ['amount', 'amount'],
-            $this->ccy->value !== $row->ccy => ['ccy', 'currency'],
-            $this->status->value !== $row->status => ['status', 'status'],
-            $differ($this->meta_data?->card_amount, $row->meta?->meta['card_amount'] ?? null) => [
-                'meta_data.card_amount',
-                'amount in the card\'s currency',
-            ],
-            default => null,
-        };
+            $decimal = in_array($field, ['amount', 'meta_data.card_amount'], true)
+                && $sent !== null
+                && $stored !== null;
+
+            $differs = $decimal
+                ? ! BigDecimal::of($sent)->isEqualTo(BigDecimal::of($stored))
+                : $sent !== $stored;
+
+            if ($differs) {
+                return [$field, $label];
+            }
+        }
+
+        return null;
     }
 
     /**
