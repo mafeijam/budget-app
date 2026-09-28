@@ -68,7 +68,7 @@
                 :model-value="form.date"
                 mask="YYYY-MM-DD"
                 minimal
-                color="green-7"
+                color="primary"
                 @update:model-value="pickDate"
               />
             </q-menu>
@@ -294,7 +294,7 @@ const needsCardAmount = computed(
 )
 
 const title = computed(() => {
-  return target.value ? 'edit transaction' : 'create new transaction'
+  return target.value ? 'Edit transaction' : 'Create new transaction'
 })
 
 // Two resets, and both are needed because the rules prohibit rather than ignore.

@@ -100,8 +100,7 @@
                 dense
                 unelevated
                 no-caps
-                color="green-1"
-                text-color="green-9"
+                color="primary"
                 icon="payments"
                 label="Settle"
                 class="q-px-sm text-weight-bold"

@@ -3,7 +3,7 @@
     <div class="row items-center">
       <div class="text-h6 text-weight-medium">Positions</div>
       <q-space />
-      <q-toggle v-model="showClosed" label="Show sold out" color="blue-9" dense class="q-mr-md" />
+      <q-toggle v-model="showClosed" label="Show sold out" color="primary" dense class="q-mr-md" />
       <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
       <div class="text-caption text-grey-7 q-mr-sm">
         {{
@@ -16,8 +16,7 @@
       <q-btn
         unelevated
         no-caps
-        color="indigo-1"
-        text-color="blue-9"
+        color="primary"
         class="text-weight-bold"
         icon="sync"
         label="Fetch prices"

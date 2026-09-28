@@ -2,10 +2,10 @@
   <q-btn
     icon="add"
     class="text-weight-bold"
-    color="indigo-1"
-    text-color="blue-9"
+    color="primary"
     unelevated
-    label="add"
+    no-caps
+    label="Add"
     @click="$eventBus.formDialog.emit($page.props.meta.form)"
   />
 </template>

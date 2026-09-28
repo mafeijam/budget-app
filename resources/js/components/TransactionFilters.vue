@@ -65,7 +65,7 @@
       <template #append>
         <q-btn flat dense round icon="event">
           <q-menu :offset="[10, 15]" anchor="bottom right" self="top right">
-            <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="green-7" />
+            <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="primary" />
           </q-menu>
         </q-btn>
       </template>

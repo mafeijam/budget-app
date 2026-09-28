@@ -23,7 +23,7 @@ const { target, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
 const title = computed(() => {
-  return target.value ? 'edit category' : 'create new category'
+  return target.value ? 'Edit category' : 'Create new category'
 })
 
 useWatchTarget(target, schema, form)

@@ -3,9 +3,7 @@
     <q-card flat class="card-form-dialog">
       <q-card-section>
         <div class="row justify-between items-center">
-          <div class="text-h6 text-capitalize text-blue-grey-8 text-weight-bold">
-            settle statement
-          </div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Settle statement</div>
           <q-btn flat round color="grey-6" icon="close" @click="open = false" />
         </div>
       </q-card-section>
@@ -111,7 +109,7 @@
                     :model-value="paidOn"
                     mask="YYYY-MM-DD"
                     minimal
-                    color="green-7"
+                    color="primary"
                     @update:model-value="pickDate"
                   />
                 </q-menu>
@@ -166,17 +164,18 @@
               color="grey-6"
               padding="sm md"
               flat
-              label="cancel"
+              no-caps
+              label="Cancel"
               @click="open = false"
             />
             <q-btn
               class="text-weight-bold"
               padding="sm md"
-              color="green-1"
-              text-color="green-9"
+              color="primary"
               unelevated
+              no-caps
               icon="done"
-              :label="settling ? 'settling' : `settle ${money(period?.owed)}`"
+              :label="settling ? 'Settling' : `Settle ${money(period?.owed)}`"
               :loading="settling"
               :disable="!settleable"
               @click="confirm"

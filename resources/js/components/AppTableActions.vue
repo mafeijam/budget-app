@@ -1,11 +1,11 @@
 <template>
-  <q-btn icon="edit" flat color="green-7" dense class="q-mr-sm" @click="setEdit(cell.row)">
-    <q-tooltip :delay="500" :offset="[0, 6]">edit</q-tooltip>
+  <q-btn icon="edit" flat color="grey-7" dense class="q-mr-sm" @click="setEdit(cell.row)">
+    <q-tooltip :delay="500" :offset="[0, 6]">Edit</q-tooltip>
   </q-btn>
   <q-btn
     icon="delete"
     flat
-    color="pink-7"
+    color="negative"
     dense
     :loading="loading === cell.row.id"
     :disable="!!refusal"
@@ -21,7 +21,7 @@
       disabled button -- which is what makes this worth saying, because the obvious
       way to do it is hide the button and leave the user no explanation at all.
     -->
-    <q-tooltip :delay="500" :offset="[0, 6]">{{ refusal || 'delete' }}</q-tooltip>
+    <q-tooltip :delay="500" :offset="[0, 6]">{{ refusal || 'Delete' }}</q-tooltip>
   </q-btn>
 </template>
 

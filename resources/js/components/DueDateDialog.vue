@@ -3,9 +3,7 @@
     <q-card flat class="card-form-dialog">
       <q-card-section>
         <div class="row justify-between items-center">
-          <div class="text-h6 text-capitalize text-blue-grey-8 text-weight-bold">
-            statement issued
-          </div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Statement issued</div>
           <q-btn flat round color="grey-6" icon="close" @click="open = false" />
         </div>
       </q-card-section>
@@ -67,7 +65,7 @@
                   :model-value="stated"
                   mask="YYYY-MM-DD"
                   minimal
-                  color="green-7"
+                  color="primary"
                   @update:model-value="pickDate"
                 />
               </q-menu>
@@ -110,17 +108,18 @@
               color="grey-6"
               padding="sm md"
               flat
-              label="cancel"
+              no-caps
+              label="Cancel"
               @click="open = false"
             />
             <q-btn
               class="text-weight-bold"
               padding="sm md"
-              color="green-1"
-              text-color="green-9"
+              color="primary"
               unelevated
+              no-caps
               icon="done"
-              :label="saving ? 'saving' : 'save due date'"
+              :label="saving ? 'Saving' : 'Save due date'"
               :loading="saving"
               :disable="!saveable"
               @click="confirm"

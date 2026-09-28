@@ -119,7 +119,7 @@ const typeOptions = computed(() => usePage().props.typeOptions ?? [])
 const statusOptions = computed(() => usePage().props.statusOptions ?? [])
 
 const title = computed(() => {
-  return target.value ? 'edit account' : 'create new account'
+  return target.value ? 'Edit account' : 'Create new account'
 })
 
 // Named for what the link means to each type. A computed rather than an inline
