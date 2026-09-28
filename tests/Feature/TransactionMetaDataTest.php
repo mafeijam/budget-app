@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\DTO\TransactionMetaData;
 use App\Enums\TransactionType;
 use Illuminate\Support\Facades\Validator;
-use InvalidArgumentException;
+use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use ReflectionParameter;
@@ -227,6 +227,23 @@ class TransactionMetaDataTest extends TestCase
         }
     }
 
+    /**
+     * A field error on the key the form shows it under -- not an exception of any other
+     * kind, which reaches the browser as a 500.
+     */
+    private function assertFieldError(string $key, callable $call): void
+    {
+        try {
+            $call();
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey($key, $e->errors());
+
+            return;
+        }
+
+        $this->fail("Expected a field error on {$key}.");
+    }
+
     private function meta(array $overrides = []): TransactionMetaData
     {
         return TransactionMetaData::from(array_merge([
@@ -357,10 +374,9 @@ class TransactionMetaDataTest extends TestCase
         // Left to the database this would either throw a truncation error at
         // insert time or, worse, be silently rounded down -- losing money
         // without any error at all.
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->meta(['quantity' => '1', 'unit_price' => '100000000.0000'])
-            ->derivedAmount(TransactionType::Buy);
+        $this->assertFieldError('meta_data.quantity', fn () => $this->meta([
+            'quantity' => '1', 'unit_price' => '100000000.0000',
+        ])->derivedAmount(TransactionType::Buy));
     }
 
     // ---------------------------------------------------------------------
@@ -373,10 +389,9 @@ class TransactionMetaDataTest extends TestCase
         // its type, so there is nowhere to record a negative. A sell that nets
         // below zero is a data error -- usually fees entered against the wrong
         // side -- and must not quietly become a purchase.
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->meta(['quantity' => '10', 'unit_price' => '5.00', 'fees' => '100.00'])
-            ->derivedAmount(TransactionType::Sell);
+        $this->assertFieldError('meta_data.fees', fn () => $this->meta([
+            'quantity' => '10', 'unit_price' => '5.00', 'fees' => '100.00',
+        ])->derivedAmount(TransactionType::Sell));
     }
 
     public function test_a_sell_whose_fees_exactly_equal_the_proceeds_is_allowed(): void
