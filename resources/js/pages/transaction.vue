@@ -114,14 +114,13 @@ const typeIcons = {
   dividend: 'paid',
 }
 
-// Posted, not yet posted and settled are the brand's positive, warning and info, which
-// is a real mapping rather than three colours that happen to differ: green-1/green-9 sat
-// next to text-positive on the same row, and the two greens were visibly not the same
-// green. A class, because Quasar's ramp has no entry for a brand colour.
+// Posted and not yet posted are the brand's positive and warning, which is a real
+// mapping rather than two colours that happen to differ: green-1/green-9 sat next to
+// text-positive on the same row, and the two greens were visibly not the same green. A
+// class, because Quasar's ramp has no entry for a brand colour.
 const statusBadges = {
   posted: { class: 'app-tint app-tint--positive' },
   pending: { class: 'app-tint app-tint--warning' },
-  settled: { class: 'app-tint app-tint--info' },
 }
 
 // 1, -1 or 0 from the server's movesBalanceOn(). Zero for a trade, which moves no

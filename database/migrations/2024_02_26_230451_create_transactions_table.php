@@ -101,10 +101,11 @@ return new class extends Migration
             $table->date('date');
 
             // Lifecycle state. A card charge is pending until the issuer posts
-            // it, and a trade is unsettled until T+2, so `pending` and `settled`
-            // both need to be distinguishable and filterable. A status living in
-            // the JSON meta bag could be neither, and `posted` is the right
-            // default for the cash rows that predate the concept.
+            // it, and a trade is pending until it settles, so `pending` has to
+            // be distinguishable and filterable -- it is the one state a balance
+            // leaves out. A status living in the JSON meta bag could be neither,
+            // and `posted` is the right default for the cash rows that predate
+            // the concept.
             $table->string('status')->default('posted');
 
             $table->timestamps();

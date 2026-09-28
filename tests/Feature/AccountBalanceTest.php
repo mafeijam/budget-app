@@ -139,15 +139,6 @@ class AccountBalanceTest extends TestCase
         $this->assertSame('500.0000', $this->balanceOf($this->bank));
     }
 
-    public function test_a_settled_row_still_counts(): void
-    {
-        // Pending is the only state that does not, so settled and posted are both in
-        // -- a trade settles days after it is written and its money has moved.
-        $this->row($this->bank, 'expense', '75.0000', status: 'settled');
-
-        $this->assertSame('-75.0000', $this->balanceOf($this->bank));
-    }
-
     // ---------------------------------------------------------------------
     // A card
     // ---------------------------------------------------------------------

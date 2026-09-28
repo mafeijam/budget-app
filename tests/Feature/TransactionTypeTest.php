@@ -139,6 +139,5 @@ class TransactionTypeTest extends TestCase
         // overstate what is owed.
         $this->assertFalse(TransactionStatus::Pending->countsTowardBalance());
         $this->assertTrue(TransactionStatus::Posted->countsTowardBalance());
-        $this->assertTrue(TransactionStatus::Settled->countsTowardBalance());
     }
 }
