@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Models\Account;
 use App\Support\AccountBalance;
 use App\Support\CardStatement;
+use App\Support\Positions;
 use Brick\Math\BigDecimal;
 
 /**
@@ -55,6 +56,24 @@ class HomeController extends Controller
             ->sortBy('due_date')
             ->values();
 
-        return inertia('index', compact('cash', 'statements'));
+        // What each brokerage's holdings are worth, from the valuation the Positions page
+        // totals. Beside the cash rather than in it: shares at market value are not
+        // money in an account, and the figure moves with every price. Shown as the
+        // Positions page shows them -- a closed brokerage only while it holds shares.
+        $brokerages = Account::query()
+            ->where('type', AccountType::Security->value)
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Account $broker) => [
+                'id' => $broker->id,
+                'name' => $broker->name,
+                'ccy' => $broker->ccy,
+                'status' => $broker->status,
+                ...Positions::valued($broker)['totals'],
+            ])
+            ->filter(fn (array $broker) => $broker['status'] === 'active' || $broker['open'] > 0)
+            ->values();
+
+        return inertia('index', compact('cash', 'brokerages', 'statements'));
     }
 }

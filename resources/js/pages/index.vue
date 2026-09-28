@@ -33,6 +33,43 @@
       <div v-else class="text-grey-6">No cash account yet.</div>
     </div>
 
+    <div v-if="brokerages.length">
+      <div class="row items-center q-mb-sm">
+        <div class="text-h6 text-weight-medium">Brokerages</div>
+      </div>
+
+      <div class="row q-col-gutter-md">
+        <div
+          v-for="broker in brokerages"
+          :key="broker.id"
+          class="col-12 col-sm-6 col-md-4 col-lg-3"
+        >
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="row items-center no-wrap">
+                <q-icon name="show_chart" size="sm" color="grey-6" class="q-mr-sm" />
+                <div class="text-subtitle1 text-weight-medium ellipsis">{{ broker.name }}</div>
+                <q-space />
+                <q-badge outline color="grey-7" :label="broker.ccy" />
+              </div>
+              <!-- Market value, not a balance: what the holdings are worth at the latest price. -->
+              <div class="text-caption text-grey-7 q-mt-md">Market value</div>
+              <div class="text-h5 text-weight-bold text-grey-9">
+                {{ money(broker.market_value) }}
+              </div>
+              <div class="text-caption" :class="gainClass(broker.unrealised)">
+                {{ signed(broker.unrealised) }} unrealised
+              </div>
+              <div class="text-caption text-grey-7 q-mt-xs">
+                {{ count(broker.open, 'holding') }} · cost {{ money(broker.open_cost) }}
+                <template v-if="broker.unpriced"> · {{ broker.unpriced }} unpriced</template>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+      </div>
+    </div>
+
     <div>
       <div class="row items-center q-mb-sm">
         <div class="text-h6 text-weight-medium">Card statements owing</div>
@@ -86,6 +123,7 @@
 <script setup>
 defineProps({
   cash: { type: Array, default: Array },
+  brokerages: { type: Array, default: Array },
   statements: { type: Array, default: Array },
 })
 
@@ -94,6 +132,16 @@ const dueBadge = useDueBadge()
 const formatDate = useCalendarDay()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+// A gain green and a loss red; nothing plain.
+const gainClass = value => {
+  if (String(value).startsWith('-')) return 'text-negative'
+
+  return /[1-9]/.test(String(value)) ? 'text-positive' : 'text-grey-7'
+}
+
+// With its sign, so a gain reads as one rather than as a bare figure.
+const signed = value => (String(value).startsWith('-') ? money(value) : `+${money(value)}`)
 
 // Red only when a cash balance has gone below zero, an overdraft.
 const amountClass = value => (String(value).startsWith('-') ? 'text-negative' : 'text-grey-9')
