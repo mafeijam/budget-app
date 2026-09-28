@@ -35,7 +35,7 @@ class TransactionController extends Controller
     private const DEFAULT_SORT = 'date';
 
     /** The columns the transactions table marks sortable. */
-    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status', 'created_at'];
+    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status'];
 
     public function index(Request $r)
     {

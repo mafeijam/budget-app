@@ -88,7 +88,6 @@ const props = defineProps({
 
 const pagination = usePagination()
 const formatMoney = useMoney()
-const formatDate = useHongKongTime()
 
 // The icons the accounts list uses, so a type looks the same on both pages.
 const accountTypeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
@@ -277,15 +276,6 @@ const columns = reactive([
         .join(', '),
     align: 'left',
     sortable: false,
-  },
-  {
-    name: 'created_at',
-    width: '170px',
-    label: 'Created At',
-    field: 'created_at',
-    format: val => formatDate(val),
-    classes: 'text-caption text-grey-7',
-    sortable: true,
   },
   {
     name: 'action',
