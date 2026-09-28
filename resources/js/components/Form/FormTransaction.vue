@@ -25,7 +25,27 @@
         :disable="locked('account_id')"
         :error="!!form.errors.account_id"
         :error-message="form.errors.account_id"
-      />
+      >
+        <!--
+          The account's type beside its name, in the transactions table's tint. The type
+          decides what the picker then offers -- a brokerage has buy, sell and dividend
+          where a bank has expense, income -- and a name alone does not say which is
+          which, so the user picks first and finds out after.
+
+          Only in the list: the closed field keeps the bare name, since a badge in the
+          value would be read as a filter and there is nothing to filter. `?? {}` as the
+          column uses, so an account type the map does not know shows plainly instead of
+          failing the render.
+        -->
+        <template #option="scope">
+          <q-item v-bind="scope.itemProps">
+            <q-item-section>{{ scope.opt.label }}</q-item-section>
+            <q-item-section side>
+              <q-badge v-bind="accountTypeBadges[scope.opt.type] ?? {}" :label="scope.opt.type" />
+            </q-item-section>
+          </q-item>
+        </template>
+      </q-select>
 
       <q-select
         v-model="form.type"
@@ -231,6 +251,16 @@ const props = defineProps({
 })
 
 const pagination = inject('pagination')
+
+// The transactions table's tints, repeated here rather than shared. Sharing them wants a
+// composable, and an auto-imported const of this shape has twice come through the build
+// as a name with no value behind it -- the option list and the table's column then both
+// read undefined, silently, which is a worse way to lose a colour than repeating it.
+const accountTypeBadges = {
+  cash: { color: 'teal-1', textColor: 'teal-9' },
+  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
+  security: { color: 'orange-1', textColor: 'orange-10' },
+}
 
 const { schema, form } = useFormEmpty()
 const { target: row, resetEdit } = useEdit(form)
