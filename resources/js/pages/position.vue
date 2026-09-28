@@ -1,5 +1,5 @@
 <template>
-  <div class="column q-gutter-lg">
+  <div class="column no-wrap q-gutter-lg">
     <div class="row items-center">
       <div class="text-h6 text-weight-medium">Positions</div>
       <q-space />

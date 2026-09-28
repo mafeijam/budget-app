@@ -1,5 +1,5 @@
 <template>
-  <div class="column q-gutter-lg">
+  <div class="column no-wrap q-gutter-lg">
     <div>
       <div class="row items-center q-mb-sm">
         <div class="text-h6 text-weight-medium">Cash accounts</div>
