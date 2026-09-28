@@ -212,9 +212,7 @@ class TransactionMetaDataTest extends TestCase
         // This is a whitelist rather than a lookup, so a rule new to this bag
         // has to be added here deliberately -- which is the point. `date_format`
         // arrived with due_date; the rest predate it.
-        // `prohibited` arrived with paired_transaction_id, which is the one rule here
-        // that is neither nullable nor conditional on the root `type`.
-        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min', 'date_format', 'prohibited'];
+        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {

@@ -10,7 +10,10 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
+use Brick\Math\BigDecimal;
 use Carbon\Carbon;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
 use Throwable;
@@ -46,24 +49,67 @@ class TransactionData extends Data
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
 
-        // The owning account's name, read off the model the constructor already
-        // loaded. Not a client's to decide -- rules() has no rule for it, and says why.
-        // Last and defaulted because an optional parameter ahead of the required ones
-        // gets no default at all.
+        // The owning account's name and currency: the model's accessors on a read, the
+        // account row on a write. Not a client's to decide -- rules() has no rule for
+        // either, and says why. Last and defaulted because an optional parameter ahead
+        // of the required ones gets no default at all.
+        //
+        // The currency is the one card_amount is stated in, which the row's own ccy is
+        // not whenever card_amount exists at all.
         public ?string $account_name = null,
+        public ?string $account_ccy = null,
     ) {
         $this->created_at ??= now();
         $this->status ??= TransactionStatus::Posted;
+
+        // A stored row is shown as stored. The guards judge a payload against the
+        // account as it is now, and an account edited since -- a card moved into the
+        // currency of its foreign charges -- makes rows that were valid when written
+        // throw here, which takes the whole transactions page down with a redirect.
+        if (self::$readingStoredRow) {
+            return;
+        }
 
         // One account read serves the pairing check, the due date and the name.
         $account = Account::find($this->account_id);
 
         $this->account_name = $account?->name;
+        $this->account_ccy = $account?->ccy;
+
+        // Dropped rather than refused: the edit form round-trips the row's real links,
+        // and a rule cannot tell those from forged ones. keepLinksOf() restores them.
+        if ($this->meta_data !== null) {
+            foreach (self::SERVER_LINKS as $key) {
+                $this->meta_data->{$key} = null;
+            }
+        }
 
         $this->guardAccountType($account);
         $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
+    }
+
+    /** Set while fromModel() runs; the constructor has no other way to know. */
+    private static bool $readingStoredRow = false;
+
+    /**
+     * A stored row, read back for display or for the edit form to round-trip.
+     *
+     * Picked by spatie/laravel-data for any Transaction, so Data::collect() over the
+     * index's paginator comes through here. The flag rather than a constructor
+     * parameter, which would be a DTO field the form contract then demands a control
+     * for.
+     */
+    public static function fromModel(Transaction $row): self
+    {
+        self::$readingStoredRow = true;
+
+        try {
+            return self::factory()->ignoreMagicalMethod('fromModel')->from($row);
+        } finally {
+            self::$readingStoredRow = false;
+        }
     }
 
     /**
@@ -258,10 +304,9 @@ class TransactionData extends Data
      * Put a charge in the statement period its date falls in, overwriting whichever
      * period the payload carried.
      *
-     * Called on the way to an update and not from the constructor, which also runs
-     * when a stored row is read back: re-deriving on a read would show a period the
-     * statement panel does not group by, the moment somebody edits a card's statement
-     * day. A read shows what is stored; a write recomputes.
+     * Called on the way to an update and not from the constructor, because whether
+     * the period moves is a question about the stored row, which the constructor has
+     * not got.
      *
      * Overwritten rather than kept, as in deriveAmount(): the period a date falls in is
      * the only correct one. A charge whose card no longer has terms keeps the period it
@@ -298,6 +343,245 @@ class TransactionData extends Data
     }
 
     /**
+     * The bag keys only settle() writes, linking a row to another: the other half of a
+     * settlement, and on a charge the payment that settled it.
+     */
+    private const SERVER_LINKS = ['paired_transaction_id', 'settled_by'];
+
+    /**
+     * Carry the stored row's links into the bag that replaces its own.
+     *
+     * update() replaces the bag outright, and the constructor has dropped the payload's
+     * links, so without this any edit to a settled row -- a description fix -- cuts
+     * them: the pair comes apart and destroy() then deletes one row of two, and a paid
+     * charge forgets which payment paid it.
+     */
+    public function keepLinksOf(Transaction $row): void
+    {
+        foreach (self::SERVER_LINKS as $key) {
+            $stored = $row->meta?->meta[$key] ?? null;
+
+            if ($stored === null) {
+                continue;
+            }
+
+            $this->meta_data ??= new TransactionMetaData;
+            $this->meta_data->{$key} = $stored;
+        }
+    }
+
+    /**
+     * The fields a statement's figures, and a settlement's agreement with its other
+     * half, are built from: the error key, and the words for it.
+     *
+     * The ones CardStatement::forAccount() reads, and a second statement of them the
+     * query cannot share. Description and category are absent so they stay editable; a
+     * charge's date is guardPeriodCanMove()'s.
+     */
+    public const FIGURES = [
+        'account_id' => 'account',
+        'type' => 'type',
+        'amount' => 'amount',
+        'ccy' => 'currency',
+        'status' => 'status',
+        'meta_data.card_amount' => 'amount in the card\'s currency',
+    ];
+
+    /**
+     * Every field a lock can name, with its words: FIGURES, and a paid charge's date.
+     *
+     * The date is not a figure -- a payment's does not decide its period, and a
+     * settlement's two halves may disagree about the day -- so it joins a lock only for
+     * a charge in a settled statement, where it is what chose the statement.
+     */
+    private const LOCKABLE = self::FIGURES + ['date' => 'date'];
+
+    /**
+     * Why a stored row's figures are fixed, or null when they are not.
+     *
+     * One answer for the two places that ask: guardFigures() refusing a save, and the
+     * edit form saying so before the user tries. Two locks, the first winning when both
+     * hold:
+     *
+     * A row in a settled statement. Its figure changing leaves the paid bill owing or
+     * in credit -- a charge's amount corrected, a payment marked pending -- as silently
+     * as moving it would. A charge's date is fixed with them, even within its period:
+     * the edit form disables what is locked, and a date that may move only between two
+     * days nobody can see is not something a disabled control can say.
+     *
+     * One half of a card settlement. The two rows are one movement of money, and the
+     * transfer has no due date for the first lock to see: correcting its amount has the
+     * bank say one figure left and the card say another arrived. On the pairing rather
+     * than the period, because the halves have to agree whether or not the statement is
+     * still settled. A row whose partner has gone is half of nothing and edits freely,
+     * as destroy() already deletes it alone.
+     *
+     * `refusal` is a format taking the changed field's words; `message` is the form's.
+     *
+     * @param  Collection<int, CardStatement>|null  $cardPeriods  the periods of the row's
+     *                                                            card, null off a card
+     * @return array{fields: list<string>, message: string, refusal: string}|null
+     */
+    public static function figureLock(Transaction $row, ?Collection $cardPeriods, bool $partnerExists): ?array
+    {
+        $dueDate = $row->meta?->meta['due_date'] ?? null;
+        $isCharge = $row->type === TransactionType::Charge->value;
+
+        // Only a charge has a card-currency figure, so only a charge names it as fixed.
+        $figures = $isCharge ? self::FIGURES : Arr::except(self::FIGURES, 'meta_data.card_amount');
+        $fields = array_keys($figures);
+        $words = Arr::join(array_values($figures), ', ', ' and ');
+
+        if ($dueDate !== null && $cardPeriods?->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            if ($isCharge) {
+                $figures = array_slice($figures, 0, 2) + ['date' => 'date'] + array_slice($figures, 2);
+                $fields = array_keys($figures);
+                $words = Arr::join(array_values($figures), ', ', ' and ');
+            }
+
+            $remedy = $row->type === TransactionType::Payment->value
+                ? 'Delete this payment and settle the statement again.'
+                : 'Delete the payment that settled it, make the change, and settle it again.';
+
+            return [
+                'fields' => $fields,
+                'message' => sprintf(
+                    'The statement due %s has been settled, so this %s\'s %s are fixed. %s',
+                    $dueDate,
+                    $row->type,
+                    $words,
+                    $remedy
+                ),
+                'refusal' => "The statement due {$dueDate} has been settled, so this {$row->type}'s %s "
+                    ."cannot be changed. {$remedy}",
+            ];
+        }
+
+        if ($partnerExists) {
+            $remedy = 'Delete the settlement and settle the statement again.';
+
+            return [
+                'fields' => $fields,
+                'message' => "This {$row->type} is one half of a card settlement, so its {$words} "
+                    ."are fixed to match the other half. {$remedy}",
+                'refusal' => "This {$row->type} is one half of a card settlement, so its %s cannot "
+                    ."be changed on its own. {$remedy}",
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse an edit to a figure figureLock() says is fixed.
+     *
+     * Keyed on the first field that changed, which is the control the user touched.
+     */
+    public function guardFigures(Transaction $row): void
+    {
+        // Checked before anything is read, since nearly every edit changes none.
+        if ($this->changedFigure($row, array_keys(self::LOCKABLE)) === null) {
+            return;
+        }
+
+        $card = $row->account;
+        $paired = $row->meta?->meta['paired_transaction_id'] ?? null;
+
+        $lock = self::figureLock(
+            $row,
+            $card?->type === AccountType::Card->value ? CardStatement::forAccount($card) : null,
+            $paired !== null && Transaction::whereKey($paired)->exists(),
+        );
+
+        $changed = $lock === null ? null : $this->changedFigure($row, $lock['fields']);
+
+        if ($changed === null) {
+            return;
+        }
+
+        [$field, $label] = $changed;
+
+        throw ValidationException::withMessages([$field => sprintf($lock['refusal'], $label)]);
+    }
+
+    /**
+     * The first of these LOCKABLE fields this payload changes, as the error key and the
+     * words for it, or null when it changes none.
+     *
+     * Amounts compared as decimals: the column reads back '120.0000' and a form may
+     * send '120', which is no change.
+     *
+     * @param  list<string>  $fields
+     * @return array{0: string, 1: string}|null
+     */
+    private function changedFigure(Transaction $row, array $fields): ?array
+    {
+        foreach ($fields as $field) {
+            // A field added to LOCKABLE without a line here is an UnhandledMatchError,
+            // not a figure quietly never compared.
+            [$sent, $stored] = match ($field) {
+                'account_id' => [(string) $this->account_id, (string) $row->account_id],
+                'type' => [$this->type->value, $row->type],
+                'date' => [$this->date, $row->date],
+                'amount' => [$this->amount, $row->amount],
+                'ccy' => [$this->ccy->value, $row->ccy],
+                'status' => [$this->status->value, $row->status],
+                'meta_data.card_amount' => [$this->meta_data?->card_amount, $row->meta?->meta['card_amount'] ?? null],
+            };
+
+            $decimal = in_array($field, ['amount', 'meta_data.card_amount'], true)
+                && $sent !== null
+                && $stored !== null;
+
+            $differs = $decimal
+                ? ! BigDecimal::of($sent)->isEqualTo(BigDecimal::of($stored))
+                : $sent !== $stored;
+
+            if ($differs) {
+                return [$field, self::LOCKABLE[$field]];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse a new charge filed under a statement that has been settled.
+     *
+     * The harm guardPeriodCanMove() refuses for a move, arriving by the other door: a
+     * paid bill owes money again, and the panel shows a figure nobody can account for.
+     * Whatever the charge's status, since a pending one counts the moment it posts, and
+     * posting it is an edit touching neither the date nor the account, so nothing would
+     * look again then.
+     *
+     * Read off the bag rather than recomputed, because the bag is what the row will be
+     * filed under -- a period the payload supplied included. Called from store() for
+     * the reason placeChargeInItsPeriod() is called from update().
+     */
+    public function guardNewChargePeriod(?Account $account): void
+    {
+        if ($account === null || $this->type !== TransactionType::Charge) {
+            return;
+        }
+
+        $dueDate = $this->meta_data?->due_date;
+
+        if ($dueDate === null) {
+            return;
+        }
+
+        if (CardStatement::forAccount($account)->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            throw ValidationException::withMessages([
+                'date' => sprintf(
+                    'The statement due %s has been settled, so this charge cannot be added to it. '
+                        .'Delete the payment that settled it, record the charge, and settle it again.',
+                    $dueDate
+                ),
+            ]);
+        }
+    }
+
+    /**
      * The statement period this charge's date falls in, or null when there is none.
      *
      * Null for two reasons, and both mean the same thing to every caller: the card has
@@ -329,8 +613,10 @@ class TransactionData extends Data
      * that bill: the charges it covered and the payment that closed it. Re-dating a
      * charge out of one leaves it showing a credit against money already handed over;
      * re-dating one into one makes a paid bill owing money again. Both are silent --
-     * the panel would just show a figure nobody could account for -- and there is no
-     * un-settling, so the answer is to refuse and say what to do instead.
+     * the panel would just show a figure nobody could account for -- so the answer is
+     * to refuse, and to name the one way to reopen a period: deleting the payment that
+     * closed it. Not "delete the charge", which deleteRefusal() turns down for the
+     * same reason this does.
      *
      * Keyed on `date` rather than the bag's due_date, because that is the field the
      * user moved and the only one of the two with a control on the form to hang a
@@ -347,8 +633,14 @@ class TransactionData extends Data
         // card it came from.
         $leaving = $charge->meta?->meta['due_date'] ?? null;
 
-        // Nothing to leave, or leaving for the period it is in: nothing moves.
-        if ($leaving === null || $leaving === $dueDate) {
+        $changingCard = $charge->account_id !== $account->id;
+
+        // Staying in the period it is in: nothing moves. Only on the same card -- two
+        // cards closing on the same day share every due date, so on another card the
+        // same date is another bill, and matching it here would let a charge walk out of
+        // a paid statement unchecked. A charge with no period to leave still has one to
+        // arrive in, so it falls through to the second check.
+        if ($leaving === $dueDate && ! $changingCard) {
             return;
         }
 
@@ -356,7 +648,7 @@ class TransactionData extends Data
 
         $leavingPeriod = $statements->firstWhere('dueDate', $leaving);
 
-        if ($charge->account_id !== $account->id) {
+        if ($changingCard) {
             $from = Account::find($charge->account_id);
 
             $leavingPeriod = $from === null
@@ -366,10 +658,10 @@ class TransactionData extends Data
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['date' => $message]);
 
-        if ($leavingPeriod?->isSettled()) {
+        if ($leaving !== null && $leavingPeriod?->isSettled()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so this charge cannot be moved out of it. '
-                    .'Delete it and record it again.',
+                    .'Delete the payment that settled it, move the charge, and settle it again.',
                 $leaving
             ));
         }

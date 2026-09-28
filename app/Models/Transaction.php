@@ -52,6 +52,12 @@ class Transaction extends Model
         return $this->account?->name;
     }
 
+    /** The owning account's currency, read the same way as its name above. */
+    public function getAccountCcyAttribute(): ?string
+    {
+        return $this->account?->ccy;
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);

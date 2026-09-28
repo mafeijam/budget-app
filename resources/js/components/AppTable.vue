@@ -5,7 +5,9 @@
     flat
     :rows-per-page-options="[5, 10, 20]"
     :rows="rows"
-    :columns="columns"
+    :columns="sized"
+    wrap-cells
+    table-style="table-layout: fixed"
     class="text-grey-8 sticky-table"
     @request="onPageRequest"
   >
@@ -16,7 +18,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   columns: {
     type: Array,
     default: () => [],
@@ -29,6 +31,23 @@ defineProps({
 
 const pagination = inject('pagination')
 
+// Fixed layout, with each column's `width` on its header, so the columns hold still
+// when the page changes. The default layout sizes every column to the rows on screen,
+// and a longer description on page two moved every column after it. Widths are shares
+// as much as sizes: a wider screen spreads the spare room across them, a narrower one
+// scrolls. wrap-cells above, because with the width fixed, Quasar's no-wrap cells
+// would run into the next column instead.
+const sized = computed(() =>
+  props.columns.map(column =>
+    column.width
+      ? {
+          ...column,
+          headerStyle: [column.headerStyle, `width: ${column.width}`].filter(Boolean).join('; '),
+        }
+      : column,
+  ),
+)
+
 function getQuery(pagination) {
   const { page, rowsPerPage, sortBy, descending } = pagination
 
@@ -38,21 +57,27 @@ function getQuery(pagination) {
     query.page = page
   }
 
-  if (sortBy) {
+  // The page's own default order, which the server applies when the URL names none --
+  // so it is left out of the URL, and clearing the sort falls back to it. Created-at
+  // newest first for a page that does not say.
+  const fallback = usePage().props.meta?.sort ?? { by: 'created_at', dir: 'desc' }
+  const isDefault = sortBy === fallback.by && descending === (fallback.dir === 'desc')
+
+  if (sortBy && !isDefault) {
     query.sort = sortBy
     query.dir = descending ? 'desc' : 'asc'
-  } else {
-    query.sort = 'created_at'
-    query.dir = 'asc'
   }
 
   if (rowsPerPage !== 5) {
     query.per_page = rowsPerPage
   }
 
-  if (sortBy === 'created_at' && descending === true) {
-    delete query.sort
-    delete query.dir
+  // Whatever the page is filtered by, carried along, or turning a page would quietly
+  // drop the filter and show the next page of everything.
+  const filter = usePage().props.params?.filter
+
+  if (filter && Object.keys(filter).length) {
+    query.filter = filter
   }
 
   return query

@@ -1,7 +1,9 @@
 <template>
   <q-card v-if="groups.length" flat bordered>
-    <q-card-section>
+    <q-card-section class="row items-center">
       <div class="text-h6 text-weight-medium">Card statements</div>
+      <q-space />
+      <div class="text-caption text-grey-7">Periods still owing</div>
     </q-card-section>
 
     <q-separator />
@@ -15,7 +17,7 @@
     -->
     <q-markup-table flat dense>
       <thead>
-        <tr class="text-left">
+        <tr class="text-left text-grey-7">
           <th>Covers</th>
           <th>Due</th>
           <th class="text-right">Charges</th>
@@ -26,16 +28,22 @@
       </thead>
       <tbody>
         <template v-for="group in groups" :key="group.card.id">
-          <tr>
-            <th colspan="6" class="text-left q-py-sm q-pl-none">
+          <tr class="bg-grey-1">
+            <th colspan="6" class="text-left q-py-sm">
+              <q-icon name="credit_card" size="xs" color="grey-7" class="q-mr-sm" />
               <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
-              <span class="text-grey-6 text-weight-regular">· {{ group.card.ccy }}</span>
+              <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
+              <!-- Where the money leaves, so the settle dialog holds no surprise. -->
+              <span class="text-caption text-grey-7 text-weight-regular q-ml-md">
+                {{ bankLine(group) }}
+              </span>
             </th>
           </tr>
           <tr v-for="period in group.periods" :key="`${group.card.id}-${period.due_date}`">
-            <td>{{ covers(period) }}</td>
+            <td class="text-grey-8">{{ covers(period) }}</td>
             <td>
-              {{ formatDate(period.due_date) }}
+              <span class="text-weight-medium">{{ formatDate(period.due_date) }}</span>
+              <q-badge v-bind="dueBadge(period)" class="q-ml-sm" />
               <!--
                 The one thing the figure cannot tell the user: the owed total is correct
                 without a pending row, so a reader who trusted it would pay against a
@@ -74,23 +82,29 @@
               </q-btn>
             </td>
             <td class="text-right">
-              {{ period.charge_count }}
-              <span class="text-grey-6 text-weight-regular">· {{ money(period.charged) }}</span>
+              {{ money(period.charged) }}
+              <div class="text-caption text-grey-6">{{ count(period.charge_count, 'charge') }}</div>
             </td>
             <td class="text-right">
-              {{ period.payment_count }}
-              <span class="text-grey-6 text-weight-regular">· {{ money(period.paid) }}</span>
+              {{ money(period.paid) }}
+              <div class="text-caption text-grey-6">
+                {{ count(period.payment_count, 'payment') }}
+              </div>
             </td>
-            <td class="text-right text-weight-medium">{{ money(period.owed) }}</td>
+            <td class="text-right text-subtitle1 text-weight-bold" :class="owedClass(period)">
+              {{ money(period.owed) }}
+            </td>
             <td class="text-right">
               <!-- Disabled rather than hidden, for the reason given on `settleable`. -->
               <q-btn
                 dense
-                flat
+                unelevated
                 no-caps
-                color="green-9"
+                color="green-1"
+                text-color="green-9"
                 icon="payments"
-                label="settle"
+                label="Settle"
+                class="q-px-sm text-weight-bold"
                 :disable="!settleable(group, period)"
                 @click="openSettle(group, period)"
               >
@@ -125,16 +139,23 @@ const props = defineProps({
 
 const formatDate = useCalendarDay()
 
-// Rounded on the string, not through a Number: the figures arrive as strings
-// precisely so the arithmetic upstream was exact, and parsing one to round it would
-// reintroduce the drift BigDecimal was there to avoid.
-const money = value => {
-  if (value === null || value === undefined) return ''
+// Rounded as digits, never through a Number -- see money.js. The copy that lived here
+// truncated rather than rounded, so 0.0050 owed printed as 0.00.
+const money = useMoney()
 
-  const [whole, places = ''] = String(value).split('.')
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
-  return `${whole}.${places.padEnd(4, '0').slice(0, 2)}`
+const bankLine = group => {
+  const bank = props.banks[group.card.id]
+
+  return bank ? `Paid from ${bank.name}` : 'No bank named yet'
 }
+
+const dueBadge = useDueBadge()
+
+// Red while it owes; a period paid beyond its charges is in credit and reads green.
+const owedClass = period =>
+  String(period.owed).startsWith('-') ? 'text-positive' : 'text-negative'
 
 // The dates of the charges in the period, which is what the statement is about -- Due
 // says when it is payable, this says what it is for. One date when every charge landed

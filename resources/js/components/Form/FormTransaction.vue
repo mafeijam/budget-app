@@ -1,6 +1,19 @@
 <template>
   <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
     <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
+      <!--
+        Wrapped, because the gutter pads the column and a banner coloured to its edges
+        would sit offset from every field below it.
+      -->
+      <div v-if="lock" class="col-12">
+        <q-banner rounded dense class="bg-amber-1 text-amber-10">
+          <template #avatar>
+            <q-icon name="lock" color="amber-8" />
+          </template>
+          {{ lock.message }}
+        </q-banner>
+      </div>
+
       <q-select
         v-model="form.account_id"
         :options="accountOptions"
@@ -9,6 +22,7 @@
         filled
         emit-value
         map-options
+        :disable="locked('account_id')"
         :error="!!form.errors.account_id"
         :error-message="form.errors.account_id"
       />
@@ -16,7 +30,7 @@
       <q-select
         v-model="form.type"
         :options="typeOptions"
-        :disable="!form.account_id"
+        :disable="!form.account_id || locked('type')"
         class="col-6"
         label="Type"
         filled
@@ -43,11 +57,12 @@
         class="col-4"
         label="Date"
         filled
+        :disable="locked('date')"
         :error="!!form.errors.date"
         :error-message="form.errors.date"
       >
         <template #append>
-          <q-btn flat dense icon="event" rounded>
+          <q-btn flat dense icon="event" rounded :disable="locked('date')">
             <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
               <q-date
                 :model-value="form.date"
@@ -69,7 +84,7 @@
         type="number"
         step="0.0001"
         min="0"
-        :disable="derivesAmount"
+        :disable="derivesAmount || locked('amount')"
         :hint="derivesAmount ? 'Derived from quantity and price' : ''"
         :error="!!form.errors.amount"
         :error-message="form.errors.amount"
@@ -83,6 +98,7 @@
         filled
         emit-value
         map-options
+        :disable="locked('ccy')"
         :error="!!form.errors.ccy"
         :error-message="form.errors.ccy"
       />
@@ -116,6 +132,7 @@
         class="col-6"
         label="Status"
         filled
+        :disable="locked('status')"
         hint="A pending charge does not count toward what the card owes"
         :error="!!form.errors.status"
         :error-message="form.errors.status"
@@ -136,6 +153,7 @@
         filled
         type="number"
         step="0.0001"
+        :disable="locked('meta_data.card_amount')"
         :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
         :error="!!form.errors['meta_data.card_amount']"
         :error-message="form.errors['meta_data.card_amount']"
@@ -210,6 +228,15 @@ const target = computed(() => {
 
   return editing.meta_data ? editing : { ...editing, meta_data: useCloneForm(schema.meta_data) }
 })
+
+// Why this row's figures are fixed, from the same TransactionData::figureLock() the
+// save is refused by, so the form says it before the user tries rather than after.
+// The fields are disabled as well as named; the refusal still stands behind them for a
+// stale page.
+const lock = computed(() =>
+  target.value ? (usePage().props.editLocks?.[target.value.id] ?? null) : null,
+)
+const locked = field => lock.value?.fields.includes(field) ?? false
 
 // Every option list arrives from the controller, derived from the enum that decides
 // it, so the pickers cannot offer a value TransactionData would reject nor fall

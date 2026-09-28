@@ -48,8 +48,18 @@ class TransactionMetaData extends Data
         public ?string $card_amount = null,
 
         // The other half of a card settlement, which is two rows and not one. Written
-        // by TransactionController::settle() and nothing else -- see the rule below.
+        // by TransactionController::settle() and nothing else, since destroy() deletes
+        // whatever this points at: the link is the difference between deleting one row
+        // and deleting two. A payload's value never lands -- see keepLinksOf() in
+        // TransactionData.
         public ?int $paired_transaction_id = null,
+
+        // On a charge: the payment that settled the statement it is in. Written by
+        // settle() and removed by destroy() with that payment, so it is a record of
+        // which payment closed the bill -- never the test of whether it is paid, which
+        // CardStatement derives, because a claim on one row cannot see the others.
+        // Server-owned like the pairing, and kept through an edit the same way.
+        public ?int $settled_by = null,
     ) {}
 
     public static function rules()
@@ -90,14 +100,6 @@ class TransactionMetaData extends Data
                 'gt:0',
                 'max:'.self::MAX_AMOUNT,
             ],
-
-            // The only rule here that is not `nullable`, and the only flat prohibition.
-            // Only settle() may write it, because the ids do not exist until it has
-            // created both rows, and destroy() deletes whatever this points at -- so
-            // the link is the difference between deleting one row and deleting two.
-            // Prohibited outright rather than permitted on one type: a client naming
-            // somebody else's transaction would pass every other rule.
-            'paired_transaction_id' => ['prohibited'],
         ];
     }
 
@@ -126,7 +128,6 @@ class TransactionMetaData extends Data
             'fees' => 'fees',
             'due_date' => 'due date',
             'card_amount' => 'amount in the card\'s currency',
-            'paired_transaction_id' => 'paired transaction',
         ];
     }
 

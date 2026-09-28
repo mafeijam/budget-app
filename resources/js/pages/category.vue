@@ -33,6 +33,7 @@ const formatDate = useHongKongTime()
 const columns = reactive([
   {
     name: 'name',
+    width: '300px',
     label: 'Name',
     field: 'name',
     align: 'left',
@@ -40,6 +41,7 @@ const columns = reactive([
   },
   {
     name: 'created_at',
+    width: '200px',
     label: 'Created At',
     field: 'created_at',
     format: val => formatDate(val),
@@ -47,6 +49,7 @@ const columns = reactive([
   },
   {
     name: 'action',
+    width: '100px',
     label: 'Action',
     align: 'right',
   },

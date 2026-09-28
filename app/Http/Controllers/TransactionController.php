@@ -10,18 +10,28 @@ use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\PaginatedDataCollection;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class TransactionController extends Controller
 {
+    private const DEFAULT_SORT = 'date';
+
+    /** The columns the transactions table marks sortable. */
+    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status', 'created_at'];
+
     public function index(Request $r)
     {
         // Seeded with today, the way AccountController seeds the account form's status.
@@ -32,7 +42,13 @@ class TransactionController extends Controller
         // today() rather than a JS date, so "today" is the one Asia/Hong_Kong the rest
         // of the app already formats with (config/app.php, useHongKongTime) and not
         // whatever half-hour the browser thinks it is in.
-        $formEmpty = TransactionData::empty(['date' => today()->toDateString()]);
+        //
+        // Posted, the default the DTO applies to a payload without one -- seeded too, so
+        // the picker shows what will be saved rather than a blank the server then fills.
+        $formEmpty = TransactionData::empty([
+            'date' => today()->toDateString(),
+            'status' => TransactionStatus::Posted->value,
+        ]);
 
         // type and ccy ride along: the form needs both and has no other source.
         // Not the paginated set -- a card on page two must stay selectable.
@@ -53,11 +69,49 @@ class TransactionController extends Controller
             'value' => $category->id,
         ]);
 
-        $transactions = Transaction::query()
+        // By the day the money moved, newest first, rather than by when the row was typed
+        // in: a charge entered a week late belongs among that week's rows. Only the
+        // columns the table offers to sort, so a request cannot order by anything else.
+        $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
+        $dir = $r->input('dir') === 'asc' ? 'asc' : 'desc';
+
+        // Filters narrow the list and nothing else: the statement panel, the delete
+        // refusals and the edit locks are about whole cards and whole periods, so a
+        // filtered page still reports them in full. An unknown filter is a 400 from
+        // the package rather than being ignored, so a mistyped key cannot quietly
+        // show the unfiltered list as though it were the filtered one.
+        $transactions = QueryBuilder::for(Transaction::class, $r)
+            ->allowedFilters(
+                // Comma-separated for several at once: filter[type]=charge,payment.
+                AllowedFilter::exact('account_id'),
+                AllowedFilter::exact('type'),
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('category_id'),
+                // The currency the row was made in, not its account's: a USD charge on an
+                // HKD card is found under USD.
+                AllowedFilter::exact('ccy'),
+                // One phrase, not a list: "coffee, tea" is a description, and splitting
+                // it on the comma would match either word.
+                AllowedFilter::partial('description')->delimiter(''),
+                // Inclusive, on the calendar day. A value that is not one is ignored
+                // rather than compared as a string, where "2026-1-5" would sort after
+                // "2026-01-31" and quietly drop rows.
+                AllowedFilter::callback('date_from', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where('date', '>=', $value)
+                    : $q),
+                AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where('date', '<=', $value)
+                    : $q),
+            )
             // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
-            ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
-            ->paginate($r->input('per_page', 5));
+            ->orderBy($sort, $dir)
+            // Then by id, so rows sharing a date keep one order from page to page. MySQL
+            // returns a tie in whatever order it likes, and a row could then show on two
+            // pages or on none.
+            ->orderBy('id', $dir)
+            ->paginate($r->input('per_page', 5))
+            ->withQueryString();
 
         $page = $transactions->getCollection();
 
@@ -94,9 +148,34 @@ class TransactionController extends Controller
         // button can say so rather than being offered and then refused.
         $refusals = $this->deleteRefusals($page, $cardPeriods);
 
+        // Which figures each row on this page cannot change, and why, so the edit form
+        // can say so and disable them rather than let the save be refused.
+        $editLocks = $this->editLocks($page, $cardPeriods, $linked);
+
+        // Which way each row moves its account's balance, 1, -1 or 0, so the table can
+        // mark money in and out. From movesBalanceOn() rather than a list in the page,
+        // which would be a second copy of the rule, and per row because the answer
+        // needs the account's type as well as the row's.
+        $directions = $page
+            ->mapWithKeys(fn (Transaction $row) => [
+                $row->id => $row->account === null
+                    ? 0
+                    : TransactionType::from($row->type)->movesBalanceOn(AccountType::from($row->account->type)),
+            ])
+            ->all();
+
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
         $options = compact('accounts', 'categories');
+
+        // What the filter bar offers. Every account rather than the active ones the form
+        // picks from, since a closed card's history is still worth finding; every type
+        // in enum order, flat, since a filter is not narrowing by an account type.
+        $filterOptions = [
+            'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
+            'types' => array_column(TransactionType::cases(), 'value'),
+        ];
 
         // The pairing is what makes a type legal, so a flat list would offer "buy" on
         // a savings account only to refuse it. Derived from accountTypes().
@@ -143,17 +222,7 @@ class TransactionController extends Controller
                 // period list keyed 1, 3, 7 reaches Vue as an object rather than the
                 // list the v-for is written against.
                 'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
-                    ->map(fn (CardStatement $statement) => [
-                        'first_charge_date' => $statement->firstChargeDate,
-                        'last_charge_date' => $statement->lastChargeDate,
-                        'due_date' => $statement->dueDate,
-                        'charge_count' => $statement->chargeCount,
-                        'payment_count' => $statement->paymentCount,
-                        'pending_count' => $statement->pendingCount,
-                        'charged' => $statement->charged,
-                        'paid' => $statement->paid,
-                        'owed' => $statement->owed(),
-                    ])
+                    ->map(fn (CardStatement $statement) => $statement->toArray())
                     ->all(),
             ])
             // A card with nothing outstanding is not worth a heading.
@@ -178,11 +247,14 @@ class TransactionController extends Controller
         // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
-        $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
+        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
 
+        // `sort` is the order AppTable leaves out of the URL, since the server applies it
+        // unasked.
         $meta = [
             'form' => 'transaction-form',
             'path' => '/transactions',
+            'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'desc'],
         ];
 
         return inertia('transaction', compact(
@@ -196,6 +268,9 @@ class TransactionController extends Controller
             'settlementOptions',
             'linked',
             'refusals',
+            'editLocks',
+            'directions',
+            'filterOptions',
             'typeOptions',
             'typeDefaults',
             'statusOptions',
@@ -203,8 +278,19 @@ class TransactionController extends Controller
         ));
     }
 
+    /** Whether a filter value is a calendar day, Y-m-d, and one that exists. */
+    private static function isDay(mixed $value): bool
+    {
+        return is_string($value)
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            && checkdate((int) substr($value, 5, 2), (int) substr($value, 8, 2), (int) substr($value, 0, 4));
+    }
+
     public function store(TransactionData $data)
     {
+        // Outside the try, for the reason given in update().
+        $data->guardNewChargePeriod(Account::with('meta')->find($data->account_id));
+
         // Two writes, so a failure between them must leave neither. As
         // AccountController::store().
         DB::beginTransaction();
@@ -249,6 +335,12 @@ class TransactionController extends Controller
             Account::with('meta')->find($data->account_id),
             $transaction
         );
+
+        // After the move guard, whose message is the better one when a charge changes
+        // card out of a paid statement.
+        $data->guardFigures($transaction);
+
+        $data->keepLinksOf($transaction);
 
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
@@ -443,7 +535,7 @@ class TransactionController extends Controller
                 'status' => TransactionStatus::Posted->value,
             ]);
 
-            // Written here, not through the DTO, which prohibits the field: the ids do
+            // Written here, not through the DTO, which drops the field: the ids do
             // not exist until both rows do. The transfer's bag carries no due_date, or a
             // bank would fall into a card's arithmetic.
             $payment->meta()->create([
@@ -453,6 +545,24 @@ class TransactionController extends Controller
             $transfer->meta()->create([
                 'meta' => ['paired_transaction_id' => $payment->id],
             ]);
+
+            // Which payment paid each charge, so a charge says so on its own row. Inside
+            // the write, so a settlement cannot exist with its charges unmarked. Merged,
+            // because the bag also holds the due_date the statement groups on and any
+            // card_amount it sums -- a blind write would drop the charge out of the very
+            // bill being paid.
+            $covered = Transaction::query()
+                ->with('meta')
+                ->where('account_id', $account->id)
+                ->where('type', TransactionType::Charge->value)
+                ->whereHas('meta', fn ($q) => $q->where('meta->due_date', $figures['due_date']))
+                ->get();
+
+            foreach ($covered as $charge) {
+                $charge->meta->update([
+                    'meta' => array_merge($charge->meta->meta->getArrayCopy(), ['settled_by' => $payment->id]),
+                ]);
+            }
 
             DB::commit();
         } catch (Exception $e) {
@@ -542,6 +652,13 @@ class TransactionController extends Controller
 
         try {
             foreach ($rows as $row) {
+                // A deleted payment reopens its statement, so the charges stop claiming
+                // it paid them. Left behind, the marker would name a row that no longer
+                // exists on charges that are owing again.
+                if ($row->type === TransactionType::Payment->value) {
+                    $this->forgetSettlement($row);
+                }
+
                 $row->meta()->delete();
                 $row->delete();
             }
@@ -562,6 +679,24 @@ class TransactionController extends Controller
         return back()->with('message', $period === null
             ? 'Card settlement deleted in full: 2 transactions'
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * Remove a payment's settled_by from every charge that names it.
+     *
+     * Found by the marker rather than by the payment's period, so a charge carrying it
+     * is cleared wherever it has since been filed.
+     */
+    private function forgetSettlement(Transaction $payment): void
+    {
+        $bags = Meta::query()
+            ->where('model_type', Transaction::class)
+            ->where('meta->settled_by', $payment->id)
+            ->get();
+
+        foreach ($bags as $bag) {
+            $bag->update(['meta' => Arr::except($bag->meta->getArrayCopy(), 'settled_by')]);
+        }
     }
 
     /**
@@ -641,6 +776,38 @@ class TransactionController extends Controller
         }
 
         return $refusals;
+    }
+
+    /**
+     * The figure locks for a page of rows, keyed by id, for the edit form.
+     *
+     * TransactionData::figureLock() decides, and update() asks it again, so the form
+     * and the refusal cannot disagree about which rows are fixed. A partner exists
+     * exactly when linkedCounterparts() found one, which is the question figureLock()
+     * asks of it.
+     *
+     * @param  Collection<int, Transaction>  $rows
+     * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
+     * @param  array<int, array<string, mixed>>  $linked
+     * @return array<int, array{fields: list<string>, message: string}>
+     */
+    private function editLocks(Collection $rows, array $cardPeriods, array $linked): array
+    {
+        $locks = [];
+
+        foreach ($rows as $row) {
+            $lock = TransactionData::figureLock(
+                $row,
+                $cardPeriods[$row->account_id] ?? null,
+                isset($linked[$row->id])
+            );
+
+            if ($lock !== null) {
+                $locks[$row->id] = Arr::only($lock, ['fields', 'message']);
+            }
+        }
+
+        return $locks;
     }
 
     /**

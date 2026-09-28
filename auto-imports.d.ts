@@ -169,6 +169,7 @@ declare global {
   const useDocumentVisibility: typeof import('@vueuse/core').useDocumentVisibility
   const useDraggable: typeof import('@vueuse/core').useDraggable
   const useDropZone: typeof import('@vueuse/core').useDropZone
+  const useDueBadge: typeof import('./resources/js/composables/due.js').useDueBadge
   const useEdit: typeof import('./resources/js/composables/form-helpers.js').useEdit
   const useElementBounding: typeof import('@vueuse/core').useElementBounding
   const useElementByPoint: typeof import('@vueuse/core').useElementByPoint
@@ -211,6 +212,7 @@ declare global {
   const useMemoize: typeof import('@vueuse/core').useMemoize
   const useMemory: typeof import('@vueuse/core').useMemory
   const useModel: typeof import('vue').useModel
+  const useMoney: typeof import('./resources/js/composables/money.js').useMoney
   const useMounted: typeof import('@vueuse/core').useMounted
   const useMouse: typeof import('@vueuse/core').useMouse
   const useMouseInElement: typeof import('@vueuse/core').useMouseInElement

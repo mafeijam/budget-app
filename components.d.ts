@@ -21,5 +21,6 @@ declare module 'vue' {
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']
     FormTransaction: typeof import('./resources/js/components/Form/FormTransaction.vue')['default']
     SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
+    TransactionFilters: typeof import('./resources/js/components/TransactionFilters.vue')['default']
   }
 }

@@ -2,10 +2,11 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'index');
+Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // Settling a card writes two rows -- a payment on the card and a transfer out of
 // the bank it is paid from -- so it is an action on the account rather than a

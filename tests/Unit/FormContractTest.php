@@ -79,15 +79,20 @@ class FormContractTest extends TestCase
         // and no control here could write that.
         'meta_data.due_date',
 
-        // What the account is called. The form picks the account by id; the name is
-        // the account's own, so a control for it would be a control the server
-        // overrules -- and the DTO prohibits it on any payload.
+        // What the account is called, and its currency. The form picks the account by
+        // id; both are the account's own, so a control for either would be a control
+        // the server overrules -- and the DTO overwrites them on any payload.
         'account_name',
+        'account_ccy',
 
-        // Written by TransactionController::settle() and prohibited on any payload,
+        // Written by TransactionController::settle() and dropped from any payload,
         // because it links the two rows of a settlement and only that method may
         // create the link. There is no control that could write it.
         'meta_data.paired_transaction_id',
+
+        // The payment that settled a charge's statement, written by settle() beside the
+        // pairing and for the same reason nothing on the form can write it.
+        'meta_data.settled_by',
     ];
 
     /**

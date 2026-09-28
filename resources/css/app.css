@@ -13,6 +13,51 @@
   height: calc(100vh - 238px);
 }
 
+/*
+  The app's surfaces, set once. A light grey ground so the white cards and tables read
+  as objects on it, and one radius and border colour for every card and table, so a
+  page built from both does not mix sharp and rounded corners.
+*/
+body {
+  background: #f4f6f9;
+}
+
+.app-page {
+  padding: 16px;
+}
+
+@media (min-width: 1024px) {
+  .app-page {
+    padding: 24px 32px;
+  }
+}
+
+.q-card,
+.q-table__container {
+  border-radius: 12px;
+}
+
+/* The table's own corners clip to the radius; its scrolling happens inside. */
+.q-table__container {
+  overflow: hidden;
+}
+
+.q-card--bordered,
+.q-table--bordered {
+  border-color: #e4e7ec;
+}
+
+/*
+  Every tooltip, here rather than on each: several carry a refusal, which is a sentence
+  with a way out rather than a label, and Quasar's default is one unwrapped line of
+  caption type. One rule, so a tooltip added later matches without being told to.
+*/
+.q-tooltip {
+  max-width: 320px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
 .sticky-table {
   min-height: 310px;
 }

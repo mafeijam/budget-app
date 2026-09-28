@@ -1,27 +1,24 @@
 <template>
   <q-layout view="hHh LpR fFf">
-    <q-header class="shadow-1 bg-blue-10">
-      <q-toolbar>
-        <q-btn dense flat round icon="menu" @click="show = !show" />
-        <q-toolbar-title>App</q-toolbar-title>
-        <q-space />
-        <q-btn dense flat round icon="add">
-          <q-menu :offset="[0, 6]">
-            <q-card style="width: 300px" class="shadow-1">
-              <q-card-section>menu</q-card-section>
-            </q-card>
-          </q-menu>
-        </q-btn>
+    <q-header bordered class="bg-white text-grey-9">
+      <q-toolbar class="q-px-md">
+        <q-btn dense flat round icon="menu" color="grey-8" @click="show = !show" />
+        <q-avatar size="32px" color="blue-10" text-color="white" icon="savings" class="q-ml-sm" />
+        <q-toolbar-title class="text-weight-bold text-blue-10">Budget</q-toolbar-title>
       </q-toolbar>
     </q-header>
 
-    <q-drawer v-model="show" :width="200" bordered class="bg-grey-1" show-if-above>
-      <q-list v-for="menu in menus" :key="menu.label" class="text-grey-7" @click="menu.to">
+    <q-drawer v-model="show" :width="220" bordered class="bg-white" show-if-above>
+      <q-list padding class="q-px-sm text-grey-8">
         <q-item
+          v-for="menu in menus"
+          :key="menu.label"
           v-ripple
           clickable
           :active="menu.active"
-          active-class="text-weight-bold text-blue-10"
+          class="rounded-borders q-mb-xs"
+          active-class="bg-blue-1 text-blue-10 text-weight-bold"
+          @click="menu.to"
         >
           <q-item-section avatar>
             <q-icon :name="menu.icon" />
@@ -32,7 +29,7 @@
     </q-drawer>
 
     <q-page-container>
-      <q-page class="q-pa-md text-grey-8">
+      <q-page class="app-page text-grey-8">
         <slot />
       </q-page>
     </q-page-container>

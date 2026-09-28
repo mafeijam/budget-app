@@ -6,13 +6,49 @@
 
     <AppTable :rows="data.data" :columns="columns" title="Transaction">
       <template #top>
-        <div class="row full-width">
-          <div class="text-h6 text-weight-medium">Transactions</div>
-          <q-space />
-          <div>
+        <TransactionFilters title="Transactions">
+          <template #actions>
             <CreateBtn />
-          </div>
-        </div>
+          </template>
+        </TransactionFilters>
+      </template>
+
+      <template #body-cell-type="cell">
+        <q-td :props="cell">
+          <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
+          {{ cell.value }}
+        </q-td>
+      </template>
+
+      <!--
+        The figure, signed and coloured by which way it moves the account's balance, with
+        its currency beside it. A pending row is greyed, since it moves nothing yet.
+      -->
+      <template #body-cell-amount="cell">
+        <q-td :props="cell" :class="amountClass(cell.row)">
+          <span class="text-weight-medium">{{ signed(cell.row) }}</span>
+          <span class="text-caption text-grey-7 q-ml-xs">{{ cell.row.ccy }}</span>
+        </q-td>
+      </template>
+
+      <template #body-cell-status="cell">
+        <q-td :props="cell">
+          <q-badge v-bind="statusBadges[cell.value] ?? {}" :label="cell.value" />
+        </q-td>
+      </template>
+
+      <template #body-cell-metaData="cell">
+        <q-td :props="cell">
+          <q-chip
+            v-for="chip in metaChips(cell.row)"
+            :key="chip.label"
+            dense
+            square
+            :color="chip.color"
+            :text-color="chip.textColor"
+            :label="chip.label"
+          />
+        </q-td>
       </template>
 
       <template #body-cell-action="cell">
@@ -40,20 +76,103 @@ const props = defineProps({
 })
 
 const pagination = usePagination()
+const formatMoney = useMoney()
 const formatDate = useHongKongTime()
 
-// The same shape as the account list's Meta column: meta_data arrives as the DTO, so
-// every declared key is present whether or not this row uses it. Back to null rather
-// than {} so a row with nothing stored reads as having nothing.
-const stripNulls = meta => {
-  const kept = Object.fromEntries(Object.entries(meta ?? {}).filter(([, value]) => value !== null))
+const typeIcons = {
+  expense: 'shopping_cart',
+  income: 'savings',
+  transfer: 'swap_horiz',
+  charge: 'credit_card',
+  payment: 'task_alt',
+  buy: 'trending_up',
+  sell: 'trending_down',
+  dividend: 'paid',
+}
 
-  return Object.keys(kept).length ? kept : null
+const statusBadges = {
+  posted: { color: 'green-1', textColor: 'green-9' },
+  pending: { color: 'amber-2', textColor: 'amber-10' },
+  settled: { color: 'blue-1', textColor: 'blue-9' },
+}
+
+// 1, -1 or 0 from the server's movesBalanceOn(). Zero for a trade, which moves no
+// balance, and for a row the server did not send one for.
+const direction = row => usePage().props.directions?.[row.id] ?? 0
+
+const signed = row => {
+  const figure = formatMoney(row.amount)
+  const sign = { 1: '+', '-1': '−' }[direction(row)] ?? ''
+
+  return `${sign}${figure}`
+}
+
+const amountClass = row => {
+  if (row.status === 'pending') return 'text-grey-6'
+
+  return { 1: 'text-positive', '-1': 'text-negative' }[direction(row)] ?? 'text-grey-9'
+}
+
+// The bag in words, one chip per fact, rather than the JSON it is stored as, coloured
+// by kind so the settled rows stand out. Keys this does not know fall through as
+// `key: value`, so a field added to the bag shows up rough rather than not at all.
+const metaChips = row => {
+  const meta = row.meta_data ?? {}
+  const chips = []
+  const plain = label => chips.push({ label, color: 'grey-2', textColor: 'grey-9' })
+
+  if (meta.due_date) plain(`Due ${meta.due_date}`)
+  if (meta.settled_by) chips.push({ label: 'Paid', color: 'green-1', textColor: 'green-9' })
+
+  if (meta.card_amount) {
+    const figure = formatMoney(meta.card_amount)
+
+    plain(
+      row.account_ccy
+        ? `${figure} ${row.account_ccy} on the card`
+        : `${figure} in the card's currency`,
+    )
+  }
+
+  if (meta.paired_transaction_id) {
+    // The other half, as the delete confirmation names it. Absent when it is gone.
+    const other = usePage().props.linked?.[row.id]
+
+    chips.push({
+      label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
+      color: 'blue-1',
+      textColor: 'blue-9',
+    })
+  }
+
+  if (meta.symbol) {
+    const fees = meta.fees ? `, fees ${meta.fees}` : ''
+
+    plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+  }
+
+  const known = [
+    'due_date',
+    'settled_by',
+    'card_amount',
+    'paired_transaction_id',
+    'symbol',
+    'quantity',
+    'unit_price',
+    'fees',
+  ]
+
+  Object.entries(meta)
+    .filter(([key, value]) => value !== null && !known.includes(key))
+    .forEach(([key, value]) => plain(`${key}: ${value}`))
+
+  return chips
 }
 
 const columns = reactive([
   {
     name: 'date',
+    width: '110px',
     label: 'Date',
     field: 'date',
     align: 'left',
@@ -61,6 +180,7 @@ const columns = reactive([
   },
   {
     name: 'account',
+    width: '130px',
     label: 'Account',
     // Whose money the row is. Without it a table of cash, card and trade rows gives a
     // number in the corner and nothing else to tell them apart.
@@ -70,40 +190,51 @@ const columns = reactive([
     // through the relation.
     field: 'account_name',
     align: 'left',
+    classes: 'text-weight-medium text-grey-9',
     sortable: false,
   },
   {
     name: 'type',
+    width: '120px',
     label: 'Type',
     field: 'type',
     align: 'left',
     sortable: true,
   },
   {
+    name: 'category',
+    width: '130px',
+    label: 'Category',
+    // By name, from the categories the form already receives -- every one, so a row's
+    // category always resolves. Not sortable: the list orders against the transactions
+    // table, and sorting by category_id would order by when a category was created.
+    field: row => props.options?.categories?.find(c => c.value === row.category_id)?.label ?? '',
+    align: 'left',
+    sortable: false,
+  },
+  {
     name: 'description',
+    width: '220px',
     label: 'Description',
     field: 'description',
     align: 'left',
+    classes: 'text-grey-9',
     sortable: true,
   },
   {
     name: 'amount',
+    width: '160px',
     label: 'Amount',
     // Money arrives as a string precisely so a float never rounds it on the way here.
-    // Formatted for display and nothing else.
+    // Rendered by the body-cell-amount slot, with the currency beside it rather than in
+    // a column of its own.
     field: 'amount',
     align: 'right',
     sortable: true,
   },
   {
-    name: 'ccy',
-    label: 'CCY',
-    field: 'ccy',
-    align: 'left',
-    sortable: true,
-  },
-  {
     name: 'status',
+    width: '100px',
     label: 'Status',
     field: 'status',
     align: 'left',
@@ -111,30 +242,29 @@ const columns = reactive([
   },
   {
     name: 'metaData',
-    label: 'Meta',
-    // Which keys appear is the whole content of this column: a card charge shows the
-    // due date the server derived, or the card-currency figure it was given; a cash
-    // expense shows nothing.
-    //
-    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is the
-    // four-character string "null" and the cell would read as though the row carried a
-    // value called null.
-    field: val => {
-      const kept = stripNulls(val.meta_data)
-
-      return kept ? JSON.stringify(kept) : ''
-    },
+    width: '300px',
+    label: 'Details',
+    // Rendered by the body-cell-metaData slot above. The field is what the table sorts
+    // and filters on, so it is the same words joined.
+    field: row =>
+      metaChips(row)
+        .map(chip => chip.label)
+        .join(', '),
+    align: 'left',
     sortable: false,
   },
   {
     name: 'created_at',
+    width: '170px',
     label: 'Created At',
     field: 'created_at',
     format: val => formatDate(val),
+    classes: 'text-caption text-grey-7',
     sortable: true,
   },
   {
     name: 'action',
+    width: '100px',
     label: 'Action',
     align: 'right',
   },

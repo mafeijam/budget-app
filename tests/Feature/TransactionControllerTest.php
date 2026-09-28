@@ -11,6 +11,7 @@ use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -296,6 +297,26 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_counts_the_days_to_each_due_date_from_hong_kong_today(): void
+    {
+        // 16:30 UTC on 8 Feb is already 9 Feb in Hong Kong, the day the statement falls
+        // due -- the hours in which a browser's own date would say one day to go.
+        $this->travelTo(Carbon::parse('2026-02-08 16:30:00', 'UTC'));
+
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements.0.periods.0.due_date', '2026-02-09')
+            ->where('statements.0.periods.0.days_until_due', 0)
+        );
+
+        $this->travelTo(Carbon::parse('2026-02-12 12:00:00', 'Asia/Hong_Kong'));
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements.0.periods.0.days_until_due', -3)
+        );
+    }
+
     /**
      * A closed card still owes, so its periods still show.
      *
@@ -539,6 +560,66 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_still_renders_rows_an_account_edit_has_made_invalid(): void
+    {
+        // A USD charge on an HKD card carries its card-currency figure. Moving the card
+        // to USD afterwards makes that figure one the DTO would refuse on a write -- and
+        // when the guards also ran on a read, the whole page answered with a redirect
+        // instead of the list.
+        $this->post('/transactions', $this->chargePayload([
+            'ccy' => 'USD',
+            'amount' => '100.0000',
+            'meta_data' => ['card_amount' => '780.0000'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->card->update(['ccy' => 'USD']);
+
+        $this->get('/transactions')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->has('data.data', 1)
+            ->where('data.data.0.meta_data.card_amount', '780.0000')
+            ->where('data.data.0.account_name', 'Card')
+            ->where('data.data.0.account_ccy', 'USD')
+        );
+    }
+
+    public function test_index_shows_a_stored_row_as_stored(): void
+    {
+        // A charge recorded before its card had terms has no period. Deriving one on
+        // the way out would show a statement the panel does not group it under.
+        Transaction::create([
+            'account_id' => $this->card->id,
+            'category_id' => $this->category,
+            'date' => '2026-01-01',
+            'type' => 'charge',
+            'description' => 'Bare',
+            'amount' => '30.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data.0.description', 'Bare')
+            ->where('data.data.0.meta_data', null)
+        );
+    }
+
+    public function test_index_says_which_way_each_row_moves_its_balance(): void
+    {
+        // Money out of a bank and a charge on a card both lower the balance; a trade
+        // moves none. The same answers movesBalanceOn() gives, since that is the source.
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->expense(['type' => 'income', 'category_id' => null]))
+            ->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->tradePayload())->assertSessionHasNoErrors();
+
+        $ids = Transaction::orderBy('id')->pluck('id');
+
+        $this->get('/transactions?per_page=10')->assertInertia(fn (Assert $page) => $page
+            ->where('directions', [$ids[0] => -1, $ids[1] => -1, $ids[2] => 1, $ids[3] => 0])
+        );
+    }
+
     public function test_a_supplied_account_name_does_not_rename_the_account(): void
     {
         // The name is derived from the account, so a payload carrying one is inert --
@@ -586,6 +667,48 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_lists_by_the_day_the_money_moved_newest_first(): void
+    {
+        // Entered out of order: the late entry belongs among its own week's rows, not at
+        // the top because it was typed in last.
+        $this->post('/transactions', $this->expense(['date' => '2026-03-01', 'description' => 'March']));
+        $this->post('/transactions', $this->expense(['date' => '2026-01-01', 'description' => 'January']));
+        $this->post('/transactions', $this->expense(['date' => '2026-02-01', 'description' => 'February']));
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data', fn ($rows) => $rows->pluck('description')->all() === ['March', 'February', 'January'])
+            ->where('params.sort', 'date')
+            ->where('params.dir', 'desc')
+            ->where('meta.sort', ['by' => 'date', 'dir' => 'desc'])
+        );
+    }
+
+    public function test_rows_sharing_a_date_keep_one_order_across_pages(): void
+    {
+        // Six rows on one day over pages of five: every row on exactly one page.
+        foreach (range(1, 6) as $n) {
+            $this->post('/transactions', $this->expense(['description' => "Row {$n}"]))->assertSessionHasNoErrors();
+        }
+
+        $seen = collect([1, 2])->flatMap(fn (int $page) => $this->get("/transactions?page={$page}")
+            ->viewData('page')['props']['data']['data'])
+            ->pluck('description');
+
+        $this->assertSame(['Row 6', 'Row 5', 'Row 4', 'Row 3', 'Row 2', 'Row 1'], $seen->all());
+    }
+
+    public function test_an_unknown_sort_falls_back_to_the_date(): void
+    {
+        $this->post('/transactions', $this->expense(['date' => '2026-01-01', 'description' => 'First']));
+        $this->post('/transactions', $this->expense(['date' => '2026-03-01', 'description' => 'Third']));
+
+        $this->get('/transactions?sort=account_id&dir=sideways')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data.0.description', 'Third')
+            ->where('params.sort', 'date')
+            ->where('params.dir', 'desc')
+        );
+    }
+
     public function test_index_seeds_the_form_with_todays_date(): void
     {
         // A new transaction is almost always dated today, and an empty calendar is a
@@ -597,6 +720,15 @@ class TransactionControllerTest extends TestCase
         // the app formats with.
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
             ->where('formEmpty.date', today()->toDateString())
+        );
+    }
+
+    public function test_index_seeds_the_form_as_posted(): void
+    {
+        // What the DTO defaults an absent status to, so the picker shows the value the
+        // save will store rather than a blank.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('formEmpty.status', TransactionStatus::Posted->value)
         );
     }
 
@@ -911,7 +1043,7 @@ class TransactionControllerTest extends TestCase
         // Asserted by what DISAPPEARS rather than what arrives, because a merge keeps
         // the old key and a replace drops it. That needs a field a client may write,
         // which for a charge leaves only card_amount: due_date is derived,
-        // paired_transaction_id is prohibited, and merchant is gone.
+        // paired_transaction_id is settle()'s alone, and merchant is gone.
         $transaction = $this->storedCharge();
 
         $this->put("/transactions/{$transaction->id}", $this->chargePayload([
@@ -980,118 +1112,6 @@ class TransactionControllerTest extends TestCase
         );
 
         $this->assertSame('120.0000', $periods->firstWhere('dueDate', '2026-03-12')?->owed());
-    }
-
-    public function test_a_charge_in_a_settled_statement_cannot_be_re_dated(): void
-    {
-        // A settled period is a bill that has been paid, and its figures are the record
-        // of that bill. Moving the charge out would leave a credit against money already
-        // handed over, which this app can represent as nothing but a corrupted
-        // statement. There is no un-settling either, so the save is refused and the row
-        // is left exactly as it was -- including its date, which is the field the error
-        // is keyed on and the one the user moved.
-        $transaction = $this->storedCharge();
-
-        $this->settleTheStatementDue('2026-02-09', '120.0000');
-
-        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
-            'date' => '2026-01-26',
-            'meta_data' => ['due_date' => '2026-02-09'],
-        ]))->assertSessionHasErrors('date');
-
-        $fresh = $transaction->fresh();
-
-        $this->assertSame('2026-01-01', $fresh->date, 'The rejected date was written anyway.');
-        $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
-        $this->assertTrue(
-            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
-            'The statement the charge belongs to no longer balances.'
-        );
-    }
-
-    public function test_a_charge_cannot_be_moved_into_a_settled_statement(): void
-    {
-        // The other direction, and the one a guard written only for the period being
-        // left would miss: the charge stays in an open statement and is re-dated across
-        // a boundary into one that has been paid, which makes a settled bill owing
-        // money again.
-        $this->storedCharge();
-
-        // A second charge a statement later: 1 Mar is billed by the statement closing on
-        // 25 Mar, so it falls due on 9 Apr.
-        $this->post('/transactions', $this->chargePayload([
-            'date' => '2026-03-01',
-            'description' => 'Books',
-        ]))->assertSessionHasNoErrors();
-
-        $this->settleTheStatementDue('2026-04-09', '120.0000');
-
-        $charge = Transaction::where('description', 'Cafe')->firstOrFail();
-
-        $this->put("/transactions/{$charge->id}", $this->chargePayload([
-            'date' => '2026-03-15',
-            'meta_data' => ['due_date' => '2026-02-09'],
-        ]))->assertSessionHasErrors('date');
-
-        $this->assertSame('2026-01-01', $charge->fresh()->date);
-        $this->assertSame('2026-02-09', $charge->fresh()->meta_data['due_date']);
-    }
-
-    public function test_editing_a_charge_without_moving_it_leaves_its_statement_alone(): void
-    {
-        // The counterpart to the refusal above, and the reason the re-derivation is
-        // gated on the date and the account having moved. A charge's statement is a
-        // fact about the day it was made, so fixing a description has said nothing
-        // about the period -- and a save that refused to touch the description of a
-        // charge because its statement happened to be settled would be refusing an
-        // edit the user never framed as a move.
-        $transaction = $this->storedCharge();
-
-        $this->settleTheStatementDue('2026-02-09', '120.0000');
-
-        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
-            'description' => 'Cafe, corrected',
-            'meta_data' => ['due_date' => '2026-02-09'],
-        ]))->assertSessionHasNoErrors();
-
-        $fresh = $transaction->fresh();
-
-        $this->assertSame('Cafe, corrected', $fresh->description);
-        $this->assertSame('2026-02-09', $fresh->meta_data['due_date']);
-        $this->assertTrue(
-            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
-            'Editing a description moved the charge out of the statement it was in.'
-        );
-    }
-
-    public function test_editing_a_payment_keeps_the_statement_it_settles(): void
-    {
-        // The due date a payment carries is the one that is not derivable from its own
-        // date: it names the bill that was paid, which is why settle() writes it and why
-        // nothing recomputes it. A payment the form round-trips arrives with that period
-        // in its bag, and dropping it would reopen a statement the user has already
-        // discharged, leaving the panel owing what was paid a moment ago.
-        $this->storedCharge();
-        $this->settleTheStatementDue('2026-02-09', '120.0000');
-
-        $payment = Transaction::where('type', 'payment')->firstOrFail();
-
-        $this->put("/transactions/{$payment->id}", [
-            'account_id' => $this->card->id,
-            'category_id' => null,
-            'date' => '2026-02-09',
-            'type' => 'payment',
-            'description' => 'Statement paid',
-            'amount' => '120.0000',
-            'ccy' => 'HKD',
-            'meta_data' => ['due_date' => '2026-02-09'],
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame('2026-02-09', $payment->fresh()->meta_data['due_date']);
-        $this->assertTrue(
-            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
-            'Editing a payment reopened the statement it settled.'
-        );
     }
 
     public function test_update_deletes_the_bag_when_the_new_type_has_none(): void
@@ -1222,112 +1242,9 @@ class TransactionControllerTest extends TestCase
         );
     }
 
-    public function test_index_says_which_rows_cannot_be_deleted_and_why(): void
-    {
-        // The button is disabled from this, so the sentence has to be the one destroy()
-        // would have refused with -- the browser displays it rather than composing its
-        // own, and a charge in a settled statement is the only thing on this list that
-        // carries a reason.
-        $this->card->meta()->update(['meta' => [
-            'term_days' => 15,
-            'statement_day' => 25,
-            'settlement_account_id' => $this->bank->id,
-        ]]);
-
-        $charge = $this->storedCharge();
-
-        $this->post("/accounts/{$this->card->id}/settle", [
-            'due_date' => '2026-02-09',
-            'owed' => '120.0000',
-        ])->assertSessionHasNoErrors();
-
-        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
-
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('refusals', [$charge->id => 'Charge [Cafe] is in the statement due 2026-02-09, which has been settled, and cannot be '
-                    .'deleted on its own. Delete the payment that settled it first.',
-            ])
-        );
-    }
-
     // ---------------------------------------------------------------------
     // Deleting
     // ---------------------------------------------------------------------
-
-    public function test_a_charge_in_a_settled_statement_cannot_be_deleted(): void
-    {
-        // A settled period is the record of a bill that was paid. Deleting one of the
-        // charges on it leaves the payment that closed it explaining less than the
-        // money that left the bank, or nothing at all -- a period with no charges reads
-        // as a credit, and the panel offers a settle button the server refuses.
-        $charge = $this->storedCharge();
-
-        $this->settleTheStatementDue('2026-02-09', '120.0000');
-
-        $this->delete("/transactions/{$charge->id}")
-            ->assertSessionHas(
-                'message',
-                'Charge [Cafe] is in the statement due 2026-02-09, which has been settled, and cannot be '
-                    .'deleted on its own. Delete the payment that settled it first.'
-            );
-
-        $this->assertSame('2026-01-01', $charge->fresh()->date, 'The charge was deleted anyway.');
-        $this->assertSame('2026-02-09', $charge->fresh()->meta_data['due_date']);
-        $this->assertTrue(
-            CardStatement::forAccount($this->card)->sole()->isSettled(),
-            'The statement no longer balances.'
-        );
-    }
-
-    public function test_deleting_the_payment_first_makes_the_charge_deletable(): void
-    {
-        // The way out, and the reason the refusal is allowed to exist. A guard with no
-        // exit makes a mistake in a paid statement uncorrectable for good; this is
-        // undo the settlement, then fix the charge, one row at a time. Nothing else
-        // would make a second charge on the same period deletable either.
-        $charge = $this->storedCharge();
-        $this->settleTheStatementDue('2026-02-09', '120.0000');
-
-        $this->delete('/transactions/'.Transaction::where('type', 'payment')->value('id'))
-            ->assertSessionHasNoErrors();
-
-        $this->delete("/transactions/{$charge->id}")->assertSessionHasNoErrors();
-
-        $this->assertDatabaseCount('transactions', 0);
-        $this->assertSame(0, CardStatement::forAccount($this->card)->count());
-    }
-
-    public function test_a_charge_in_an_open_statement_deletes_normally(): void
-    {
-        // The other half, so the guard is not refusing every charge on a card.
-        $charge = $this->storedCharge();
-
-        $this->delete("/transactions/{$charge->id}")
-            ->assertSessionHas('message', 'Transaction [charge] deleted');
-    }
-
-    public function test_a_partly_paid_statement_still_lets_its_charges_go(): void
-    {
-        // Settled, not "has a payment in it". A period with 120 of charges and 50 paid
-        // still owes 70, and the user is still going to pay the rest, so refusing to
-        // correct a charge in it would be refusing a statement that is not closed.
-        $charge = $this->storedCharge();
-
-        $this->post('/transactions', [
-            'account_id' => $this->card->id,
-            'category_id' => null,
-            'date' => '2026-01-15',
-            'type' => 'payment',
-            'description' => 'Part payment',
-            'amount' => '50.0000',
-            'ccy' => 'HKD',
-            'meta_data' => ['due_date' => '2026-02-09'],
-        ])->assertSessionHasNoErrors();
-
-        $this->delete("/transactions/{$charge->id}")->assertSessionHasNoErrors();
-
-        $this->assertDatabaseMissing('transactions', ['id' => $charge->id]);
-    }
 
     public function test_destroy_removes_the_transaction_and_its_bag(): void
     {

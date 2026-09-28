@@ -23,30 +23,38 @@
           argument is about a value the period decides; the day the money moved is the
           user's own fact about their life, which is why it gets a control.
         -->
-        <div class="text-subtitle2 text-weight-medium">
-          {{ group.card.name }} · statement due {{ formatDate(period.due_date) }}
+        <!-- Which bill, and what it comes to: the figure the button will pay, largest. -->
+        <div class="row items-center no-wrap">
+          <q-icon name="credit_card" size="md" color="grey-6" class="q-mr-md" />
+          <div>
+            <div class="text-subtitle1 text-weight-medium">{{ group.card.name }}</div>
+            <div class="text-caption text-grey-7">
+              Statement due {{ formatDate(period.due_date) }}
+            </div>
+          </div>
+          <q-space />
+          <div class="text-right">
+            <div class="text-caption text-grey-7">Owes</div>
+            <div class="text-h5 text-weight-bold text-negative">
+              {{ money(period.owed) }}
+              <span class="text-subtitle2 text-grey-7">{{ group.card.ccy }}</span>
+            </div>
+          </div>
         </div>
 
-        <q-markup-table dense flat class="q-my-sm">
-          <tbody>
-            <tr>
-              <td>Charges</td>
-              <td class="text-right">
-                {{ period.charge_count }} · {{ money(period.charged) }} {{ group.card.ccy }}
-              </td>
-            </tr>
-            <tr>
-              <td>Already paid</td>
-              <td class="text-right">
-                {{ period.payment_count }} · {{ money(period.paid) }} {{ group.card.ccy }}
-              </td>
-            </tr>
-            <tr class="text-weight-medium">
-              <td>Owes</td>
-              <td class="text-right">{{ money(period.owed) }} {{ group.card.ccy }}</td>
-            </tr>
-          </tbody>
-        </q-markup-table>
+        <!-- How the figure is made up, in two tiles, so the headline can be checked. -->
+        <div class="row q-col-gutter-sm q-mb-sm">
+          <div v-for="tile in tiles" :key="tile.label" class="col-6">
+            <div class="bg-grey-2 rounded-borders q-pa-sm">
+              <div class="text-caption text-grey-7">{{ tile.label }}</div>
+              <div class="text-body1 text-weight-medium">
+                {{ money(tile.amount) }}
+                <span class="text-caption text-grey-7">{{ group.card.ccy }}</span>
+              </div>
+              <div class="text-caption text-grey-6">{{ tile.count }}</div>
+            </div>
+          </div>
+        </div>
 
         <!--
           The same control the transaction form uses, and duplicated rather than
@@ -62,47 +70,55 @@
           remembers the answer, so this is a choice with a consequence rather than a
           field, and the sentence below says what that consequence is.
         -->
-        <q-select
-          v-model="bankId"
-          :options="options"
-          class="q-mb-sm"
-          label="Paid from"
-          filled
-          emit-value
-          map-options
-          :hint="bankHint"
-          :error="!!bankError"
-          :error-message="bankError"
-        >
-          <template #no-option>
-            <q-item>
-              <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+        <!--
+          Side by side, the two facts about the payment the user supplies; stacked on a
+          narrow screen. bottom-slots on the date so it reserves the same space under it
+          as the picker's hint does, and the two fields line up.
+        -->
+        <div class="row q-col-gutter-sm">
+          <q-select
+            v-model="bankId"
+            :options="options"
+            class="col-12 col-sm-6"
+            label="Paid from"
+            filled
+            emit-value
+            map-options
+            :hint="bankHint"
+            :error="!!bankError"
+            :error-message="bankError"
+          >
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
 
-        <q-input
-          v-model="paidOn"
-          class="q-mb-sm"
-          label="Paid on"
-          filled
-          :error="!!fieldError"
-          :error-message="fieldError"
-        >
-          <template #append>
-            <q-btn flat dense icon="event" rounded>
-              <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
-                <q-date
-                  :model-value="paidOn"
-                  mask="YYYY-MM-DD"
-                  minimal
-                  color="green-7"
-                  @update:model-value="pickDate"
-                />
-              </q-menu>
-            </q-btn>
-          </template>
-        </q-input>
+          <q-input
+            v-model="paidOn"
+            class="col-12 col-sm-6"
+            label="Paid on"
+            filled
+            bottom-slots
+            :error="!!fieldError"
+            :error-message="fieldError"
+          >
+            <template #append>
+              <q-btn flat dense icon="event" rounded>
+                <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+                  <q-date
+                    :model-value="paidOn"
+                    mask="YYYY-MM-DD"
+                    minimal
+                    color="green-7"
+                    @update:model-value="pickDate"
+                  />
+                </q-menu>
+              </q-btn>
+            </template>
+          </q-input>
+        </div>
 
         <!--
           The consequence the figure above does not show: settling writes a second row
@@ -112,13 +128,16 @@
           implying the transfer happened whenever, and the account is named as chosen so
           the sentence stays true while the picker is being used.
         -->
-        <div class="bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
-          This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
-          <template v-if="chosenName">
-            and a transfer of the same amount out of {{ chosenName }}.
-            <template v-if="changedBank">The card will be paid from there from now on.</template>
-          </template>
-          <template v-else>, and no account has been chosen to pay it from.</template>
+        <div class="row no-wrap bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
+          <q-icon name="info" size="xs" class="q-mr-sm q-mt-xs" />
+          <div>
+            This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
+            <template v-if="chosenName">
+              and a transfer of the same amount out of {{ chosenName }}.
+              <template v-if="changedBank">The card will be paid from there from now on.</template>
+            </template>
+            <template v-else>, and no account has been chosen to pay it from.</template>
+          </div>
         </div>
 
         <!--
@@ -127,8 +146,12 @@
           open turns into a message and a second look, not a payment the user did not
           agree to.
         -->
-        <div v-if="error" class="bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md">
-          {{ error }}
+        <div
+          v-if="error"
+          class="row no-wrap bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md"
+        >
+          <q-icon name="error_outline" size="xs" class="q-mr-sm q-mt-xs" />
+          <div>{{ error }}</div>
         </div>
       </q-card-section>
 
@@ -232,14 +255,28 @@ const pickDate = value => {
 // vite.config.js, and there is no useRouter to fall back to -- which fails at setup with
 // a ReferenceError and leaves the button inert.
 
-// Rounded on the string rather than through a Number, for the reason the panel gives.
-const money = value => {
-  if (value === null || value === undefined) return ''
+// Rounded as digits, never through a Number -- see money.js. The copy that lived here
+// truncated rather than rounded, so 0.0050 owed printed as 0.00.
+const money = useMoney()
 
-  const [whole, places = ''] = String(value).split('.')
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
-  return `${whole}.${places.padEnd(4, '0').slice(0, 2)}`
-}
+const tiles = computed(() =>
+  props.period
+    ? [
+        {
+          label: 'Charges',
+          amount: props.period.charged,
+          count: count(props.period.charge_count, 'charge'),
+        },
+        {
+          label: 'Already paid',
+          amount: props.period.paid,
+          count: count(props.period.payment_count, 'payment'),
+        },
+      ]
+    : [],
+)
 
 // Disabled rather than hidden, with the reason on the control, so the period still shows
 // what it owes. An account must be chosen: there is nothing to write the transfer to
