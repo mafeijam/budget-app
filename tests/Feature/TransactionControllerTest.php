@@ -11,6 +11,7 @@ use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -293,6 +294,26 @@ class TransactionControllerTest extends TestCase
             ->where('statements.0.periods.0.paid', '0.0000')
             ->where('statements.0.periods.0.owed', '120.0000')
             ->where('statements.0.periods.0.pending_count', 0)
+        );
+    }
+
+    public function test_index_counts_the_days_to_each_due_date_from_hong_kong_today(): void
+    {
+        // 16:30 UTC on 8 Feb is already 9 Feb in Hong Kong, the day the statement falls
+        // due -- the hours in which a browser's own date would say one day to go.
+        $this->travelTo(Carbon::parse('2026-02-08 16:30:00', 'UTC'));
+
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements.0.periods.0.due_date', '2026-02-09')
+            ->where('statements.0.periods.0.days_until_due', 0)
+        );
+
+        $this->travelTo(Carbon::parse('2026-02-12 12:00:00', 'Asia/Hong_Kong'));
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements.0.periods.0.days_until_due', -3)
         );
     }
 

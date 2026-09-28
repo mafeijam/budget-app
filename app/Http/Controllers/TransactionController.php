@@ -14,6 +14,7 @@ use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -177,6 +178,10 @@ class TransactionController extends Controller
                         'charged' => $statement->charged,
                         'paid' => $statement->paid,
                         'owed' => $statement->owed(),
+                        // Counted here from today(), which is Asia/Hong_Kong, and not in
+                        // the browser, whose date differs from it for six hours a day --
+                        // a statement due today would read as due tomorrow or overdue.
+                        'days_until_due' => (int) today()->diffInDays(Carbon::parse($statement->dueDate), false),
                     ])
                     ->all(),
             ])
