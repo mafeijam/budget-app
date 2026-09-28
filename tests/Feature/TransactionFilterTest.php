@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -175,6 +176,103 @@ class TransactionFilterTest extends TestCase
         );
     }
 
+    public function test_it_filters_to_the_charges_a_card_still_owes_for(): void
+    {
+        // The bank's rows are not charges, and Books is listed although it is pending:
+        // the period owes 120.00 whatever is in it, and a pending charge is the panel's
+        // business rather than this filter's.
+        $this->assertListed(['filter' => ['unpaid' => '1']], ['Books', 'Coffee, tea']);
+    }
+
+    public function test_a_settled_period_leaves_nothing_unpaid(): void
+    {
+        // A period of its own, with nothing pending in it, since settle() refuses a
+        // period the issuer has not finished billing.
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-02-10',
+            'description' => 'Flight',
+            'amount' => '50.0000',
+        ]))->assertSessionHasNoErrors();
+
+        $this->settle(['due_date' => '2026-03-12', 'owed' => '50.0000'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertListed(['filter' => ['unpaid' => '1']], ['Books', 'Coffee, tea']);
+        // The charge is still a charge, so an empty list is the filter's doing and not
+        // the row having gone missing.
+        $this->assertListed(['filter' => ['type' => 'charge']], ['Flight', 'Books', 'Coffee, tea']);
+    }
+
+    public function test_a_card_that_has_paid_owes_nothing_for_another_cards_period(): void
+    {
+        $other = Account::create(['name' => 'Other card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        $other->meta()->create([
+            'meta' => ['term_days' => 15, 'statement_day' => 25, 'settlement_account_id' => $this->bank->id],
+        ]);
+
+        // The same day as Coffee, tea, so both cards' charges are filed under
+        // 2026-02-09 and the two are told apart by the card alone.
+        $this->chargeOn($other, '2026-01-05', '70.0000');
+
+        $this->post("/accounts/{$other->id}/settle", ['due_date' => self::PERIOD, 'owed' => '70.0000'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertListed(['filter' => ['unpaid' => '1']], ['Books', 'Coffee, tea']);
+        // The charge is there and still a charge; the payment that settled it is a
+        // charge's counterpart and is not owed for either.
+        $this->assertListed(
+            ['filter' => ['account_id' => $other->id, 'type' => 'charge']],
+            ['Cafe']
+        );
+    }
+
+    public function test_a_period_holding_only_a_pending_charge_owes_nothing_yet(): void
+    {
+        // It is a bill once the charge posts, and until then it totals nothing -- which
+        // is why the panel shows no such period and settle() refuses it. Answering from
+        // isSettled() says the same thing instead of having its own idea of paid.
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-02-10',
+            'description' => 'Groceries',
+            'status' => 'pending',
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertListed(['filter' => ['unpaid' => '1']], ['Books', 'Coffee, tea']);
+        $this->assertListed(['filter' => ['type' => 'charge']], ['Groceries', 'Books', 'Coffee, tea']);
+    }
+
+    public function test_nothing_is_listed_when_every_period_is_settled(): void
+    {
+        // The pending charge is the one thing stopping the period being settled, and
+        // settle() refuses a period with pending rows in it, so it goes. Written the
+        // way destroy() does it, bag and row.
+        $pending = Transaction::where('description', 'Books')->firstOrFail();
+        $pending->meta()->delete();
+        $pending->delete();
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])
+            ->assertSessionHasNoErrors();
+
+        // An empty list, and not the whole one: a branch with no periods in it adds no
+        // constraint, so the filter would hand back everything and look like it had
+        // done nothing.
+        $this->assertListed(['filter' => ['unpaid' => '1']], []);
+        $this->assertListed(['filter' => ['type' => 'charge']], ['Coffee, tea']);
+    }
+
+    public function test_a_value_that_does_not_say_yes_filters_nothing(): void
+    {
+        $this->assertListed(['filter' => ['unpaid' => '0']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+    }
+
+    public function test_the_unpaid_filter_comes_back_so_the_page_can_keep_it(): void
+    {
+        // The toggle seeds itself from the same place the other filters do, so a shared
+        // link arrives switched on rather than showing the whole list.
+        $this->get('/transactions?filter[unpaid]=1')->assertInertia(fn (Assert $page) => $page
+            ->where('params.filter', ['unpaid' => '1'])
+        );
+    }
     public function test_the_statement_panel_ignores_the_filter(): void
     {
         // Filtered to the bank, the card still owes what it owes.

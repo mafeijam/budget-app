@@ -21,6 +21,56 @@
       </template>
     </q-input>
 
+    <!--
+      Show and hide for the row of pickers, which is most of this header and none of the
+      time. Beside the search rather than pushed to the right with Clear all, because it
+      is about the row below: it is the control that says the pickers are there at all.
+
+      Not dense, and set off with q-mx-md rather than left on the row's gutter. Dense
+      would make this 28px beside the search's 40px, and the space between them would be
+      whatever the gutter's 8px and the button's own 4px added up to -- the control
+      butting against the field it belongs with. Margins on both sides, so the toggle
+      beside it is no closer to this than this is to the search.
+
+      A chevron rather than a label that changes, so the button does not change width and
+      shift what sits to its right.
+
+      The div is the margin, so both sides of the gap belong to one element and the
+      control inside carries nothing but what it does. It is not aligned on the search's
+      text line: app-align-text-line is for Clear all only, and says why.
+    -->
+    <div class="col-auto q-mx-md">
+      <q-btn
+        flat
+        no-caps
+        color="grey-8"
+        label="Filters"
+        :icon="rowOpen ? 'expand_less' : 'expand_more'"
+        @click="rowOpen = !rowOpen"
+      />
+    </div>
+
+    <!--
+      In this row rather than the row of pickers below, which is shut until the button
+      above is pressed: this is the one filter worth reaching for without opening
+      anything, so leaving it down there would put it behind a button to reach it.
+
+      A toggle rather than another picker, because the filter is a yes or a no: a select
+      would offer "all" as a third value to say what leaving it alone already says. The
+      two values are what keep the key out of the URL when it is off, so the filter reads
+      as inactive the way the others do and Clear all clears it with the rest.
+    -->
+    <div class="col-auto q-mr-md">
+      <q-toggle
+        v-model="filters.unpaid"
+        true-value="1"
+        false-value=""
+        label="Unpaid only"
+        color="primary"
+        dense
+      />
+    </div>
+
     <q-space />
 
     <!--

@@ -85,6 +85,47 @@ class TransactionController extends Controller
             'value' => $category->id,
         ]);
 
+        // What each card still owes. One query per card, not one for all: due_date
+        // belongs to a single card's statements. Inactive cards included, unlike the
+        // account picker below -- closing a card does not unpaid it, and settle() has
+        // never checked status.
+        //
+        // Read once and split in PHP. The panel wants the periods still owing, and the
+        // delete button below wants the ones already settled, and a second read would
+        // be a second scan of the meta table -- see CardStatement on what that costs.
+        //
+        // Above the list, which reads it too: the unpaid filter is answered from these
+        // periods rather than from each row's own bag.
+        $cards = Account::query()
+            ->where('type', AccountType::Card->value)
+            ->orderBy('name')
+            // with('meta') so settlementAccount() is not a second query per card.
+            ->with('meta')
+            ->get();
+
+        $cardPeriods = $cards
+            ->mapWithKeys(fn (Account $card) => [$card->id => CardStatement::forAccount($card)])
+            ->all();
+
+        // The due dates of every period still owing, keyed by the card they belong to:
+        // what the unpaid filter narrows to, and the same isSettled() the panel hides
+        // settled periods by -- so a charge the filter calls paid is a charge whose
+        // period the panel would not have offered to settle.
+        //
+        // Not the row's own settled_by, which records which payment closed a bill and is
+        // never the test of whether it is paid: a claim on one row cannot see the others
+        // in the period. See TransactionMetaData.
+        //
+        // Keyed by card because a due date is only unique within one card. Two cards
+        // closing on the same day file their charges under the same string, and a flat
+        // list of those dates would offer one card's settled charges as another's
+        // owing -- the list would look right and be wrong about the one card it is
+        // about.
+        $unpaid = collect($cardPeriods)
+            ->map(fn (Collection $periods) => $periods->reject->isSettled()->pluck('dueDate')->all())
+            ->filter()
+            ->all();
+
         // By the day the money moved, newest first, rather than by when the row was typed
         // in: a charge entered a week late belongs among that week's rows. Only the
         // columns the table offers to sort, so a request cannot order by anything else.
@@ -124,6 +165,41 @@ class TransactionController extends Controller
                 AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '<=', $value)
                     : $q),
+                // The charges a card has not paid for: the one answer that is neither a
+                // column nor a row's own attribute, so it is built from the periods read
+                // above rather than from the bag. A charge only, since a charge is the
+                // only thing a statement is for.
+                AllowedFilter::callback('unpaid', function (Builder $q, $value) use ($unpaid) {
+                    // Off unless the value says on, the way a date that is not a calendar
+                    // day filters nothing rather than everything: a filter[unpaid]=0 left
+                    // in a shared link would otherwise list nothing at all, which reads
+                    // as a card that owes nothing.
+                    if (! in_array((string) $value, ['1', 'true'], true)) {
+                        return $q;
+                    }
+
+                    $q->where('type', TransactionType::Charge->value);
+
+                    // Nothing is owing anywhere, so no charge is. Said outright because
+                    // the loop below would add no constraint at all and the filter would
+                    // quietly hand back the whole list.
+                    if ($unpaid === []) {
+                        return $q->whereRaw('0 = 1');
+                    }
+
+                    // A branch per card, since the due date on its own does not say whose
+                    // period it is.
+                    return $q->where(function (Builder $q) use ($unpaid) {
+                        foreach ($unpaid as $cardId => $dates) {
+                            $q->orWhere(fn (Builder $branch) => $branch
+                                ->where('account_id', $cardId)
+                                // The bag's own JSON path, as settle() reads it to mark
+                                // the charges it covers. whereHas adds the morph, so an
+                                // account's bag of the same id cannot answer for it.
+                                ->whereHas('meta', fn ($bag) => $bag->whereIn('meta->due_date', $dates)));
+                        }
+                    });
+                }),
             )
             // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
@@ -136,25 +212,6 @@ class TransactionController extends Controller
             ->withQueryString();
 
         $page = $transactions->getCollection();
-
-        // What each card still owes. One query per card, not one for all: due_date
-        // belongs to a single card's statements. Inactive cards included, unlike the
-        // account picker below -- closing a card does not unpaid it, and settle() has
-        // never checked status.
-        //
-        // Read once and split in PHP. The panel wants the periods still owing, and the
-        // delete button below wants the ones already settled, and a second read would
-        // be a second scan of the meta table -- see CardStatement on what that costs.
-        $cards = Account::query()
-            ->where('type', AccountType::Card->value)
-            ->orderBy('name')
-            // with('meta') so settlementAccount() is not a second query per card.
-            ->with('meta')
-            ->get();
-
-        $cardPeriods = $cards
-            ->mapWithKeys(fn (Account $card) => [$card->id => CardStatement::forAccount($card)])
-            ->all();
 
         // What each row on this page would take with it, keyed by the row that would
         // take it along -- so the delete confirmation can name the other half of a card
