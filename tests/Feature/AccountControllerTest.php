@@ -859,7 +859,8 @@ class AccountControllerTest extends TestCase
         $response = $this->delete("/accounts/{$account->id}");
 
         $response->assertStatus(302);
-        $response->assertSessionHas('message', 'Account [Active] has 1 transaction and cannot be deleted');
+        $response->assertSessionHas('message', 'Account [Active] has 1 transaction and cannot be deleted. Set it to inactive '
+            .'instead, which keeps its history and hides it from new transactions.');
         $response->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('accounts', ['id' => $account->id]);
@@ -900,9 +901,39 @@ class AccountControllerTest extends TestCase
         ]);
 
         $this->delete("/accounts/{$bank->id}")
-            ->assertSessionHas('message', 'Account [Bank] has 1 transaction and cannot be deleted');
+            ->assertSessionHas('message', 'Account [Bank] has 1 transaction and cannot be deleted. Set it to inactive '
+                .'instead, which keeps its history and hides it from new transactions.');
 
         $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
+    }
+
+    public function test_index_says_which_accounts_cannot_be_deleted_and_why(): void
+    {
+        // Sent so the delete button is disabled with the reason on it, rather than asking
+        // for a confirmation the server then refuses -- and from the same method as
+        // destroy(), so the tooltip and the refusal are one sentence.
+        $used = Account::create(['name' => 'Used', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $bank = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $card = Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        $card->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25, 'settlement_account_id' => $bank->id]]);
+        $free = Account::create(['name' => 'Free', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        DB::table('transactions')->insert([
+            'account_id' => $used->id,
+            'date' => '2026-01-10',
+            'type' => 'expense',
+            'description' => 'Lunch',
+            'amount' => '42.5000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $this->get('/accounts?per_page=10')->assertInertia(fn (Assert $page) => $page
+            ->where("refusals.{$used->id}", fn ($message) => str_starts_with($message, 'Account [Used] has 1 transaction'))
+            ->where("refusals.{$bank->id}", fn ($message) => str_contains($message, 'settlement account for [Card]'))
+            ->missing("refusals.{$free->id}")
+            ->missing("refusals.{$card->id}")
+        );
     }
 
     public function test_destroy_removes_the_account_and_its_meta(): void

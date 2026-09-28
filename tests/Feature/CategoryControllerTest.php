@@ -118,6 +118,22 @@ class CategoryControllerTest extends TestCase
         $this->assertDatabaseCount('categories', 0);
     }
 
+    public function test_index_says_which_categories_cannot_be_deleted_and_why(): void
+    {
+        // So the delete button is disabled with the reason on it, rather than asking for
+        // a confirmation the server then turns down.
+        $account = Account::create(['name' => 'Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $used = Category::create(['name' => 'FOOD']);
+        $free = Category::create(['name' => 'SPARE']);
+
+        $this->expenseOn($used, $account);
+
+        $this->get('/categories')->assertInertia(fn (Assert $page) => $page
+            ->where("refusals.{$used->id}", fn ($message) => str_starts_with($message, 'Category [FOOD] has 1 transaction'))
+            ->missing("refusals.{$free->id}")
+        );
+    }
+
     public function test_destroy_refuses_a_category_that_transactions_are_filed_under(): void
     {
         // The one that was a 500. category_id is restrictOnDelete, so this used to
@@ -133,7 +149,8 @@ class CategoryControllerTest extends TestCase
         $response = $this->delete("/categories/{$category->id}");
 
         $response->assertStatus(302);
-        $response->assertSessionHas('message', 'Category [FOOD] has 1 transaction and cannot be deleted');
+        $response->assertSessionHas('message', 'Category [FOOD] has 1 transaction and cannot be deleted. Rename it, or move '
+            .'it to another category first.');
         $response->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('categories', ['id' => $category->id]);
@@ -151,7 +168,8 @@ class CategoryControllerTest extends TestCase
         $this->expenseOn($category, $account);
 
         $this->delete("/categories/{$category->id}")
-            ->assertSessionHas('message', 'Category [FOOD] has 2 transactions and cannot be deleted');
+            ->assertSessionHas('message', 'Category [FOOD] has 2 transactions and cannot be deleted. Rename it, or move '
+                .'them to another category first.');
     }
 
     public function test_destroy_allows_a_category_nothing_is_filed_under(): void
