@@ -202,6 +202,17 @@ const columns = reactive([
     sortable: true,
   },
   {
+    name: 'category',
+    width: '130px',
+    label: 'Category',
+    // By name, from the categories the form already receives -- every one, so a row's
+    // category always resolves. Not sortable: the list orders against the transactions
+    // table, and sorting by category_id would order by when a category was created.
+    field: row => props.options?.categories?.find(c => c.value === row.category_id)?.label ?? '',
+    align: 'left',
+    sortable: false,
+  },
+  {
     name: 'description',
     width: '220px',
     label: 'Description',
