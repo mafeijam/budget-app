@@ -13,6 +13,37 @@
         </div>
       </template>
 
+      <template #body-cell-type="cell">
+        <q-td :props="cell">
+          <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
+          {{ cell.value }}
+        </q-td>
+      </template>
+
+      <template #body-cell-status="cell">
+        <q-td :props="cell">
+          <q-badge
+            :color="cell.value === 'active' ? 'green-1' : 'grey-3'"
+            :text-color="cell.value === 'active' ? 'green-9' : 'grey-8'"
+            :label="cell.value"
+          />
+        </q-td>
+      </template>
+
+      <template #body-cell-metaData="cell">
+        <q-td :props="cell">
+          <q-chip
+            v-for="label in metaLabels(cell.row)"
+            :key="label"
+            dense
+            square
+            color="grey-2"
+            text-color="grey-9"
+            :label="label"
+          />
+        </q-td>
+      </template>
+
       <template #body-cell-action="cell">
         <q-td :props="cell">
           <AppTableActions :cell="cell" />
@@ -38,13 +69,48 @@ const props = defineProps({
 const pagination = usePagination()
 const formatDate = useHongKongTime()
 
-// Absent rather than null: an account with no meta row at all hydrates to null, and
-// Object.entries on that is a crash rather than an empty column. Back to null once the
-// last key is dropped, so an account with nothing stored reads as having nothing.
-const stripNulls = meta => {
-  const kept = Object.fromEntries(Object.entries(meta ?? {}).filter(([, value]) => value !== null))
+const formatMoney = useMoney()
 
-  return Object.keys(kept).length ? kept : null
+const typeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
+
+// The cash account a card is paid from or a brokerage settles into, by name. From
+// settlementOptions, which lists every cash account, so a link to one on another page
+// of this table still resolves.
+const accountLabel = id =>
+  usePage().props.settlementOptions?.find(option => option.value === id)?.label ?? `#${id}`
+
+const ordinal = day => {
+  const tens = day % 100
+
+  if (tens >= 11 && tens <= 13) return `${day}th`
+
+  return `${day}${{ 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] ?? 'th'}`
+}
+
+// The bag in words, one chip per fact, rather than the JSON it is stored as. Nulls
+// dropped, because meta_data arrives as the DTO and a card would otherwise carry every
+// key the other types use. A key this does not know falls through as `key: value`, so
+// a field added to the bag shows up rough rather than not at all.
+const metaLabels = row => {
+  const meta = row.meta_data ?? {}
+  const labels = []
+
+  if (meta.statement_day) labels.push(`Closes on the ${ordinal(meta.statement_day)}`)
+  if (meta.term_days) labels.push(`${meta.term_days} days to pay`)
+
+  if (meta.settlement_account_id) {
+    const verb = row.type === 'card' ? 'Paid from' : 'Settles into'
+
+    labels.push(`${verb} ${accountLabel(meta.settlement_account_id)}`)
+  }
+
+  const known = ['statement_day', 'term_days', 'settlement_account_id']
+
+  Object.entries(meta)
+    .filter(([key, value]) => value !== null && !known.includes(key))
+    .forEach(([key, value]) => labels.push(`${key}: ${value}`))
+
+  return labels
 }
 
 const columns = reactive([
@@ -53,6 +119,7 @@ const columns = reactive([
     label: 'Name',
     field: 'name',
     align: 'left',
+    classes: 'text-weight-medium text-grey-9',
     sortable: true,
   },
   {
@@ -79,8 +146,11 @@ const columns = reactive([
     field: row => props.balances[row.id] ?? '',
     // Two places, rounded here rather than in the query: decimal(12,4) sums exactly at
     // four, so a tenth of a cent is a real figure the server holds and this column
-    // chooses not to show.
-    format: val => (val === '' ? '' : Number(val).toFixed(2)),
+    // chooses not to show. Rounded as digits, never through Number() -- see money.js.
+    format: formatMoney,
+    // Red when negative, which on a card is what it owes. A position rather than a
+    // direction of travel, so a card paid beyond its charges reads black.
+    classes: row => (String(props.balances[row.id] ?? '').startsWith('-') ? 'text-negative' : ''),
     sortable: false,
   },
   {
@@ -92,20 +162,11 @@ const columns = reactive([
   },
   {
     name: 'metaData',
-    label: 'Meta',
-    // The nulls dropped, because meta_data arrives as the DTO rather than as what is
-    // stored: a card would otherwise read {"term_days":15,"statement_day":25,
-    // "settlement_account_id":null} and a brokerage would carry two card fields it has
-    // no use for. Which keys appear is the whole content of this column.
-    //
-    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is the
-    // four-character string "null" and a plain cash account would read as though it
-    // carried a value called null.
-    field: val => {
-      const kept = stripNulls(val.meta_data)
-
-      return kept ? JSON.stringify(kept) : ''
-    },
+    label: 'Details',
+    // Rendered by the body-cell-metaData slot above; the field is the same words
+    // joined, for the table to sort and filter on.
+    field: row => metaLabels(row).join(', '),
+    align: 'left',
     sortable: false,
   },
   {

@@ -220,6 +220,7 @@
     "useMemoize": true,
     "useMemory": true,
     "useModel": true,
+    "useMoney": true,
     "useMounted": true,
     "useMouse": true,
     "useMouseInElement": true,
