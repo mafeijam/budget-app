@@ -25,7 +25,7 @@
         holds, captioned as such so the figure is not read as money in an account.
       -->
       <template #body-cell-balance="cell">
-        <q-td :props="cell" :class="cell.col.classes?.(cell.row)">
+        <q-td :props="cell" class="money" :class="cell.col.classes?.(cell.row)">
           {{ cell.value }}
           <div v-if="marketValue(cell.row) !== null" class="text-caption text-grey-6">
             market value{{
@@ -40,8 +40,9 @@
       <template #body-cell-status="cell">
         <q-td :props="cell">
           <q-badge
-            :color="cell.value === 'active' ? 'green-1' : 'grey-3'"
-            :text-color="cell.value === 'active' ? 'green-9' : 'grey-8'"
+            :class="
+              cell.value === 'active' ? 'app-tint app-tint--positive' : 'app-tint app-tint--muted'
+            "
             :label="cell.value"
           />
         </q-td>
@@ -54,8 +55,7 @@
             :key="label"
             dense
             square
-            color="grey-2"
-            text-color="grey-9"
+            class="app-tint app-tint--muted"
             :label="label"
           />
         </q-td>

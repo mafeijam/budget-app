@@ -126,8 +126,8 @@
           implying the transfer happened whenever, and the account is named as chosen so
           the sentence stays true while the picker is being used.
         -->
-        <div class="row no-wrap bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
-          <q-icon name="info" size="xs" class="q-mr-sm q-mt-xs" />
+        <div class="app-note row no-wrap">
+          <q-icon name="info" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
           <div>
             This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
             <template v-if="chosenName">
@@ -144,11 +144,8 @@
           open turns into a message and a second look, not a payment the user did not
           agree to.
         -->
-        <div
-          v-if="error"
-          class="row no-wrap bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md"
-        >
-          <q-icon name="error_outline" size="xs" class="q-mr-sm q-mt-xs" />
+        <div v-if="error" class="app-note app-note--negative row no-wrap">
+          <q-icon name="error_outline" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
           <div>{{ error }}</div>
         </div>
       </q-card-section>

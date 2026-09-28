@@ -53,9 +53,7 @@
               -->
               <q-badge
                 v-if="period.pending_count"
-                class="q-ml-sm"
-                color="amber-9"
-                text-color="white"
+                class="q-ml-sm app-tint app-tint--warning"
                 :label="`${period.pending_count} not yet posted`"
               />
               <!--
@@ -81,17 +79,17 @@
                 </q-tooltip>
               </q-btn>
             </td>
-            <td class="text-right">
+            <td class="text-right money">
               {{ money(period.charged) }}
               <div class="text-caption text-grey-6">{{ count(period.charge_count, 'charge') }}</div>
             </td>
-            <td class="text-right">
+            <td class="text-right money">
               {{ money(period.paid) }}
               <div class="text-caption text-grey-6">
                 {{ count(period.payment_count, 'payment') }}
               </div>
             </td>
-            <td class="text-right text-subtitle1 text-weight-bold" :class="owedClass(period)">
+            <td class="text-right text-subtitle1 text-weight-bold money" :class="owedClass(period)">
               {{ money(period.owed) }}
             </td>
             <td class="text-right">

@@ -81,7 +81,7 @@
           Cheaper to say here than to let the next charge fall due on the old day and look
           like a late payment.
         -->
-        <div v-if="changed" class="bg-blue-1 rounded-borders text-blue-9 text-body2 q-pa-md">
+        <div v-if="changed" class="app-note">
           Every charge and payment in this statement moves to
           {{ formatDate(stated) }}. The amount does not change.
         </div>
@@ -92,7 +92,7 @@
           statement. All three are decided by the server from state the panel does not
           carry, so the button below can only disable for the one it can see.
         -->
-        <div v-if="error" class="bg-red-1 rounded-borders text-red-9 text-body2 q-pa-md">
+        <div v-if="error" class="app-note app-note--negative">
           {{ error }}
         </div>
       </q-card-section>

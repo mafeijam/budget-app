@@ -6,9 +6,9 @@
         would sit offset from every field below it.
       -->
       <div v-if="lock" class="col-12">
-        <q-banner rounded dense class="bg-amber-1 text-amber-10">
+        <q-banner rounded dense class="app-tint app-tint--warning">
           <template #avatar>
-            <q-icon name="lock" color="amber-8" />
+            <q-icon name="lock" />
           </template>
           {{ lock.message }}
         </q-banner>

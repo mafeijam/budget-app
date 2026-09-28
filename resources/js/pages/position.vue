@@ -44,7 +44,7 @@
         <q-space />
         <div v-for="figure in figures(broker)" :key="figure.label" class="text-right q-ml-lg">
           <div class="text-caption text-grey-7">{{ figure.label }}</div>
-          <div class="text-subtitle1 text-weight-bold" :class="figure.class">
+          <div class="text-subtitle1 text-weight-bold money" :class="figure.class">
             {{ figure.value }}
           </div>
         </div>
@@ -85,12 +85,12 @@
               />
             </td>
             <td class="text-right">{{ quantity(position.quantity) }}</td>
-            <td class="text-right">
+            <td class="text-right money">
               {{ position.average_cost ? money(position.average_cost) : '' }}
             </td>
-            <td class="text-right">{{ position.open ? money(position.cost) : '' }}</td>
+            <td class="text-right money">{{ position.open ? money(position.cost) : '' }}</td>
             <!-- Click to set today's price by hand; see PositionController::store(). -->
-            <td class="text-right cursor-pointer">
+            <td class="text-right money cursor-pointer">
               <template v-if="position.price">
                 {{ money(position.price) }}
                 <div class="text-caption text-grey-6">
@@ -118,14 +118,14 @@
                 />
               </q-popup-edit>
             </td>
-            <td class="text-right">
+            <td class="text-right money">
               {{ position.market_value ? money(position.market_value) : '' }}
             </td>
-            <td class="text-right" :class="signClass(position.unrealised)">
+            <td class="text-right money" :class="signClass(position.unrealised)">
               {{ position.unrealised ? money(position.unrealised) : '' }}
             </td>
-            <td class="text-right text-grey-7">{{ money(position.fees) }}</td>
-            <td class="text-right" :class="signClass(position.realised)">
+            <td class="text-right text-grey-7 money">{{ money(position.fees) }}</td>
+            <td class="text-right money" :class="signClass(position.realised)">
               {{ money(position.realised) }}
             </td>
             <td class="text-right">{{ position.trades }}</td>

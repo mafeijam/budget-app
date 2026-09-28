@@ -22,7 +22,7 @@
       </q-card-section>
 
       <q-card-section v-if="$page.props.message_csrf">
-        <div class="bg-amber-1 rounded-borders text-amber-8 text-body2 q-pa-md">
+        <div class="app-note app-note--warning">
           {{ $page.props.message_csrf }}
         </div>
       </q-card-section>

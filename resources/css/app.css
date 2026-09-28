@@ -14,22 +14,85 @@
 }
 
 /*
-  The app's surfaces, set once. A light grey ground so the white cards and tables read
-  as objects on it, and one radius and border colour for every card and table, so a
-  page built from both does not mix sharp and rounded corners.
+  The app's surfaces, set once, as variables. The two that were hex literals here are
+  named because something outside this file needs them too: the table's sticky action
+  column paints itself in the surface colour, and a hover tint has to match the surface
+  it sits on or the row shows a seam under the mouse. The rest are read by this file
+  alone. The greys are slate, so the Quasar palette a component still names -- grey-7 on
+  an icon, blue-1 on a fill -- sits in the same family as these rather than against it.
 */
-body {
-  background: #f4f6f9;
+:root {
+  --app-ground: #f1f5f9;
+  --app-surface: #ffffff;
+  --app-border: #e2e8f0;
+  --app-header-bg: #f8fafc;
+  --app-row-hover: #f8fafc;
+  --app-muted: #64748b;
+  --app-heading: #0f172a;
+  --app-content-max: 1680px;
+
+  /*
+    Tints off the brand, for the surfaces Quasar has no palette entry for. Quasar's
+    ramp is fixed at 10 shades, and the brand colours here are not on it, so there is
+    no `bg-primary-1` to reach for -- only `bg-primary`, which at full strength is far
+    too loud behind body text. Mixing off the --q- variable is what keeps these tied to
+    the palette in plugins/quasar.js: re-theme the brand and these follow.
+  */
+  --app-primary-tint: color-mix(in srgb, var(--q-primary) 9%, transparent);
+  --app-positive-tint: color-mix(in srgb, var(--q-positive) 12%, transparent);
+  --app-warning-tint: color-mix(in srgb, var(--q-warning) 15%, transparent);
+  --app-negative-tint: color-mix(in srgb, var(--q-negative) 10%, transparent);
+  --app-info-tint: color-mix(in srgb, var(--q-info) 9%, transparent);
+
+  --app-muted-tint: #f1f5f9;
+  --app-muted-ink: #475569;
+
+  /*
+    The ink that goes on a tint, at 60% of the brand and 40% black, for all five alike.
+    80% was the first figure here and it is too light: on a 9% info tint it lands near
+    5.5:1, which passes AA on paper and still reads thin at the size a q-chip sets, and
+    the blue was the worst of the five because a light blue loses more to its own
+    luminance than a light green does. One number rather than five, so a tint and its ink
+    cannot drift apart as the brand is changed.
+  */
+  --app-primary-ink: color-mix(in srgb, var(--q-primary) 60%, #000);
+  --app-positive-ink: color-mix(in srgb, var(--q-positive) 60%, #000);
+  --app-warning-ink: color-mix(in srgb, var(--q-warning) 60%, #000);
+  --app-negative-ink: color-mix(in srgb, var(--q-negative) 60%, #000);
+  --app-info-ink: color-mix(in srgb, var(--q-info) 60%, #000);
 }
 
+body {
+  background: var(--app-ground);
+}
+
+/*
+  A ceiling on the content width, centred. The transaction table's ten columns are
+  fixed-width and total about 1,540px, so on a wide monitor the table scrolls sideways
+  while the cards above it stretch to the full width of the screen -- two different
+  widths on one page, neither of them chosen. The table is the widest thing here, so the
+  ceiling is set above it and everything else is narrower by consequence.
+*/
 .app-page {
   padding: 16px;
+  max-width: var(--app-content-max);
+  margin: 0 auto;
 }
 
 @media (min-width: 1024px) {
   .app-page {
     padding: 24px 32px;
   }
+}
+
+/*
+  The nav item for the page you are on. A tint off the brand rather than a palette entry,
+  for the reason the tint variables above give -- there is no `bg-primary-1` to name.
+*/
+.app-nav-active {
+  background: var(--app-primary-tint);
+  color: var(--q-primary);
+  font-weight: 600;
 }
 
 .q-card,
@@ -44,7 +107,106 @@ body {
 
 .q-card--bordered,
 .q-table--bordered {
-  border-color: #e4e7ec;
+  border-color: var(--app-border);
+}
+
+/*
+  The header row. Quasar ships th at 12px weight 500 in the body's own colour, so the
+  labels read as a slightly smaller, slightly bolder repeat of the data rather than as
+  a header -- and with no ground under them there is nothing to fix the eye on when it
+  arrives at the top of a long table. A tinted band, a bottom rule and a heavier weight
+  give it the one thing a table header is for: a way to tell which column a figure
+  belongs to, without reading the figures.
+
+  Sentence case at 11px, not letter-spaced capitals, and that is a width decision rather
+  than a taste one. The columns are fixed-width and the narrowest is 110px with Quasar's
+  16px of cell padding either side, so "Account type" has 78px to sit in -- and capitals
+  measure nearer 100px there, which wraps the label to two lines inside a
+  table-layout: fixed header and leaves one column taller than the rest. The weight, the
+  tint and the rule under it are what make this read as a header; the capitals were
+  garnish that did not fit.
+*/
+.sticky-table thead tr th {
+  background: var(--app-header-bg);
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/*
+  Rows responding to the mouse. Quasar ships no hover state on a table row at all, so
+  the only way to tell which row an action button belongs to is to read the button. The
+  sticky action column is painted in the same tint or the row shows a white block under
+  the cursor, which is the one part of the hover that cannot be left to Quasar.
+*/
+.sticky-table tbody tr:hover > td {
+  background: var(--app-row-hover);
+}
+
+/*
+  Figures in the currency columns line up by their digits, so a column of amounts can be
+  scanned for an odd one out. useMoney formats on the string and never touches a float,
+  which is what keeps the digits themselves right; this only changes which glyph is used
+  for each of them, since a proportional 1 is narrower than a 0 and a column of
+  right-aligned money otherwise staircases.
+*/
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  Tinted fills for the badges and the notice boxes. These are classes rather than
+  Quasar color props because the colour is a mix of a brand variable and white, which
+  there is no palette entry for -- Quasar's ramp is fixed at ten shades and does not
+  include whatever brand.primary happens to be. The text is darkened from the same hue
+  rather than left at brand strength, because a tint that light will not carry body text
+  at an acceptable contrast.
+*/
+.app-tint {
+  background: var(--app-muted-tint);
+  color: var(--app-muted-ink);
+}
+.app-tint--positive {
+  background: var(--app-positive-tint);
+  color: var(--app-positive-ink);
+}
+.app-tint--warning {
+  background: var(--app-warning-tint);
+  color: var(--app-warning-ink);
+}
+.app-tint--negative {
+  background: var(--app-negative-tint);
+  color: var(--app-negative-ink);
+}
+.app-tint--info {
+  background: var(--app-info-tint);
+  color: var(--app-info-ink);
+}
+
+/*
+  The notice boxes, which are tints carrying a sentence rather than a label, so they
+  want body text size where a badge wants none. The icon beside them takes the same
+  ink, which is why the rule targets the box rather than each piece of it.
+*/
+.app-note {
+  background: var(--app-info-tint);
+  color: var(--app-info-ink);
+  border-radius: 4px;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.app-note--warning {
+  background: var(--app-warning-tint);
+  color: var(--app-warning-ink);
+}
+.app-note--negative {
+  background: var(--app-negative-tint);
+  color: var(--app-negative-ink);
+}
+.app-note__icon {
+  color: inherit;
 }
 
 /*
@@ -61,26 +223,15 @@ body {
 .sticky-table {
   min-height: 310px;
 }
+
+/*
+  The action column is pinned to the right edge, so it scrolls over the columns beside
+  it and therefore needs a background of its own or the figures read through it. Painted
+  in the surface token rather than white, which is what lets the hover rule above reach
+  this cell as well.
+*/
 .sticky-table td:last-child {
-  background-color: white;
-}
-.sticky-table tr th {
-  position: sticky;
-  z-index: 2;
-  background: white;
-}
-.sticky-table thead tr:last-child th {
-  top: 48px;
-  z-index: 3;
-}
-.sticky-table thead tr:first-child th {
-  top: 0;
-  z-index: 1;
-}
-.sticky-table tr:last-child th:last-child {
-  z-index: 3;
-}
-.sticky-table td:last-child {
+  background-color: var(--app-surface);
   z-index: 1;
 }
 .sticky-table td:last-child,
@@ -88,8 +239,27 @@ body {
   position: sticky;
   right: 0;
 }
-.sticky-table tbody {
-  scroll-margin-top: 48px;
+.sticky-table tr:last-child th:last-child {
+  z-index: 3;
+}
+
+/*
+  The column headers stay put. The offset has to be 0, and not a header height to clear
+  the app's own bar, because .q-table__container is overflow: hidden above: that makes it
+  the scrollport for anything sticky inside the table, and it never scrolls, so any top
+  other than 0 is not a clearance -- it displaces the header down inside the table by
+  that many pixels and leaves it there.
+
+  This was one first-child and one last-child rule with equal specificity, so whichever
+  was written last won; that was the first-child one, and its top was 0. They are merged
+  here rather than kept as a pair, since thead holds a single row -- QTable renders the
+  #top slot as a sibling div of .q-table__middle, not as a row of its own -- and two
+  rules that both match the same th is two chances to set this by accident.
+*/
+.sticky-table tr th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 ::-webkit-scrollbar {
