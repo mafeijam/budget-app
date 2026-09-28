@@ -664,6 +664,50 @@ class CardSettlementTest extends TestCase
         $this->assertArrayNotHasKey('paired_transaction_id', $forged->fresh()->meta_data->getArrayCopy());
     }
 
+    public function test_the_bank_half_of_a_settlement_keeps_the_payments_amount(): void
+    {
+        // The transfer has no due date, so no statement guard sees it. Changing its
+        // amount would have the bank say one figure left and the card say another
+        // arrived, with both balances reading as plausible.
+        $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+
+        $this->put("/transactions/{$transfer->id}", array_merge(
+            TransactionData::from($transfer->load('meta', 'account'))->toArray(),
+            ['amount' => '100.0000']
+        ))->assertSessionHasErrors([
+            'amount' => 'This transfer is one half of a card settlement, so its amount cannot be changed '
+                .'on its own. Delete the settlement and settle the statement again.',
+        ]);
+
+        $this->assertSame('120.0000', $transfer->fresh()->amount);
+    }
+
+    public function test_a_row_whose_other_half_is_gone_edits_freely(): void
+    {
+        // Half of nothing: destroy() already deletes it alone, and there is no second
+        // figure for it to disagree with.
+        $orphan = Transaction::create([
+            'account_id' => $this->bank->id,
+            'date' => '2026-02-01',
+            'type' => 'transfer',
+            'description' => 'Orphan',
+            'amount' => '120.0000',
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+        $orphan->meta()->create(['meta' => ['paired_transaction_id' => 9999]]);
+
+        $this->put("/transactions/{$orphan->id}", array_merge(
+            TransactionData::from($orphan->load('meta', 'account'))->toArray(),
+            ['amount' => '100.0000']
+        ))->assertSessionHasNoErrors();
+
+        $this->assertSame('100.0000', $orphan->fresh()->amount);
+    }
+
     public function test_editing_either_half_of_a_settlement_keeps_the_pair(): void
     {
         // The edit form round-trips the whole row, bag and link included, and update()

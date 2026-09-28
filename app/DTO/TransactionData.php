@@ -404,8 +404,49 @@ class TransactionData extends Data
     }
 
     /**
-     * The first field this payload changes that a statement's figures are built from,
-     * as the error key and the words for it, or null when it changes none.
+     * Refuse an edit to one half of a card settlement that the other half would not
+     * agree with.
+     *
+     * The two rows are one movement of money, the same amount in the same currency on
+     * each side, and nothing but this keeps them equal once written. The transfer has
+     * no due date, so guardSettledFigures() never sees it: correcting its amount leaves
+     * the bank saying one figure left and the card saying another arrived, and both
+     * balances read as plausible. On the pairing rather than the period, because the
+     * halves have to agree whether or not the statement is still settled.
+     *
+     * A row whose partner has gone is half of nothing and edits freely, as destroy()
+     * already deletes it alone.
+     */
+    public function guardPairedFigures(Transaction $row): void
+    {
+        $paired = $row->meta?->meta['paired_transaction_id'] ?? null;
+
+        if ($paired === null) {
+            return;
+        }
+
+        $changed = $this->changedFigure($row);
+
+        if ($changed === null || ! Transaction::whereKey($paired)->exists()) {
+            return;
+        }
+
+        [$field, $label] = $changed;
+
+        throw ValidationException::withMessages([
+            $field => sprintf(
+                'This %s is one half of a card settlement, so its %s cannot be changed on its own. '
+                    .'Delete the settlement and settle the statement again.',
+                $row->type,
+                $label
+            ),
+        ]);
+    }
+
+    /**
+     * The first field this payload changes that a statement's figures, or a
+     * settlement's agreement with its other half, are built from -- as the error key
+     * and the words for it, or null when it changes none.
      *
      * Amounts compared as decimals: the column reads back '120.0000' and a form may
      * send '120', which is no change.

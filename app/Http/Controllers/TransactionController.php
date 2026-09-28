@@ -256,6 +256,7 @@ class TransactionController extends Controller
         // After the move guard, whose message is the better one when a charge changes
         // card out of a paid statement.
         $data->guardSettledFigures($transaction);
+        $data->guardPairedFigures($transaction);
 
         $data->keepPairingOf($transaction);
 
