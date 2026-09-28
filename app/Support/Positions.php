@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\TransactionType;
 use App\Models\Account;
+use App\Models\Price;
 use App\Models\Transaction;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -46,6 +47,69 @@ class Positions
     public static function forAccount(Account $broker): array
     {
         return self::replay(self::tradesOf($broker))['positions'];
+    }
+
+    /**
+     * A brokerage's positions valued at the latest price, with its totals.
+     *
+     * One valuation for the Positions page and the accounts list, so the market value
+     * a brokerage shows as its balance is the figure its page adds up to.
+     *
+     * The price is today's close or the latest before it, and only one in the
+     * brokerage's own currency: a price in another would value the holding as though
+     * the two were the same money. Totals are over the positions that have a price;
+     * `unpriced` counts the open ones that do not, so a total missing a holding does not
+     * read as the whole. Each is in the brokerage's currency, which is every trade's in
+     * it, so nothing is summed across two.
+     *
+     * @return array{positions: list<array<string, mixed>>, totals: array<string, mixed>}
+     */
+    public static function valued(Account $broker): array
+    {
+        $positions = array_values(self::forAccount($broker));
+        $prices = Price::latestFor(array_column($positions, 'symbol'), today()->toDateString());
+
+        $positions = array_map(function (array $position) use ($prices, $broker) {
+            $price = $prices[$position['symbol']] ?? null;
+            $price = $price?->ccy === $broker->ccy ? $price : null;
+
+            if (! $position['open'] || $price === null) {
+                return $position + ['price' => null, 'price_date' => null, 'price_source' => null,
+                    'market_value' => null, 'unrealised' => null];
+            }
+
+            $value = BigDecimal::of($position['quantity'])->multipliedBy($price->close)->toScale(4, RoundingMode::HalfUp);
+
+            return $position + [
+                'price' => (string) BigDecimal::of($price->close)->toScale(4),
+                'price_date' => $price->date,
+                'price_source' => $price->source,
+                'market_value' => (string) $value,
+                'unrealised' => (string) $value->minus($position['cost'])->toScale(4),
+            ];
+        }, $positions);
+
+        $open = array_values(array_filter($positions, fn (array $p) => $p['open']));
+        $priced = array_values(array_filter($open, fn (array $p) => $p['market_value'] !== null));
+
+        $sum = fn (array $values) => self::money(array_reduce(
+            $values,
+            fn (BigDecimal $total, string $value) => $total->plus($value),
+            BigDecimal::zero()
+        ));
+
+        return [
+            'positions' => $positions,
+            'totals' => [
+                'open_cost' => $sum(array_column($open, 'cost')),
+                'realised' => $sum(array_column($positions, 'realised')),
+                'fees' => $sum(array_column($positions, 'fees')),
+                'market_value' => $sum(array_column($priced, 'market_value')),
+                'unrealised' => $sum(array_column($priced, 'unrealised')),
+                'unpriced' => count($open) - count($priced),
+                'open' => count($open),
+            ],
+        ];
     }
 
     /**
