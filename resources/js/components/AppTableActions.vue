@@ -36,8 +36,8 @@ const props = defineProps({
 const pagination = inject('pagination')
 
 // Why the server would refuse this row, or null when it would not: a charge in a
-// settled card statement, or an account that has transactions or is another account's
-// settlement account. Each refusal carries its way out, so the tooltip is a next step
+// settled card statement, an account that has transactions or is another account's
+// settlement account, or a category transactions are filed under. Each refusal carries its way out, so the tooltip is a next step
 // rather than only a no.
 //
 // The refusal is repeated in destroy(). A disabled button is a stale page and a
