@@ -133,6 +133,10 @@
           brokerage has buy, sell and dividend where a bank has expense, income -- so a
           list of names alone makes the user pick an account and find out after.
 
+          The currency captioned under the name, since it is the other half of what the
+          account is and the form fixes it for everything but a charge on a card. The
+          closed field keeps the bare name -- see below.
+
           Only in the list: the closed field keeps the bare name, since a badge in the
           value would read as a filter and there is nothing to filter. `?? {}` as the
           column uses, so an account type the map does not know shows plainly instead of
@@ -148,7 +152,10 @@
             <q-item-section class="text-caption">{{ scope.opt.label }}</q-item-section>
           </q-item>
           <q-item v-else v-bind="scope.itemProps">
-            <q-item-section>{{ scope.opt.label }}</q-item-section>
+            <q-item-section>
+              {{ scope.opt.label }}
+              <q-item-label caption>{{ scope.opt.ccy }}</q-item-label>
+            </q-item-section>
             <q-item-section side>
               <q-badge v-bind="accountTypeBadges[scope.opt.type] ?? {}" :label="scope.opt.type" />
             </q-item-section>
@@ -227,7 +234,12 @@
         filled
         emit-value
         map-options
-        :disable="locked('ccy')"
+        :disable="locked('ccy') || currencyLocked"
+        :hint="
+          currencyLocked && chosenAccount
+            ? 'Only a charge on a card may be in another currency'
+            : ''
+        "
         :error="!!form.errors.ccy"
         :error-message="form.errors.ccy"
       />
@@ -714,14 +726,32 @@ const destroyTemplate = template => {
   })
 }
 
-// Two resets, and both are needed because the rules prohibit rather than ignore.
-// Changing the account invalidates the type, since the new account may not accept it;
-// changing the type invalidates every bag field the new type prohibits. A stale value
-// fails the save over a field the user can no longer see.
-const clearBag = () => {
-  form.meta_data = useCloneForm(schema.meta_data)
-}
+// One currency per account, bar a charge on a card.
+//
+// A lock and nothing else: the value is not forced. Forcing it would rewrite the
+// currency of a row that already disagrees -- opening a USD expense on an HKD bank to
+// fix its description would silently save it as HKD, which is a worse thing to do than
+// leave the row as the user recorded it. So a stored row keeps its own currency and is
+// simply not editable here, and only a row being created has its currency set from the
+// account, in the watcher below.
+//
+// A charge on a card is the one row that may differ, because it carries what it came to
+// in the card's own currency: card_amount, which needsCardAmount asks for further down
+// and CardStatement sums in place of the amount.
+//
+// The server still accepts any currency on any row, and deliberately -- see
+// test_a_transaction_may_differ_from_its_account_currency. So this narrows what the form
+// offers and nothing more. The rule that is enforced is guardTradeCurrency's, which
+// refuses a trade in another currency because a brokerage settles into one bank.
+const currencyLocked = computed(
+  () => !(chosenAccount.value?.type === 'card' && form.type === 'charge'),
+)
 
+// Picking an account is the form filling in what that account implies -- its currency and
+// the type it most likely wants -- and only while creating, where there is nothing to
+// lose. Two resets are needed because the rules prohibit rather than ignore: changing the
+// account invalidates the type, since the new account may not accept it, and changing the
+// type invalidates the bag keys the new type prohibits.
 watch(
   () => form.account_id,
   accountId => {
@@ -740,6 +770,18 @@ watch(
     // anything the user changes makes it dirty before the watcher runs.
     if (!form.isDirty || !accountId) return
 
+    // Creating only, and the distinction is the whole of it. A new transaction has no
+    // values to lose, and picking the type and the currency here saves two choices the
+    // user did not mean to make. An edit is the opposite: the row's type, its trade
+    // figures and its currency are all real, and correcting a transaction filed against
+    // the wrong account would silently cost the symbol, the quantity and the price.
+    //
+    // What the new account will not take is the server's to say, by name, on a field
+    // that is on screen: "A charge cannot be recorded on a cash account" leaves the user
+    // choosing, where a substituted 'expense' and an empty bag leaves them with a
+    // transaction they never wrote.
+    if (target.value) return
+
     const account = chosenAccount.value
 
     // The type the new account most likely wants, and null where the enum has no
@@ -747,20 +789,33 @@ watch(
     // pre-filling one hands the user a type they did not choose.
     form.type = account?.type ? (typeDefaults.value[account.type] ?? null) : null
 
-    clearBag()
-
     // The account's own currency, which is right almost every time and saves re-picking
-    // it. A charge in another currency needs the card-currency figure, and that field
-    // is what covers the case where this default is not the answer.
-    if (account?.ccy) form.ccy = account.ccy
+    // it. A charge on a card may differ and this leaves it alone, because currencyLocked
+    // below is false for exactly that case and the card-currency figure is what covers
+    // the one where this default would not be the answer.
+    if (account?.ccy && currencyLocked.value) form.ccy = account.ccy
   },
 )
 
+// Only the bag keys the new type actually refuses, rather than the whole bag.
+//
+// A trade's amount is derived from the figures in the bag, so a client-supplied one is
+// prohibited -- that is a refusal. And no_cash is a claim about a trade's cash side,
+// which nothing else has, so it is refused off a trade -- and refused on a *hidden*
+// field, since the toggle only renders for a buy and a sell.
+//
+// Everything else in the bag is stale rather than refused: symbol, quantity, unit price
+// and fees on a non-trade are all nullable and not prohibited, and a due date or a
+// card-currency figure left behind is read by nothing. Wiping the lot is how a symbol
+// typed for a buy is lost by changing the type, and it is why changing the account did
+// too -- which the watcher above now declines to do while editing.
 watch(
   () => form.type,
   (type, previousType) => {
-    if (previousType) clearBag()
+    if (!previousType) return
+
     if (derivesAmount.value) form.amount = null
+    else form.meta_data.no_cash = null
   },
 )
 
