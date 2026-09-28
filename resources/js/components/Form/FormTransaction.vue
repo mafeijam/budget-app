@@ -15,10 +15,19 @@
       </div>
 
       <!--
-        Save the form as it stands, or fill it from one saved before. The two are the
+        Fill the form from a template, or save what it holds as one. The two are the
         same shortcut read in two directions, and both are here rather than on a page of
         their own because a template is only ever made by filling this form in and only
         ever used by filling it in again.
+
+        A picker rather than a menu of templates, because a person reaching for one
+        knows roughly what it is called and typing three letters beats scrolling to it.
+
+        One row per template with the account captioned, rather than a heading per
+        account. QSelect filters option by option, and a heading is an option, so the two
+        cannot both work: searching would either keep a heading whose templates were all
+        filtered out, or drop the heading and leave its templates under nothing. The
+        caption is what the heading was saying, and it survives a search.
 
         Update replaces the values of the template the form was filled from, so a
         template that has drifted is corrected rather than deleted and retyped. It is
@@ -28,7 +37,7 @@
 
         Tinted buttons rather than flat grey ones, which is the Add button's treatment
         and the reason for it: grey text is the colour a disabled control is painted in,
-        so a grey label reads as unavailable however available it is, and these three were
+        so a grey label reads as unavailable however available it is, and these were
         grey at two shades before that was tried. The fill is a 13% wash of the brand
         colour, so they are quieter than the Submit button without borrowing its
         disabled grey to say so.
@@ -37,7 +46,49 @@
         action and these are not, and a second button in the positive tint beside it
         would leave the eye with two answers to "what does this dialog commit".
       -->
-      <div class="col-12 row items-center q-gutter-sm">
+      <q-select
+        v-model="templateChoice"
+        :options="templateOptions"
+        class="col-6"
+        label="Template"
+        placeholder="Fill the form from a saved one"
+        filled
+        emit-value
+        map-options
+        filterable
+        :disable="!!target"
+        @update:model-value="applyTemplate"
+      >
+        <template #no-option>
+          <q-item>
+            <q-item-section class="text-grey"> No templates saved yet </q-item-section>
+          </q-item>
+        </template>
+
+        <template #option="scope">
+          <q-item v-bind="scope.itemProps">
+            <q-item-section>
+              {{ scope.opt.label }}
+              <q-item-label caption>{{ scope.opt.account_name }}</q-item-label>
+            </q-item-section>
+
+            <q-item-section side>
+              <q-btn
+                flat
+                dense
+                round
+                icon="delete"
+                color="negative"
+                @click.stop="destroyTemplate(scope.opt)"
+              >
+                <q-tooltip :delay="500" :offset="[0, 6]">Delete this template</q-tooltip>
+              </q-btn>
+            </q-item-section>
+          </q-item>
+        </template>
+      </q-select>
+
+      <div class="col-6 row items-center q-gutter-sm">
         <q-btn
           class="text-weight-bold app-btn"
           unelevated
@@ -48,47 +99,6 @@
           :disable="!canTemplate"
           @click="saveTemplate"
         />
-
-        <q-btn
-          class="text-weight-bold app-btn"
-          unelevated
-          no-caps
-          padding="sm md"
-          icon="bookmark"
-          label="Use template"
-          :disable="templates.length === 0 || !!target"
-        >
-          <q-menu ref="templateMenu" anchor="bottom left" self="top left">
-            <q-list separator class="scroll" style="min-width: 260px; max-height: 320px">
-              <template v-for="group in templateGroups" :key="group.account_id">
-                <q-item-label header class="app-tint app-tint--muted text-caption">
-                  {{ group.account_name }}
-                </q-item-label>
-
-                <q-item
-                  v-for="template in group.templates"
-                  :key="template.id"
-                  clickable
-                  @click="applyTemplate(template)"
-                >
-                  <q-item-section>{{ template.name }}</q-item-section>
-                  <q-item-section side>
-                    <q-btn
-                      flat
-                      dense
-                      round
-                      icon="delete"
-                      color="negative"
-                      @click.stop="destroyTemplate(template)"
-                    >
-                      <q-tooltip :delay="500" :offset="[0, 6]">Delete this template</q-tooltip>
-                    </q-btn>
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-list>
-          </q-menu>
-        </q-btn>
 
         <q-btn
           v-if="loadedTemplate"
@@ -478,37 +488,26 @@ const title = computed(() => {
 
 const templates = computed(() => usePage().props.templates ?? [])
 
-// The template menu, so choosing one can close it -- a template ref rather than
-// $refs, which does not exist under <script setup>. Same reason the calendar's menu is
-// closed by hand rather than with v-close-popup.
-const templateMenu = ref(null)
+// One entry per template, with the name as the label. The label is also what the picker
+// filters on, which is why the account is a caption on the row rather than a heading
+// above it: a heading would be an option too, and would then be filtered as one.
+const templateOptions = computed(() =>
+  templates.value.map(template => ({ ...template, label: template.name })),
+)
+
+// What the picker currently holds, emptied the moment a template is applied. It is a
+// choice rather than a selection on purpose: a picker left showing "Rent" would still
+// say "Rent" the next time this form is opened for a different transaction, having
+// filled nothing.
+const templateChoice = ref(null)
 
 // Which template the form was filled from, so Update knows what it is overwriting.
-// Null until one is applied, and not cleared by a Reset: the button that depends on it
-// is disabled while the form is clean, which is what a reset makes it, so a stale name
-// here can never overwrite a template with an emptied form.
+//
+// Not cleared by a Reset, which does not go through anything this component owns, and
+// deliberately so: the button that depends on it is disabled while the form is clean,
+// which is exactly what a Reset leaves it, so a stale name here can never overwrite a
+// template with an emptied form.
 const loadedTemplate = ref(null)
-
-// One heading per account, in the order the accounts come back. A map rather than a
-// groupBy, because the order is the controller's and rebuilding it here would be a
-// second statement of it.
-const templateGroups = computed(() => {
-  const groups = new Map()
-
-  templates.value.forEach(template => {
-    if (!groups.has(template.account_id)) {
-      groups.set(template.account_id, {
-        account_id: template.account_id,
-        account_name: template.account_name,
-        templates: [],
-      })
-    }
-
-    groups.get(template.account_id).templates.push(template)
-  })
-
-  return [...groups.values()]
-})
 
 // The two things a template cannot be without, and both of which the server requires:
 // an account to file the transaction against, and a type, which is what decides what
@@ -563,6 +562,9 @@ const saveTemplate = () => {
 // fills the form from a row: one call, and the form's idea of its clean state moves with
 // the values rather than leaving the button enabled for values that were never touched.
 const applyTemplate = template => {
+  // The picker also emits this when it is emptied, and a null has no template in it.
+  if (!template) return
+
   form.defaults({
     ...schema,
     ...template.payload,
@@ -582,7 +584,7 @@ const applyTemplate = template => {
   form.clearErrors()
 
   loadedTemplate.value = template
-  templateMenu.value?.hide()
+  templateChoice.value = null
 }
 
 const updateTemplate = () =>
@@ -597,8 +599,6 @@ const updateTemplate = () =>
   )
 
 const destroyTemplate = template => {
-  templateMenu.value?.hide()
-
   Dialog.create({
     component: DeleteDialog,
     componentProps: {
@@ -606,7 +606,8 @@ const destroyTemplate = template => {
       message: `[${template.name}] will be deleted permanently.`,
     },
   }).onOk(() => {
-    // Cleared first: the button it hides names a template that is about to stop existing.
+    // Cleared first: the button it hides names a template that is about to stop existing,
+    // and the picker still holds it until the request comes back with it gone.
     if (loadedTemplate.value?.id === template.id) loadedTemplate.value = null
 
     router.delete(`/transaction-templates/${template.id}`, {
