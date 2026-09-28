@@ -15,16 +15,40 @@
         </div>
       </template>
 
+      <template #body-cell-type="cell">
+        <q-td :props="cell">
+          <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
+          {{ cell.value }}
+        </q-td>
+      </template>
+
+      <!--
+        The figure, signed and coloured by which way it moves the account's balance, with
+        its currency beside it. A pending row is greyed, since it moves nothing yet.
+      -->
+      <template #body-cell-amount="cell">
+        <q-td :props="cell" :class="amountClass(cell.row)">
+          <span class="text-weight-medium">{{ signed(cell.row) }}</span>
+          <span class="text-caption text-grey-7 q-ml-xs">{{ cell.row.ccy }}</span>
+        </q-td>
+      </template>
+
+      <template #body-cell-status="cell">
+        <q-td :props="cell">
+          <q-badge v-bind="statusBadges[cell.value] ?? {}" :label="cell.value" />
+        </q-td>
+      </template>
+
       <template #body-cell-metaData="cell">
         <q-td :props="cell">
           <q-chip
-            v-for="label in metaLabels(cell.row)"
-            :key="label"
+            v-for="chip in metaChips(cell.row)"
+            :key="chip.label"
             dense
             square
-            color="grey-2"
-            text-color="grey-9"
-            :label="label"
+            :color="chip.color"
+            :text-color="chip.textColor"
+            :label="chip.label"
           />
         </q-td>
       </template>
@@ -54,22 +78,61 @@ const props = defineProps({
 })
 
 const pagination = usePagination()
+const formatMoney = useMoney()
 const formatDate = useHongKongTime()
 
-// The bag in words, one chip per fact, rather than the JSON it is stored as. Keys this
-// does not know fall through as `key: value`, so a field added to the bag shows up
-// rough rather than not at all.
-const metaLabels = row => {
-  const meta = row.meta_data ?? {}
-  const labels = []
+const typeIcons = {
+  expense: 'shopping_cart',
+  income: 'savings',
+  transfer: 'swap_horiz',
+  charge: 'credit_card',
+  payment: 'task_alt',
+  buy: 'trending_up',
+  sell: 'trending_down',
+  dividend: 'paid',
+}
 
-  if (meta.due_date) labels.push(`Due ${meta.due_date}`)
-  if (meta.settled_by) labels.push('Paid')
+const statusBadges = {
+  posted: { color: 'green-1', textColor: 'green-9' },
+  pending: { color: 'amber-2', textColor: 'amber-10' },
+  settled: { color: 'blue-1', textColor: 'blue-9' },
+}
+
+// 1, -1 or 0 from the server's movesBalanceOn(). Zero for a trade, which moves no
+// balance, and for a row the server did not send one for.
+const direction = row => usePage().props.directions?.[row.id] ?? 0
+
+const signed = row => {
+  const figure = formatMoney(row.amount)
+  const sign = { 1: '+', '-1': '−' }[direction(row)] ?? ''
+
+  return `${sign}${figure}`
+}
+
+const amountClass = row => {
+  if (row.status === 'pending') return 'text-grey-6'
+
+  return { 1: 'text-positive', '-1': 'text-negative' }[direction(row)] ?? 'text-grey-9'
+}
+
+// The bag in words, one chip per fact, rather than the JSON it is stored as, coloured
+// by kind so the settled rows stand out. Keys this does not know fall through as
+// `key: value`, so a field added to the bag shows up rough rather than not at all.
+const metaChips = row => {
+  const meta = row.meta_data ?? {}
+  const chips = []
+  const plain = label => chips.push({ label, color: 'grey-2', textColor: 'grey-9' })
+
+  if (meta.due_date) plain(`Due ${meta.due_date}`)
+  if (meta.settled_by) chips.push({ label: 'Paid', color: 'green-1', textColor: 'green-9' })
+
   if (meta.card_amount) {
-    labels.push(
+    const figure = formatMoney(meta.card_amount)
+
+    plain(
       row.account_ccy
-        ? `${meta.card_amount} ${row.account_ccy} on the card`
-        : `${meta.card_amount} in the card's currency`,
+        ? `${figure} ${row.account_ccy} on the card`
+        : `${figure} in the card's currency`,
     )
   }
 
@@ -77,13 +140,17 @@ const metaLabels = row => {
     // The other half, as the delete confirmation names it. Absent when it is gone.
     const other = usePage().props.linked?.[row.id]
 
-    labels.push(other ? `Settles with ${other.account_name}` : 'Settlement, other half gone')
+    chips.push({
+      label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
+      color: 'blue-1',
+      textColor: 'blue-9',
+    })
   }
 
   if (meta.symbol) {
     const fees = meta.fees ? `, fees ${meta.fees}` : ''
 
-    labels.push(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+    plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
   }
 
   const known = [
@@ -99,9 +166,9 @@ const metaLabels = row => {
 
   Object.entries(meta)
     .filter(([key, value]) => value !== null && !known.includes(key))
-    .forEach(([key, value]) => labels.push(`${key}: ${value}`))
+    .forEach(([key, value]) => plain(`${key}: ${value}`))
 
-  return labels
+  return chips
 }
 
 const columns = reactive([
@@ -123,6 +190,7 @@ const columns = reactive([
     // through the relation.
     field: 'account_name',
     align: 'left',
+    classes: 'text-weight-medium text-grey-9',
     sortable: false,
   },
   {
@@ -137,22 +205,17 @@ const columns = reactive([
     label: 'Description',
     field: 'description',
     align: 'left',
+    classes: 'text-grey-9',
     sortable: true,
   },
   {
     name: 'amount',
     label: 'Amount',
     // Money arrives as a string precisely so a float never rounds it on the way here.
-    // Formatted for display and nothing else.
+    // Rendered by the body-cell-amount slot, with the currency beside it rather than in
+    // a column of its own.
     field: 'amount',
     align: 'right',
-    sortable: true,
-  },
-  {
-    name: 'ccy',
-    label: 'CCY',
-    field: 'ccy',
-    align: 'left',
     sortable: true,
   },
   {
@@ -167,7 +230,10 @@ const columns = reactive([
     label: 'Details',
     // Rendered by the body-cell-metaData slot above. The field is what the table sorts
     // and filters on, so it is the same words joined.
-    field: row => metaLabels(row).join(', '),
+    field: row =>
+      metaChips(row)
+        .map(chip => chip.label)
+        .join(', '),
     align: 'left',
     sortable: false,
   },
@@ -176,6 +242,7 @@ const columns = reactive([
     label: 'Created At',
     field: 'created_at',
     format: val => formatDate(val),
+    classes: 'text-caption text-grey-7',
     sortable: true,
   },
   {

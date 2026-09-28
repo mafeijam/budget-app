@@ -106,6 +106,18 @@ class TransactionController extends Controller
         // can say so and disable them rather than let the save be refused.
         $editLocks = $this->editLocks($page, $cardPeriods, $linked);
 
+        // Which way each row moves its account's balance, 1, -1 or 0, so the table can
+        // mark money in and out. From movesBalanceOn() rather than a list in the page,
+        // which would be a second copy of the rule, and per row because the answer
+        // needs the account's type as well as the row's.
+        $directions = $page
+            ->mapWithKeys(fn (Transaction $row) => [
+                $row->id => $row->account === null
+                    ? 0
+                    : TransactionType::from($row->type)->movesBalanceOn(AccountType::from($row->account->type)),
+            ])
+            ->all();
+
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
         $options = compact('accounts', 'categories');
@@ -209,6 +221,7 @@ class TransactionController extends Controller
             'linked',
             'refusals',
             'editLocks',
+            'directions',
             'typeOptions',
             'typeDefaults',
             'statusOptions',

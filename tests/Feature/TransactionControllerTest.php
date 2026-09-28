@@ -582,6 +582,23 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_says_which_way_each_row_moves_its_balance(): void
+    {
+        // Money out of a bank and a charge on a card both lower the balance; a trade
+        // moves none. The same answers movesBalanceOn() gives, since that is the source.
+        $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->expense(['type' => 'income', 'category_id' => null]))
+            ->assertSessionHasNoErrors();
+        $this->post('/transactions', $this->tradePayload())->assertSessionHasNoErrors();
+
+        $ids = Transaction::orderBy('id')->pluck('id');
+
+        $this->get('/transactions?per_page=10')->assertInertia(fn (Assert $page) => $page
+            ->where('directions', [$ids[0] => -1, $ids[1] => -1, $ids[2] => 1, $ids[3] => 0])
+        );
+    }
+
     public function test_a_supplied_account_name_does_not_rename_the_account(): void
     {
         // The name is derived from the account, so a payload carrying one is inert --
