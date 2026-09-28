@@ -243,6 +243,35 @@ body {
 }
 
 /*
+  The icon and the label on one centre, which they were not.
+
+  Quasar sets the icon at 1.715em -- 24px against a 14px label -- and leaves the two on
+  the same baseline, so where the icon sits depends on how the Material Icons glyph fills
+  its em box and on where the text font puts its own baseline. Loading Roboto moved the
+  second and left the first alone, which is the pair drifting apart. Laying the content
+  out as an explicit flex row with align-items: centre takes the baseline out of the
+  calculation entirely, so the two agree whatever the two fonts decide to do.
+
+  flex-direction is stated even though Quasar already appends a `row` class: the content
+  span is emitted as "col items-center" and then "row" is concatenated onto the end, so
+  both are on the element and which one wins is an accident of stylesheet order rather
+  than of intent.
+
+  The one number here is the nudge, and it is a nudge rather than a fix because what is
+  left is the glyph's own padding inside the icon's em box, which no amount of layout
+  reaches. One pixel down, which is the usual direction: these glyphs sit high. If an
+  icon ever looks low instead, this is the line to flip.
+*/
+.app-btn .q-btn__content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.app-btn .q-icon {
+  margin-bottom: 1px;
+}
+
+/*
   Tinted fills for the badges and the notice boxes. These are classes rather than
   Quasar color props because the colour is a mix of a brand variable and white, which
   there is no palette entry for -- Quasar's ramp is fixed at ten shades and does not
