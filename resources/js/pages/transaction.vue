@@ -15,6 +15,20 @@
         </div>
       </template>
 
+      <template #body-cell-metaData="cell">
+        <q-td :props="cell">
+          <q-chip
+            v-for="label in metaLabels(cell.row)"
+            :key="label"
+            dense
+            square
+            color="grey-2"
+            text-color="grey-9"
+            :label="label"
+          />
+        </q-td>
+      </template>
+
       <template #body-cell-action="cell">
         <q-td :props="cell">
           <AppTableActions :cell="cell" />
@@ -42,13 +56,46 @@ const props = defineProps({
 const pagination = usePagination()
 const formatDate = useHongKongTime()
 
-// The same shape as the account list's Meta column: meta_data arrives as the DTO, so
-// every declared key is present whether or not this row uses it. Back to null rather
-// than {} so a row with nothing stored reads as having nothing.
-const stripNulls = meta => {
-  const kept = Object.fromEntries(Object.entries(meta ?? {}).filter(([, value]) => value !== null))
+// The bag in words, one chip per fact, rather than the JSON it is stored as. Keys this
+// does not know fall through as `key: value`, so a field added to the bag shows up
+// rough rather than not at all.
+const metaLabels = row => {
+  const meta = row.meta_data ?? {}
+  const labels = []
 
-  return Object.keys(kept).length ? kept : null
+  if (meta.due_date) labels.push(`Due ${meta.due_date}`)
+  if (meta.settled_by) labels.push('Paid')
+  if (meta.card_amount) labels.push(`${meta.card_amount} in the card's currency`)
+
+  if (meta.paired_transaction_id) {
+    // The other half, as the delete confirmation names it. Absent when it is gone.
+    const other = usePage().props.linked?.[row.id]
+
+    labels.push(other ? `Settles with ${other.account_name}` : 'Settlement, other half gone')
+  }
+
+  if (meta.symbol) {
+    const fees = meta.fees ? `, fees ${meta.fees}` : ''
+
+    labels.push(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+  }
+
+  const known = [
+    'due_date',
+    'settled_by',
+    'card_amount',
+    'paired_transaction_id',
+    'symbol',
+    'quantity',
+    'unit_price',
+    'fees',
+  ]
+
+  Object.entries(meta)
+    .filter(([key, value]) => value !== null && !known.includes(key))
+    .forEach(([key, value]) => labels.push(`${key}: ${value}`))
+
+  return labels
 }
 
 const columns = reactive([
@@ -111,19 +158,11 @@ const columns = reactive([
   },
   {
     name: 'metaData',
-    label: 'Meta',
-    // Which keys appear is the whole content of this column: a card charge shows the
-    // due date the server derived, or the card-currency figure it was given; a cash
-    // expense shows nothing.
-    //
-    // '' rather than JSON.stringify(stripNulls(...)), because stringify(null) is the
-    // four-character string "null" and the cell would read as though the row carried a
-    // value called null.
-    field: val => {
-      const kept = stripNulls(val.meta_data)
-
-      return kept ? JSON.stringify(kept) : ''
-    },
+    label: 'Details',
+    // Rendered by the body-cell-metaData slot above. The field is what the table sorts
+    // and filters on, so it is the same words joined.
+    field: row => metaLabels(row).join(', '),
+    align: 'left',
     sortable: false,
   },
   {
