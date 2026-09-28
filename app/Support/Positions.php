@@ -20,9 +20,12 @@ use Brick\Math\RoundingMode;
  * is checked against what was held on its own day, and a sell dated before the buy it
  * sells from is an error even though the totals would balance.
  *
- * Average cost. A buy adds its quantity and what it cost including fees; a sell
+ * Average cost, on price alone: a buy adds its quantity and quantity x price; a sell
  * removes its quantity and that share of the cost, and the difference between its
- * net proceeds and the cost it removes is realised. Every figure is a BigDecimal --
+ * value and the cost it removes is realised. Fees are kept apart, as their own
+ * running total across buys and sells, so the cost and the average read as the price
+ * paid and the fees as what dealing cost -- the cash side of a trade still carries
+ * them, since that is the money that moved. Every figure is a BigDecimal --
  * quantity has eight places and money four, and a float has no decimal places at all.
  *
  * Every status counts, pending included. A pending trade is one that has not settled
@@ -125,6 +128,7 @@ class Positions
                 'quantity' => $zero,
                 'cost' => $zero,
                 'realised' => $zero,
+                'fees' => $zero,
                 'trades' => 0,
                 'last_trade_date' => null,
             ];
@@ -137,7 +141,7 @@ class Positions
 
             if ($trade['type'] === TransactionType::Buy->value) {
                 $position['quantity'] = $position['quantity']->plus($quantity);
-                $position['cost'] = $position['cost']->plus($gross)->plus($fees);
+                $position['cost'] = $position['cost']->plus($gross);
             } else {
                 if ($quantity->isGreaterThan($position['quantity'])) {
                     $shortfall ??= [
@@ -158,7 +162,7 @@ class Positions
 
                 $position['quantity'] = $position['quantity']->minus($quantity);
                 $position['cost'] = $position['cost']->minus($removed);
-                $position['realised'] = $position['realised']->plus($gross->minus($fees)->minus($removed));
+                $position['realised'] = $position['realised']->plus($gross->minus($removed));
 
                 // Sold out: whatever cost is left is rounding in the average, not money.
                 if (! $position['quantity']->isPositive()) {
@@ -166,6 +170,7 @@ class Positions
                 }
             }
 
+            $position['fees'] = $position['fees']->plus($fees);
             $position['trades']++;
             $position['last_trade_date'] = $trade['date'];
 
@@ -187,6 +192,7 @@ class Positions
                     ? self::money($position['cost']->dividedBy($position['quantity'], self::WORKING_SCALE, RoundingMode::HalfUp))
                     : null,
                 'realised' => self::money($position['realised']),
+                'fees' => self::money($position['fees']),
                 'trades' => $position['trades'],
                 'last_trade_date' => $position['last_trade_date'],
                 'open' => $held,

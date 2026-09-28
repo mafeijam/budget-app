@@ -52,6 +52,7 @@ class PositionController extends Controller
                     'positions' => $positions,
                     'open_cost' => $sum(array_column($open, 'cost')),
                     'realised' => $sum(array_column($positions, 'realised')),
+                    'fees' => $sum(array_column($positions, 'fees')),
                     'dividends' => $sum(($dividends[$broker->id] ?? collect())->pluck('amount')),
                 ];
             })

@@ -40,6 +40,7 @@
             <th class="text-right">Quantity</th>
             <th class="text-right">Average cost</th>
             <th class="text-right">Cost</th>
+            <th class="text-right">Fees</th>
             <th class="text-right">Realised</th>
             <th class="text-right">Trades</th>
             <th class="text-right">Last trade</th>
@@ -66,6 +67,7 @@
               {{ position.average_cost ? money(position.average_cost) : '' }}
             </td>
             <td class="text-right">{{ position.open ? money(position.cost) : '' }}</td>
+            <td class="text-right text-grey-7">{{ money(position.fees) }}</td>
             <td class="text-right" :class="signClass(position.realised)">
               {{ money(position.realised) }}
             </td>
@@ -110,10 +112,12 @@ const signClass = value => {
 }
 
 // What the brokerage's header totals, each in its own currency: the cost of what is
-// still held, what selling has realised, and the dividends received.
+// still held, what selling has realised, the fees paid dealing, and the dividends
+// received. Fees stand apart from cost and realised, so each reads as what it is.
 const figures = broker => [
   { label: 'Cost held', value: money(broker.open_cost), class: 'text-grey-9' },
   { label: 'Realised', value: money(broker.realised), class: signClass(broker.realised) },
+  { label: 'Fees', value: money(broker.fees), class: 'text-grey-9' },
   { label: 'Dividends', value: money(broker.dividends), class: 'text-grey-9' },
 ]
 </script>

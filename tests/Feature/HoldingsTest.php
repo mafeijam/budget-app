@@ -32,7 +32,7 @@ class HoldingsTest extends TestCase
     // The arithmetic
     // ---------------------------------------------------------------------
 
-    public function test_a_position_carries_its_average_cost_including_fees(): void
+    public function test_a_position_carries_its_average_cost_with_fees_kept_apart(): void
     {
         $this->trade('buy', '2026-01-05', '10', '100', '5');
         $this->trade('buy', '2026-01-06', '10', '120', '5');
@@ -40,14 +40,15 @@ class HoldingsTest extends TestCase
         $nvda = Positions::forAccount($this->broker)['NVDA'];
 
         $this->assertSame('20.00000000', $nvda['quantity']);
-        $this->assertSame('2210.0000', $nvda['cost']);
-        $this->assertSame('110.5000', $nvda['average_cost']);
+        $this->assertSame('2200.0000', $nvda['cost']);
+        $this->assertSame('110.0000', $nvda['average_cost']);
+        $this->assertSame('10.0000', $nvda['fees']);
         $this->assertSame('0.0000', $nvda['realised']);
     }
 
-    public function test_a_sell_realises_its_proceeds_less_the_average_cost_it_removes(): void
+    public function test_a_sell_realises_its_value_less_the_average_cost_it_removes(): void
     {
-        // 5 at the 110.50 average cost 552.50; sold at 150 less a 5 fee is 745.
+        // 5 at the 110 average cost 550; sold at 150 is 750. The fee goes to fees.
         $this->trade('buy', '2026-01-05', '10', '100', '5');
         $this->trade('buy', '2026-01-06', '10', '120', '5');
         $this->trade('sell', '2026-02-01', '5', '150', '5');
@@ -55,9 +56,10 @@ class HoldingsTest extends TestCase
         $nvda = Positions::forAccount($this->broker)['NVDA'];
 
         $this->assertSame('15.00000000', $nvda['quantity']);
-        $this->assertSame('1657.5000', $nvda['cost']);
-        $this->assertSame('110.5000', $nvda['average_cost']);
-        $this->assertSame('192.5000', $nvda['realised']);
+        $this->assertSame('1650.0000', $nvda['cost']);
+        $this->assertSame('110.0000', $nvda['average_cost']);
+        $this->assertSame('200.0000', $nvda['realised']);
+        $this->assertSame('15.0000', $nvda['fees']);
     }
 
     public function test_a_position_sold_out_keeps_what_it_realised(): void
