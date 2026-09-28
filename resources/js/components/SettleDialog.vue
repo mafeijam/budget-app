@@ -62,47 +62,55 @@
           remembers the answer, so this is a choice with a consequence rather than a
           field, and the sentence below says what that consequence is.
         -->
-        <q-select
-          v-model="bankId"
-          :options="options"
-          class="q-mb-sm"
-          label="Paid from"
-          filled
-          emit-value
-          map-options
-          :hint="bankHint"
-          :error="!!bankError"
-          :error-message="bankError"
-        >
-          <template #no-option>
-            <q-item>
-              <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+        <!--
+          Side by side, the two facts about the payment the user supplies; stacked on a
+          narrow screen. bottom-slots on the date so it reserves the same space under it
+          as the picker's hint does, and the two fields line up.
+        -->
+        <div class="row q-col-gutter-sm">
+          <q-select
+            v-model="bankId"
+            :options="options"
+            class="col-12 col-sm-6"
+            label="Paid from"
+            filled
+            emit-value
+            map-options
+            :hint="bankHint"
+            :error="!!bankError"
+            :error-message="bankError"
+          >
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
 
-        <q-input
-          v-model="paidOn"
-          class="q-mb-sm"
-          label="Paid on"
-          filled
-          :error="!!fieldError"
-          :error-message="fieldError"
-        >
-          <template #append>
-            <q-btn flat dense icon="event" rounded>
-              <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
-                <q-date
-                  :model-value="paidOn"
-                  mask="YYYY-MM-DD"
-                  minimal
-                  color="green-7"
-                  @update:model-value="pickDate"
-                />
-              </q-menu>
-            </q-btn>
-          </template>
-        </q-input>
+          <q-input
+            v-model="paidOn"
+            class="col-12 col-sm-6"
+            label="Paid on"
+            filled
+            bottom-slots
+            :error="!!fieldError"
+            :error-message="fieldError"
+          >
+            <template #append>
+              <q-btn flat dense icon="event" rounded>
+                <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+                  <q-date
+                    :model-value="paidOn"
+                    mask="YYYY-MM-DD"
+                    minimal
+                    color="green-7"
+                    @update:model-value="pickDate"
+                  />
+                </q-menu>
+              </q-btn>
+            </template>
+          </q-input>
+        </div>
 
         <!--
           The consequence the figure above does not show: settling writes a second row
