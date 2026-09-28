@@ -7,6 +7,7 @@ use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Meta;
+use App\Models\Price;
 use App\Support\CardStatementCycle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -905,6 +906,35 @@ class AccountControllerTest extends TestCase
                 .'instead, which keeps its history and hides it from new transactions.');
 
         $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
+    }
+
+    public function test_a_brokerage_is_given_the_market_value_of_its_holdings(): void
+    {
+        // It has no cash balance, so the list shows what its holdings are worth, from
+        // the same valuation the Positions page totals.
+        $bank = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $bank->id]]);
+
+        foreach (['NVDA' => '10', 'AAPL' => '2'] as $symbol => $quantity) {
+            $this->post('/transactions', [
+                'account_id' => $broker->id,
+                'date' => '2026-01-05',
+                'type' => 'buy',
+                'description' => "Buy {$symbol}",
+                'ccy' => 'USD',
+                'meta_data' => ['symbol' => $symbol, 'quantity' => $quantity, 'unit_price' => '100'],
+            ])->assertSessionHasNoErrors();
+        }
+
+        Price::create(['symbol' => 'NVDA', 'date' => today()->toDateString(), 'close' => '125.5000', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        $this->get('/accounts?per_page=10')->assertInertia(fn (Assert $page) => $page
+            ->where("marketValues.{$broker->id}", ['market_value' => '1255.0000', 'unpriced' => 1, 'open' => 2])
+            ->missing("marketValues.{$bank->id}")
+            // Still no cash balance: the home page's cash figures are not moved by it.
+            ->missing("balances.{$broker->id}")
+        );
     }
 
     public function test_index_says_which_accounts_cannot_be_deleted_and_why(): void

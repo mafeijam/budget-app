@@ -9,8 +9,10 @@ use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\AccountBalance;
+use App\Support\Positions;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\LaravelData\PaginatedDataCollection;
@@ -33,6 +35,19 @@ class AccountController extends Controller
         // One query for the page rather than one per row. A securities account is
         // absent from the map, which is how the column knows to leave it blank.
         $balances = AccountBalance::forAccounts($accounts->getCollection());
+
+        // A brokerage has no balance -- AccountType::hasBalance() -- so its Balance cell
+        // shows what its holdings are worth instead, from the valuation the Positions
+        // page totals, with how many holdings had no price. Read by id from the models:
+        // the collection holds AccountData by now, and valued() reads an Account.
+        $marketValues = Account::query()
+            ->whereIn('id', $accounts->getCollection()->pluck('id'))
+            ->where('type', AccountType::Security->value)
+            ->get()
+            ->mapWithKeys(fn (Account $broker) => [
+                $broker->id => Arr::only(Positions::valued($broker)['totals'], ['market_value', 'unpriced', 'open']),
+            ])
+            ->all();
 
         // Why each account on this page cannot be deleted, so the button says so rather
         // than asking for a confirmation the server then turns down.
@@ -70,6 +85,7 @@ class AccountController extends Controller
             'params',
             'meta',
             'balances',
+            'marketValues',
             'refusals',
             'settlementOptions',
             'currencyOptions',
