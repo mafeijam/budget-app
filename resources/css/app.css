@@ -156,6 +156,20 @@ body {
   overflow: hidden;
 }
 
+/*
+  The sideways scroll, on the middle rather than the container. The table carries a
+  min-width at the sum of its declared column widths so a narrow window cannot shrink the
+  columns out from under their contents, and the overflow that creates has to go
+  somewhere: the container is overflow: hidden above, for the radius, which would clip it
+  and leave the columns past the edge unreachable. This is the scrollport, and it is why
+  the action column is pinned to the right in the sticky-table block below.
+
+  min-width: 0 is what makes the overflow-x mean anything. The middle is a flex item --
+  the table's root is a column flex container -- and a flex item's automatic minimum size
+  is its min-content width, which here is the table itself. Left alone it therefore stays
+  1480px wide inside a 1198px container, never overflows itself, and the scrollbar this
+  rule is for never appears; the overflow just escapes and is clipped.
+*/
 .q-card--bordered,
 .q-table--bordered {
   border-color: var(--app-border);
@@ -232,6 +246,16 @@ body {
 .app-btn {
   background: var(--app-btn-tint);
   color: var(--app-primary-ink);
+
+  /*
+    Centre the content in the button's own box, which it is not doing by default. .q-btn
+    is a column flex container with align-items: stretch, so its content sits at the top
+    and only looks centred on the buttons that happen to be exactly as tall as their
+    content. These are not all of those: padding="sm md" on the dialog buttons and the
+    default padding on the rest give one component two box heights, and the taller ones
+    left the icon and label riding at the top with the space beneath them.
+  */
+  justify-content: center;
 }
 .app-btn--negative {
   background: var(--app-btn-negative-tint);
@@ -243,32 +267,37 @@ body {
 }
 
 /*
-  The icon and the label on one centre, which they were not.
+  The icon and the label on one centre with each other, which is a separate question from
+  where the pair sits in the button -- that is justify-content above.
 
-  Quasar sets the icon at 1.715em -- 24px against a 14px label -- and leaves the two on
-  the same baseline, so where the icon sits depends on how the Material Icons glyph fills
-  its em box and on where the text font puts its own baseline. Loading Roboto moved the
-  second and left the first alone, which is the pair drifting apart. Laying the content
-  out as an explicit flex row with align-items: centre takes the baseline out of the
-  calculation entirely, so the two agree whatever the two fonts decide to do.
+  Quasar leaves the two on the same baseline, and the icon is 1.715em -- 24px against a
+  14px label -- so the icon's position comes from how the Material Icons glyph fills its
+  em box and where the text font puts its baseline. Loading Roboto moved the second and
+  not the first, which is the two drifting apart. A flex row with align-items: centre
+  takes the baseline out of it, so they agree whatever the fonts do.
 
   flex-direction is stated even though Quasar already appends a `row` class: the content
   span is emitted as "col items-center" and then "row" is concatenated onto the end, so
-  both are on the element and which one wins is an accident of stylesheet order rather
-  than of intent.
-
-  The one number here is the nudge, and it is a nudge rather than a fix because what is
-  left is the glyph's own padding inside the icon's em box, which no amount of layout
-  reaches. One pixel down, which is the usual direction: these glyphs sit high. If an
-  icon ever looks low instead, this is the line to flip.
+  both land on the element and which one applies is an accident of stylesheet order.
 */
 .app-btn .q-btn__content {
   display: flex;
   flex-direction: row;
   align-items: center;
-}
-.app-btn .q-icon {
-  margin-bottom: 1px;
+
+  /*
+    line-height: 1, and this is the fix rather than a refinement. Quasar's 1.715em on
+    .q-btn is a ratio, so it scales with the font it is applied to, and the two things in
+    here are not the same size: the label span is 14px, so its line box is 24px, while the
+    icon is set at 1.715em -- 24px -- so its line box is 41px. align-items: centre was
+    centring a 41px box against a 24px one, and the icon's glyph sits high inside its own
+    box, so the two never lined up however the boxes were positioned. Centring the boxes
+    is not the same as centring what is drawn in them.
+
+    At 1, each line box hugs its own glyph -- 14px for the label, 24px for the icon -- and
+    the flex centring above then lines up what is actually visible.
+  */
+  line-height: 1;
 }
 
 /*
