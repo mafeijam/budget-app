@@ -1,5 +1,9 @@
 import { Dialog } from 'quasar'
 
+// Imported, not auto-registered: the component resolver finds tags in templates, and
+// this one is handed to Dialog.create() as an object.
+import DeleteDialog from '../components/DeleteDialog.vue'
+
 const editing = ref(new Map())
 
 export function useEdit(form) {
@@ -85,17 +89,8 @@ export function useDestroy(pagination) {
   // at onCancel, so there is exactly one path that deletes and no exit that can
   // delete by accident.
   //
-  // focus: 'cancel' because Quasar's default is the other one: the ok button is the
-  // one carrying data-autofocus, so a user reaching for the keyboard and pressing
-  // enter without reading would delete the row. The focus belongs on the button that
-  // does nothing.
-  //
-  // Not persistent, so escape and a stray click outside dismiss it -- both of which
-  // are a cancel, the direction in which nothing is deleted.
-  //
-  // html stays off, which is the whole reason it is worth saying: the message quotes
-  // a description the user typed, and html: true renders that as markup. Quasar
-  // names it as an XSS route and here it would be one.
+  // DeleteDialog keeps the three things Quasar's default dialog was configured for:
+  // focus on cancel, dismissal as a cancel, and the message as text rather than markup.
   function destroy(row) {
     // What deleting this row would also delete, from the page props. Null for
     // everything but the two halves of a card settlement, which are the only rows in
@@ -109,20 +104,16 @@ export function useDestroy(pagination) {
     const other = usePage().props.linked?.[row.id]
 
     Dialog.create({
-      // Naming the settlement rather than the row when there is one: the thing being
-      // undone is a statement, and the row clicked is only the half of it the list
-      // happened to show.
-      title: other ? 'delete card settlement' : `delete ${things[meta.path] ?? 'row'}`,
-      message: other
-        ? `${describe(other)} is the other half of this settlement. Both rows will be deleted permanently.`
-        : `[${labelOf(row)}] will be deleted permanently.`,
-      // flat written out on cancel rather than left to Quasar, because the flat
-      // default applies only when the option is a string, and the lowercase label
-      // needs it to be an object -- otherwise both buttons come out raised and the
-      // one that destroys is no heavier than the one that does not.
-      ok: { label: 'delete', color: 'negative', unelevated: true, noCaps: true },
-      cancel: { label: 'cancel', color: 'grey-7', flat: true, noCaps: true },
-      focus: 'cancel',
+      component: DeleteDialog,
+      componentProps: {
+        // Naming the settlement rather than the row when there is one: the thing being
+        // undone is a statement, and the row clicked is only the half of it the list
+        // happened to show.
+        title: other ? 'delete card settlement' : `delete ${things[meta.path] ?? 'row'}`,
+        message: other
+          ? `${describe(other)} is the other half of this settlement. Both rows will be deleted permanently.`
+          : `[${labelOf(row)}] will be deleted permanently.`,
+      },
     }).onOk(() => {
       router.delete(`${meta.path}/${row.id}`, {
         preserveScroll: true,
