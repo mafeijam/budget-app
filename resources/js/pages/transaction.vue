@@ -13,6 +13,7 @@
             <CreateBtn />
           </div>
         </div>
+        <TransactionFilters />
       </template>
 
       <template #body-cell-type="cell">

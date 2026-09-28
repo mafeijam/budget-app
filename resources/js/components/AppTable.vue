@@ -72,6 +72,14 @@ function getQuery(pagination) {
     query.per_page = rowsPerPage
   }
 
+  // Whatever the page is filtered by, carried along, or turning a page would quietly
+  // drop the filter and show the next page of everything.
+  const filter = usePage().props.params?.filter
+
+  if (filter && Object.keys(filter).length) {
+    query.filter = filter
+  }
+
   return query
 }
 

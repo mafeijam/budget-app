@@ -16,12 +16,15 @@ use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\PaginatedDataCollection;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class TransactionController extends Controller
 {
@@ -73,7 +76,31 @@ class TransactionController extends Controller
         $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
         $dir = $r->input('dir') === 'asc' ? 'asc' : 'desc';
 
-        $transactions = Transaction::query()
+        // Filters narrow the list and nothing else: the statement panel, the delete
+        // refusals and the edit locks are about whole cards and whole periods, so a
+        // filtered page still reports them in full. An unknown filter is a 400 from
+        // the package rather than being ignored, so a mistyped key cannot quietly
+        // show the unfiltered list as though it were the filtered one.
+        $transactions = QueryBuilder::for(Transaction::class, $r)
+            ->allowedFilters(
+                // Comma-separated for several at once: filter[type]=charge,payment.
+                AllowedFilter::exact('account_id'),
+                AllowedFilter::exact('type'),
+                AllowedFilter::exact('status'),
+                AllowedFilter::exact('category_id'),
+                // One phrase, not a list: "coffee, tea" is a description, and splitting
+                // it on the comma would match either word.
+                AllowedFilter::partial('description')->delimiter(''),
+                // Inclusive, on the calendar day. A value that is not one is ignored
+                // rather than compared as a string, where "2026-1-5" would sort after
+                // "2026-01-31" and quietly drop rows.
+                AllowedFilter::callback('date_from', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where('date', '>=', $value)
+                    : $q),
+                AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where('date', '<=', $value)
+                    : $q),
+            )
             // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
             ->orderBy($sort, $dir)
@@ -81,7 +108,8 @@ class TransactionController extends Controller
             // returns a tie in whatever order it likes, and a row could then show on two
             // pages or on none.
             ->orderBy('id', $dir)
-            ->paginate($r->input('per_page', 5));
+            ->paginate($r->input('per_page', 5))
+            ->withQueryString();
 
         $page = $transactions->getCollection();
 
@@ -137,6 +165,15 @@ class TransactionController extends Controller
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
         $options = compact('accounts', 'categories');
+
+        // What the filter bar offers. Every account rather than the active ones the form
+        // picks from, since a closed card's history is still worth finding; every type
+        // in enum order, flat, since a filter is not narrowing by an account type.
+        $filterOptions = [
+            'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
+            'types' => array_column(TransactionType::cases(), 'value'),
+        ];
 
         // The pairing is what makes a type legal, so a flat list would offer "buy" on
         // a savings account only to refuse it. Derived from accountTypes().
@@ -245,11 +282,20 @@ class TransactionController extends Controller
             'refusals',
             'editLocks',
             'directions',
+            'filterOptions',
             'typeOptions',
             'typeDefaults',
             'statusOptions',
             'currencyOptions',
         ));
+    }
+
+    /** Whether a filter value is a calendar day, Y-m-d, and one that exists. */
+    private static function isDay(mixed $value): bool
+    {
+        return is_string($value)
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            && checkdate((int) substr($value, 5, 2), (int) substr($value, 8, 2), (int) substr($value, 0, 4));
     }
 
     public function store(TransactionData $data)
