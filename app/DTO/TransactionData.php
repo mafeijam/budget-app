@@ -51,7 +51,7 @@ class TransactionData extends Data
         public ?TransactionMetaData $meta_data,
         public ?Carbon $created_at,
 
-        // The owning account's name and currency: the model's accessors on a read, the
+        // The owning account's name, currency and type: the model's accessors on a read, the
         // account row on a write. Not a client's to decide -- rules() has no rule for
         // either, and says why. Last and defaulted because an optional parameter ahead
         // of the required ones gets no default at all.
@@ -60,6 +60,7 @@ class TransactionData extends Data
         // not whenever card_amount exists at all.
         public ?string $account_name = null,
         public ?string $account_ccy = null,
+        public ?string $account_type = null,
     ) {
         $this->created_at ??= now();
         $this->status ??= TransactionStatus::Posted;
@@ -77,6 +78,7 @@ class TransactionData extends Data
 
         $this->account_name = $account?->name;
         $this->account_ccy = $account?->ccy;
+        $this->account_type = $account?->type;
 
         // Dropped rather than refused: the edit form round-trips the row's real links,
         // and a rule cannot tell those from forged ones. keepLinksOf() restores them.

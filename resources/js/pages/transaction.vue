@@ -13,6 +13,17 @@
         </TransactionFilters>
       </template>
 
+      <template #body-cell-accountType="cell">
+        <q-td :props="cell">
+          <q-icon
+            :name="accountTypeIcons[cell.value] ?? 'help_outline'"
+            size="xs"
+            class="q-mr-xs"
+          />
+          {{ cell.value }}
+        </q-td>
+      </template>
+
       <template #body-cell-type="cell">
         <q-td :props="cell">
           <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
@@ -78,6 +89,9 @@ const props = defineProps({
 const pagination = usePagination()
 const formatMoney = useMoney()
 const formatDate = useHongKongTime()
+
+// The icons the accounts list uses, so a type looks the same on both pages.
+const accountTypeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
 
 const typeIcons = {
   expense: 'shopping_cart',
@@ -192,6 +206,16 @@ const columns = reactive([
     field: 'account_name',
     align: 'left',
     classes: 'text-weight-medium text-grey-9',
+    sortable: false,
+  },
+  {
+    name: 'accountType',
+    width: '110px',
+    label: 'Account type',
+    // The account's, not the row's: not sortable, since the list orders against the
+    // transactions table and this is a column on accounts.
+    field: 'account_type',
+    align: 'left',
     sortable: false,
   },
   {

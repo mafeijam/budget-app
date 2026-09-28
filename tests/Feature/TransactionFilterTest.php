@@ -92,6 +92,22 @@ class TransactionFilterTest extends TestCase
         );
     }
 
+    public function test_it_filters_by_the_accounts_type(): void
+    {
+        // The card's rows, whatever their own type: a charge on the card counts, the
+        // bank's expense and income do not.
+        $this->assertListed(['filter' => ['account_type' => 'card']], ['Books', 'Coffee, tea']);
+        $this->assertListed(['filter' => ['account_type' => 'cash,card']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+    }
+
+    public function test_each_row_carries_its_accounts_type_and_every_type_is_offered(): void
+    {
+        $this->get('/transactions?per_page=20')->assertInertia(fn (Assert $page) => $page
+            ->where('data.data', fn ($rows) => $rows->pluck('account_type')->all() === ['cash', 'cash', 'card', 'card'])
+            ->where('filterOptions.accountTypes', ['cash', 'card', 'security'])
+        );
+    }
+
     public function test_it_filters_by_several_types_at_once(): void
     {
         $this->assertListed(['filter' => ['type' => 'income,charge']], ['Salary', 'Books', 'Coffee, tea']);

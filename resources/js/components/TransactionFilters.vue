@@ -86,6 +86,18 @@
     />
 
     <q-select
+      v-model="filters.account_type"
+      :options="accountTypeOptions"
+      class="col-6 col-md"
+      label="Account type"
+      dense
+      filled
+      multiple
+      clearable
+      :display-value="shown(filters.account_type)"
+    />
+
+    <q-select
       v-model="filters.type"
       :options="typeOptions"
       class="col-6 col-md"
@@ -149,6 +161,7 @@ const pagination = inject('pagination')
 
 const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
+const accountTypeOptions = computed(() => page.props.filterOptions?.accountTypes ?? [])
 const statusOptions = computed(() => page.props.statusOptions ?? [])
 const categoryOptions = computed(() => page.props.options?.categories ?? [])
 const currencyOptions = computed(() => page.props.currencyOptions ?? [])
@@ -176,6 +189,7 @@ const seeded = page.props.params?.filter ?? {}
 const filters = reactive({
   description: seeded.description ?? null,
   account_id: ids(seeded.account_id),
+  account_type: list(seeded.account_type),
   type: list(seeded.type),
   status: list(seeded.status),
   category_id: ids(seeded.category_id),
@@ -245,6 +259,7 @@ const clear = () => {
   Object.assign(filters, {
     description: null,
     account_id: [],
+    account_type: [],
     type: [],
     status: [],
     category_id: [],
