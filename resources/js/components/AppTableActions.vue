@@ -21,10 +21,7 @@
       disabled button -- which is what makes this worth saying, because the obvious
       way to do it is hide the button and leave the user no explanation at all.
     -->
-    <!-- Wrapped and at body size: a refusal is a sentence, not a label. -->
-    <q-tooltip :delay="500" :offset="[0, 6]" max-width="320px" class="text-body2">
-      {{ refusal || 'delete' }}
-    </q-tooltip>
+    <q-tooltip :delay="500" :offset="[0, 6]">{{ refusal || 'delete' }}</q-tooltip>
   </q-btn>
 </template>
 
