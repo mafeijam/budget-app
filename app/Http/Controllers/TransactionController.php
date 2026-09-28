@@ -88,6 +88,9 @@ class TransactionController extends Controller
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('category_id'),
+                // The currency the row was made in, not its account's: a USD charge on an
+                // HKD card is found under USD.
+                AllowedFilter::exact('ccy'),
                 // One phrase, not a list: "coffee, tea" is a description, and splitting
                 // it on the comma would match either word.
                 AllowedFilter::partial('description')->delimiter(''),

@@ -97,6 +97,21 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['type' => 'income,charge']], ['Salary', 'Books', 'Coffee, tea']);
     }
 
+    public function test_it_filters_by_the_currency_the_row_was_made_in(): void
+    {
+        // A USD charge on the HKD card is found under USD, not under its card's HKD.
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-01-12',
+            'description' => 'Hotel',
+            'ccy' => 'USD',
+            'amount' => '100.0000',
+            'meta_data' => ['card_amount' => '780.0000'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertListed(['filter' => ['ccy' => 'USD']], ['Hotel']);
+        $this->assertListed(['filter' => ['ccy' => 'USD,HKD']], ['Salary', 'Rent', 'Books', 'Hotel', 'Coffee, tea']);
+    }
+
     public function test_it_filters_by_status(): void
     {
         $this->assertListed(['filter' => ['status' => 'pending']], ['Books']);

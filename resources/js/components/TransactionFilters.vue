@@ -110,6 +110,20 @@
     />
 
     <q-select
+      v-model="filters.ccy"
+      :options="currencyOptions"
+      class="col-6 col-md"
+      label="Currency"
+      dense
+      filled
+      multiple
+      clearable
+      emit-value
+      map-options
+      :display-value="shown(filters.ccy)"
+    />
+
+    <q-select
       v-model="filters.category_id"
       :options="categoryOptions"
       class="col-6 col-md"
@@ -137,6 +151,7 @@ const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
 const statusOptions = computed(() => page.props.statusOptions ?? [])
 const categoryOptions = computed(() => page.props.options?.categories ?? [])
+const currencyOptions = computed(() => page.props.currencyOptions ?? [])
 
 // A comma-separated list in the URL, since that is what the server's exact filter
 // splits on; an array here, which is what a multiple select binds.
@@ -164,6 +179,7 @@ const filters = reactive({
   type: list(seeded.type),
   status: list(seeded.status),
   category_id: ids(seeded.category_id),
+  ccy: list(seeded.ccy),
   date_from: seeded.date_from ?? null,
   date_to: seeded.date_to ?? null,
 })
@@ -232,6 +248,7 @@ const clear = () => {
     type: [],
     status: [],
     category_id: [],
+    ccy: [],
     date_from: null,
     date_to: null,
   })
