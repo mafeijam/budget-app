@@ -100,10 +100,11 @@
                 dense
                 unelevated
                 no-caps
-                color="green-7"
+                color="green-1"
+                text-color="green-9"
                 icon="payments"
                 label="Settle"
-                class="q-px-sm"
+                class="q-px-sm text-weight-bold"
                 :disable="!settleable(group, period)"
                 @click="openSettle(group, period)"
               >
