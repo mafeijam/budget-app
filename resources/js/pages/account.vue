@@ -20,6 +20,23 @@
         </q-td>
       </template>
 
+      <!--
+        A brokerage has no cash balance, so its cell is the market value of what it
+        holds, captioned as such so the figure is not read as money in an account.
+      -->
+      <template #body-cell-balance="cell">
+        <q-td :props="cell" :class="cell.col.classes?.(cell.row)">
+          {{ cell.value }}
+          <div v-if="marketValue(cell.row) !== null" class="text-caption text-grey-6">
+            market value{{
+              marketValues[cell.row.id].unpriced
+                ? ` · ${marketValues[cell.row.id].unpriced} unpriced`
+                : ''
+            }}
+          </div>
+        </q-td>
+      </template>
+
       <template #body-cell-status="cell">
         <q-td :props="cell">
           <q-badge
@@ -64,12 +81,26 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+
+  // Brokerage id => {market_value, unpriced, open}, for the balance a brokerage lacks.
+  marketValues: {
+    type: Object,
+    default: () => ({}),
+  },
 })
 
 const pagination = usePagination()
 const formatDate = useHongKongTime()
 
 const formatMoney = useMoney()
+
+// A brokerage holding nothing shows nothing, as before; one holding shares shows their
+// worth, zero included when none of them has a price yet.
+const marketValue = row => {
+  const valued = props.marketValues[row.id]
+
+  return valued?.open ? valued.market_value : null
+}
 
 const typeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
 
@@ -147,7 +178,7 @@ const columns = reactive([
     // Not sortable: the list orders against the accounts table and a balance is a sum
     // rather than a column on it. Blank for a securities account, which has none -- a
     // brokerage holds positions, and '0.0000' there would read as money it does not hold.
-    field: row => props.balances[row.id] ?? '',
+    field: row => props.balances[row.id] ?? marketValue(row) ?? '',
     // Two places, rounded here rather than in the query: decimal(12,4) sums exactly at
     // four, so a tenth of a cent is a real figure the server holds and this column
     // chooses not to show. Rounded as digits, never through Number() -- see money.js.
