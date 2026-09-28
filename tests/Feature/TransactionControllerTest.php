@@ -1037,6 +1037,31 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('2026-02-09', $charge->fresh()->meta_data['due_date']);
     }
 
+    public function test_a_charge_cannot_leave_a_settled_statement_for_a_card_sharing_its_due_date(): void
+    {
+        // Two cards closing on the same day produce the same due dates, so the period a
+        // charge would land in on the other card carries the date of the one it is
+        // leaving. That is a different bill, and the paid one on this card would be left
+        // showing a credit against money already handed over.
+        $other = Account::create(['name' => 'Other', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        $other->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
+
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'account_id' => $other->id,
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors('date');
+
+        $this->assertSame($this->card->id, $transaction->fresh()->account_id, 'The charge left its card anyway.');
+        $this->assertTrue(
+            CardStatement::forAccount($this->card)->firstWhere('dueDate', '2026-02-09')->isSettled(),
+            'The statement the charge was moved out of no longer balances.'
+        );
+    }
+
     public function test_editing_a_charge_without_moving_it_leaves_its_statement_alone(): void
     {
         // The counterpart to the refusal above, and the reason the re-derivation is

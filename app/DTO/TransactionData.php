@@ -347,8 +347,13 @@ class TransactionData extends Data
         // card it came from.
         $leaving = $charge->meta?->meta['due_date'] ?? null;
 
-        // Nothing to leave, or leaving for the period it is in: nothing moves.
-        if ($leaving === null || $leaving === $dueDate) {
+        $changingCard = $charge->account_id !== $account->id;
+
+        // Nothing to leave, or leaving for the period it is in: nothing moves. Only on
+        // the same card -- two cards closing on the same day share every due date, so on
+        // another card the same date is another bill, and matching it here would let a
+        // charge walk out of a paid statement unchecked.
+        if ($leaving === null || ($leaving === $dueDate && ! $changingCard)) {
             return;
         }
 
@@ -356,7 +361,7 @@ class TransactionData extends Data
 
         $leavingPeriod = $statements->firstWhere('dueDate', $leaving);
 
-        if ($charge->account_id !== $account->id) {
+        if ($changingCard) {
             $from = Account::find($charge->account_id);
 
             $leavingPeriod = $from === null
