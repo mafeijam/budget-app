@@ -13,6 +13,7 @@ use App\Models\Category;
 use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
+use App\Support\Positions;
 use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +28,9 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class TransactionController extends Controller
 {
+    /** @var array<int, list<array<string, mixed>>> each brokerage's trades, read once per request */
+    private array $tradesByBroker = [];
+
     private const DEFAULT_SORT = 'date';
 
     /** The columns the transactions table marks sortable. */
@@ -290,6 +294,7 @@ class TransactionController extends Controller
     {
         // Outside the try, for the reason given in update().
         $data->guardNewChargePeriod(Account::with('meta')->find($data->account_id));
+        $data->guardHoldings();
 
         // Two writes, so a failure between them must leave neither. As
         // AccountController::store().
@@ -339,6 +344,7 @@ class TransactionController extends Controller
         // After the move guard, whose message is the better one when a charge changes
         // card out of a paid statement.
         $data->guardFigures($transaction);
+        $data->guardHoldings($transaction);
 
         $data->keepLinksOf($transaction);
 
@@ -723,6 +729,10 @@ class TransactionController extends Controller
      */
     private function deleteRefusal(?Transaction $transaction, ?Collection $cardPeriods = null): ?string
     {
+        if ($transaction?->type === TransactionType::Buy->value) {
+            return $this->buyRefusal($transaction);
+        }
+
         if ($transaction === null || $transaction->type !== TransactionType::Charge->value) {
             return null;
         }
@@ -747,6 +757,36 @@ class TransactionController extends Controller
                 .'on its own. Delete the payment that settled it first.',
             $transaction->description,
             $dueDate
+        );
+    }
+
+    /**
+     * Why deleting this buy is refused: a later sell would be selling shares no longer
+     * held. Only a shortfall the delete causes, as in TransactionData::guardHoldings(),
+     * and with the way out -- a buy can go once the sells after it are gone or smaller.
+     *
+     * A brokerage's trades are read once per request, since the index asks this of
+     * every buy on the page.
+     */
+    private function buyRefusal(Transaction $buy): ?string
+    {
+        $trades = $this->tradesByBroker[$buy->account_id] ??= $buy->account === null
+            ? []
+            : Positions::tradesOf($buy->account);
+
+        $short = Positions::shortfall(array_values(array_filter($trades, fn (array $t) => $t['id'] !== $buy->id)));
+
+        if ($short === null || $short === Positions::shortfall($trades)) {
+            return null;
+        }
+
+        return sprintf(
+            'Deleting this buy leaves the sell of %s %s on %s with only %s held. Delete or reduce '
+                .'that sell first.',
+            Positions::plain($short['selling']),
+            $short['symbol'],
+            $short['date'],
+            Positions::plain($short['held'])
         );
     }
 

@@ -10,6 +10,7 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
+use App\Support\Positions;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
@@ -573,6 +574,76 @@ class TransactionData extends Data
         }
 
         return null;
+    }
+
+    /**
+     * Refuse a trade that would leave a brokerage selling shares it does not hold.
+     *
+     * Asked of the brokerage this row is written to and, when an edit moves a trade off
+     * one, of the brokerage it leaves: taking a buy away can strand a sell as surely as
+     * adding a sell can. The trades are replayed with this change in place of the row
+     * it replaces, so a sell is checked against what was held on its own day.
+     *
+     * Only a shortfall this change causes. One that was already there -- data written
+     * before this rule existed -- is not the edit's fault, and refusing on it would block
+     * the edit that might be fixing it.
+     *
+     * Called from store() and update() for the reason placeChargeInItsPeriod() is: it
+     * needs the stored row, which the constructor has not got.
+     */
+    public function guardHoldings(?Transaction $replacing = null): void
+    {
+        $isTrade = fn (string $type) => TransactionType::from($type)->derivesAmount();
+
+        if (! $isTrade($this->type->value) && ($replacing === null || ! $isTrade($replacing->type))) {
+            return;
+        }
+
+        $accounts = array_unique(array_filter([$this->account_id, $replacing?->account_id]));
+
+        foreach ($accounts as $accountId) {
+            $broker = Account::find($accountId);
+
+            if ($broker === null || $broker->type !== AccountType::Security->value) {
+                continue;
+            }
+
+            $before = Positions::tradesOf($broker);
+
+            $after = array_values(array_filter($before, fn (array $trade) => $trade['id'] !== $replacing?->id));
+
+            if ($accountId === $this->account_id && $this->type->derivesAmount()) {
+                // A new row sorts after everything already on its day, as it was entered
+                // after them.
+                $trade = Positions::trade(
+                    $replacing?->id ?? PHP_INT_MAX,
+                    $this->date,
+                    $this->type->value,
+                    $this->meta_data?->all() ?? []
+                );
+
+                if ($trade !== null) {
+                    $after[] = $trade;
+                }
+            }
+
+            $short = Positions::shortfall($after);
+
+            if ($short === null || $short === Positions::shortfall($before)) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                'meta_data.quantity' => sprintf(
+                    'That leaves a sell of %s %s on %s with only %s held that day. A sell cannot '
+                        .'be more than is held.',
+                    Positions::plain($short['selling']),
+                    $short['symbol'],
+                    $short['date'],
+                    Positions::plain($short['held'])
+                ),
+            ]);
+        }
     }
 
     /**
