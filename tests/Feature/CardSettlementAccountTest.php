@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -204,6 +205,75 @@ class CardSettlementAccountTest extends TestCase
                 .'Point it at another account first.');
 
         $this->assertDatabaseHas('accounts', ['id' => $this->bank->id]);
+    }
+
+    public function test_the_settle_dialog_is_offered_only_banks_in_the_cards_currency(): void
+    {
+        // The dialog narrows nothing itself -- Account::guardSettledFrom() says a card may
+        // only be paid from a bank in its own currency, and the docblock on that guard
+        // says a second copy of the rule in the browser is how the dialog ends up offering
+        // a target the server refuses. So the controller sends the list already narrowed,
+        // and this asserts what it sends rather than what a filter would produce.
+        //
+        // Two cards, because one is not the test: with a single card there is nothing for
+        // its list to exclude, and a list narrowed to the only bank in the database would
+        // pass either way.
+        Account::create(['name' => 'Card HKD', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        Account::create(['name' => 'Card USD', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('settlementOptionsByCcy.HKD', [
+                ['label' => 'Bank (HKD)', 'value' => $this->bank->id],
+            ])
+            ->where('settlementOptionsByCcy.USD', [
+                ['label' => 'Bank USD (USD)', 'value' => $this->usdBank->id],
+            ])
+        );
+    }
+
+    public function test_a_currency_with_no_cash_account_is_offered_as_an_empty_list(): void
+    {
+        // Present and empty rather than absent, so the dialog can say "no bank in JPY"
+        // rather than "no bank at all" and send the user looking for an account that does
+        // not exist instead of one in the wrong currency. The HKD card beside it is what
+        // makes the contrast readable: one card has a target and one does not, and neither
+        // is indistinguishable from the other.
+        Account::create(['name' => 'Card HKD', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        Account::create(['name' => 'Card JPY', 'status' => 'active', 'type' => 'card', 'ccy' => 'JPY']);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('settlementOptionsByCcy.JPY', 0)
+            ->where('settlementOptionsByCcy.HKD', [
+                ['label' => 'Bank (HKD)', 'value' => $this->bank->id],
+            ])
+        );
+    }
+
+    public function test_a_currency_no_card_holds_is_not_offered_at_all(): void
+    {
+        // Keyed by what a card holds, so the dialog asks for its card's own currency and
+        // never reads a list belonging to another one. An empty key here would be a
+        // harmless-looking entry in the props.
+        Account::create(['name' => 'Card HKD', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->has('settlementOptionsByCcy', 1)
+            ->missing('settlementOptionsByCcy.USD')
+        );
+    }
+
+    public function test_the_settlement_picker_still_offers_every_currency(): void
+    {
+        // The account form cannot narrow, so it keeps the whole list: it is offering a
+        // target for whichever account is open, and that account's currency changes while
+        // the form is being filled in. A list narrowed on the way out would be narrowed to
+        // whatever the account held when the page loaded.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('settlementOptions', [
+                ['label' => 'Bank (HKD)', 'value' => $this->bank->id],
+                ['label' => 'Bank USD (USD)', 'value' => $this->usdBank->id],
+            ])
+        );
     }
 
     private function card(): Account

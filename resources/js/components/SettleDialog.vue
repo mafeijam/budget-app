@@ -88,7 +88,7 @@
           >
             <template #no-option>
               <q-item>
-                <q-item-section class="text-grey"> No cash account to pay from </q-item-section>
+                <q-item-section class="text-grey"> {{ noBankMessage }} </q-item-section>
               </q-item>
             </template>
           </q-select>
@@ -191,11 +191,30 @@ const props = defineProps({
   bank: { type: Object, default: null },
 })
 
-// The cash accounts a card may be paid from, from the page props: the same list the
-// account form offers, sent by the controller, so the two cannot disagree about what may
-// be a target. The currency is in each label because the server refuses a mismatch, so a
-// bank in the wrong currency is recognisable rather than a surprise on save.
-const options = computed(() => usePage().props.settlementOptions ?? [])
+// The cash accounts this card may be paid from: the shared list the account form also
+// uses, narrowed to the card's own currency by the controller.
+//
+// Narrowed there rather than here, and that is the point rather than a convenience.
+// Account::guardSettledFrom() refuses a bank in another currency, and its docblock says
+// why this list must not be narrowed in the browser: a second copy of that rule is what
+// lets this dialog offer a target the account form refuses, or the other way round, and
+// neither would say so. So the controller sends what the server will accept for this
+// currency and the dialog reads it.
+//
+// The account form keeps the whole list, because it cannot narrow: it is offering
+// targets for whichever account is open, and that account's currency changes while the
+// form is filled in. The currency is in every label there for the same reason it used to
+// be here -- so an incompatible bank is recognisable rather than missing.
+const options = computed(() => {
+  const byCcy = usePage().props.settlementOptionsByCcy ?? {}
+
+  return byCcy[props.group?.card?.ccy] ?? []
+})
+
+// Naming the currency, because "no cash account to pay from" is the wrong sentence when
+// there are two cash accounts and neither is the right one: the user would go looking
+// for a bank that does not exist rather than one in the wrong currency.
+const noBankMessage = computed(() => `No cash account in ${props.group?.card?.ccy} to pay from`)
 
 // Which account the money leaves from, preselected with the card's own so the ordinary
 // case is nothing to do.
@@ -339,7 +358,12 @@ defineExpose({
     // bank, rather than whatever was chosen last time: settling one statement from
     // another account changed the card, so the next one starts from where that left off.
     paidOn.value = period?.due_date ?? ''
-    bankId.value = bank?.id ?? null
+    // The card's own bank, where that bank is one this dialog can offer. A card naming a
+    // bank in another currency is a stored state guardSettledFrom() refuses -- from
+    // before that rule, or from data written another way -- and preselecting an id that
+    // is not among the options would show a bare number in the picker and fail the save
+    // over a choice the user was never offered.
+    bankId.value = options.value.some(o => o.value === bank?.id) ? bank.id : null
     error.value = null
     fieldError.value = null
     bankError.value = null

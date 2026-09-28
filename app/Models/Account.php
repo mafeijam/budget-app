@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\AccountType;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -136,16 +137,27 @@ class Account extends Model
      * Every account that may be a settlement target, for a picker.
      *
      * Cash only, and including inactive: a closed bank still holds history, and leaving
-     * it out would give a card with no other option nowhere to be paid from. Not
-     * filtered by currency, because the label carries it -- an incompatible bank is then
-     * recognisable before it is refused rather than silently missing from the list.
+     * it out would give a card with no other option nowhere to be paid from.
+     *
+     * $ccy narrows to one currency, for a picker that already knows whose target it is
+     * choosing: the settle dialog knows which card it is settling, and
+     * guardSettledFrom() refuses a bank in another currency, so offering one there is a
+     * choice the user makes and is then told was never available.
+     *
+     * Optional rather than required because the account form is the other caller and
+     * cannot narrow: it offers targets for whichever account is open, and the currency
+     * of that one changes while the form is being filled in, so a list narrowed on the
+     * way out would be narrowed to whatever the account held when the page loaded. That
+     * picker keeps the whole list and the currency in each label, so an incompatible
+     * bank is recognisable there rather than silently missing.
      *
      * @return Collection<int, array{label: string, value: int}>
      */
-    public static function settlementOptions(): Collection
+    public static function settlementOptions(?string $ccy = null): Collection
     {
         return self::query()
             ->where('type', AccountType::Cash->value)
+            ->when($ccy, fn (Builder $query) => $query->where('ccy', $ccy))
             ->orderBy('name')
             ->get(['id', 'name', 'ccy'])
             ->map(fn (self $account) => [

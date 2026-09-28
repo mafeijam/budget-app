@@ -273,6 +273,21 @@ class TransactionController extends Controller
         // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
+        // The same list narrowed to each currency a card on this page holds, for the
+        // settle dialog, which knows which card it is settling and so can be told the
+        // answer rather than carrying the rule. Keyed by currency rather than by card so
+        // one query serves every card in the same currency -- at most three -- rather
+        // than one per card, which is the cost guardSettledFrom()'s caller avoids by
+        // reading the card's own link instead.
+        //
+        // A currency with no cash account is present with an empty list rather than
+        // absent, so the dialog can tell "no bank in this currency" from "no idea".
+        $settlementOptionsByCcy = $cards
+            ->pluck('ccy')
+            ->unique()
+            ->mapWithKeys(fn (string $ccy) => [$ccy => Account::settlementOptions($ccy)->all()])
+            ->all();
+
         // Hints for the description, which is the one field on this form a person types
         // rather than picks: everything else is chosen from a list the enum builds, and a
         // description is whatever the merchant was called that day.
@@ -344,6 +359,7 @@ class TransactionController extends Controller
             'statements',
             'cardBanks',
             'settlementOptions',
+            'settlementOptionsByCcy',
             'linked',
             'refusals',
             'editLocks',
