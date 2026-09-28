@@ -7,7 +7,6 @@ use App\Models\Account;
 use App\Support\AccountBalance;
 use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
-use Illuminate\Support\Collection;
 
 /**
  * Where the money is, and what is owed on the cards: the two questions the home page
@@ -56,32 +55,6 @@ class HomeController extends Controller
             ->sortBy('due_date')
             ->values();
 
-        return inertia('index', [
-            'cash' => $cash,
-            'cashTotals' => self::totalsByCurrency($cash, 'ccy', fn (array $row) => $row['balance']),
-            'statements' => $statements,
-            'owedTotals' => self::totalsByCurrency(
-                $statements,
-                fn (array $row) => $row['card']['ccy'],
-                fn (array $row) => $row['owed']
-            ),
-        ]);
-    }
-
-    /**
-     * A sum per currency, in BigDecimal: never across currencies, which would add HKD
-     * to USD, and never through a float, which would round money.
-     *
-     * @return array<string, string> currency => a decimal at four places
-     */
-    private static function totalsByCurrency(Collection $rows, string|callable $ccy, callable $amount): array
-    {
-        return $rows
-            ->groupBy($ccy)
-            ->map(fn (Collection $group) => (string) $group
-                ->reduce(fn (BigDecimal $sum, array $row) => $sum->plus($amount($row)), BigDecimal::zero())
-                ->toScale(4))
-            ->sortKeys()
-            ->all();
+        return inertia('index', compact('cash', 'statements'));
     }
 }

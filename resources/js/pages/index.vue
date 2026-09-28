@@ -1,34 +1,5 @@
 <template>
   <div class="column q-gutter-lg">
-    <!-- The two answers first: what is held, and what is owed, per currency. -->
-    <div class="row q-col-gutter-md">
-      <div v-for="(total, ccy) in cashTotals" :key="`cash-${ccy}`" class="col-12 col-sm-6 col-md-3">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="row items-center text-grey-7 text-caption">
-              <q-icon name="account_balance" size="xs" class="q-mr-xs" />
-              Cash held · {{ ccy }}
-            </div>
-            <div class="text-h5 text-weight-bold q-mt-xs" :class="amountClass(total)">
-              {{ money(total) }}
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div v-for="(total, ccy) in owedTotals" :key="`owed-${ccy}`" class="col-12 col-sm-6 col-md-3">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="row items-center text-grey-7 text-caption">
-              <q-icon name="credit_card" size="xs" class="q-mr-xs" />
-              Owed on cards · {{ ccy }}
-            </div>
-            <div class="text-h5 text-weight-bold text-negative q-mt-xs">{{ money(total) }}</div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
     <div>
       <div class="row items-center q-mb-sm">
         <div class="text-h6 text-weight-medium">Cash accounts</div>
@@ -133,9 +104,7 @@
 <script setup>
 defineProps({
   cash: { type: Array, default: Array },
-  cashTotals: { type: Object, default: () => ({}) },
   statements: { type: Array, default: Array },
-  owedTotals: { type: Object, default: () => ({}) },
 })
 
 const money = useMoney()

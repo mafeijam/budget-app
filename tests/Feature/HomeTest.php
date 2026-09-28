@@ -42,26 +42,6 @@ class HomeTest extends TestCase
         );
     }
 
-    public function test_cash_is_totalled_per_currency_and_never_across_them(): void
-    {
-        $usd = Account::create(['name' => 'Dollar', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
-
-        foreach ([[$this->bank, 'HKD', '100.0000'], [$usd, 'USD', '7.5000']] as [$account, $ccy, $amount]) {
-            $this->post('/transactions', [
-                'account_id' => $account->id,
-                'date' => '2026-01-01',
-                'type' => 'income',
-                'description' => 'In',
-                'amount' => $amount,
-                'ccy' => $ccy,
-            ])->assertSessionHasNoErrors();
-        }
-
-        $this->get('/')->assertInertia(fn (Assert $page) => $page
-            ->where('cashTotals', ['HKD' => '100.0000', 'USD' => '7.5000'])
-        );
-    }
-
     public function test_a_closed_cash_account_shows_only_while_it_holds_money(): void
     {
         // Hidden with money in it, the total would be a figure nobody can account for.
@@ -96,7 +76,6 @@ class HomeTest extends TestCase
             ->where('statements.0.days_until_due', 8)
             ->where('statements.0.card.name', 'Card')
             ->where('statements.1.owed', '80.0000')
-            ->where('owedTotals', ['HKD' => '200.0000'])
         );
     }
 
@@ -107,7 +86,6 @@ class HomeTest extends TestCase
 
         $this->get('/')->assertInertia(fn (Assert $page) => $page
             ->has('statements', 0)
-            ->where('owedTotals', [])
         );
     }
 
