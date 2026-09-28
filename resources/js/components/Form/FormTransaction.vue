@@ -57,11 +57,12 @@
         class="col-4"
         label="Date"
         filled
+        :disable="locked('date')"
         :error="!!form.errors.date"
         :error-message="form.errors.date"
       >
         <template #append>
-          <q-btn flat dense icon="event" rounded>
+          <q-btn flat dense icon="event" rounded :disable="locked('date')">
             <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
               <q-date
                 :model-value="form.date"

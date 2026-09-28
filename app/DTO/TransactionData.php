@@ -383,6 +383,15 @@ class TransactionData extends Data
     ];
 
     /**
+     * Every field a lock can name, with its words: FIGURES, and a paid charge's date.
+     *
+     * The date is not a figure -- a payment's does not decide its period, and a
+     * settlement's two halves may disagree about the day -- so it joins a lock only for
+     * a charge in a settled statement, where it is what chose the statement.
+     */
+    private const LOCKABLE = self::FIGURES + ['date' => 'date'];
+
+    /**
      * Why a stored row's figures are fixed, or null when they are not.
      *
      * One answer for the two places that ask: guardFigures() refusing a save, and the
@@ -391,7 +400,9 @@ class TransactionData extends Data
      *
      * A row in a settled statement. Its figure changing leaves the paid bill owing or
      * in credit -- a charge's amount corrected, a payment marked pending -- as silently
-     * as moving it would.
+     * as moving it would. A charge's date is fixed with them, even within its period:
+     * the edit form disables what is locked, and a date that may move only between two
+     * days nobody can see is not something a disabled control can say.
      *
      * One half of a card settlement. The two rows are one movement of money, and the
      * transfer has no due date for the first lock to see: correcting its amount has the
@@ -417,6 +428,12 @@ class TransactionData extends Data
         $words = Arr::join(array_values($figures), ', ', ' and ');
 
         if ($dueDate !== null && $cardPeriods?->firstWhere('dueDate', $dueDate)?->isSettled()) {
+            if ($isCharge) {
+                $figures = array_slice($figures, 0, 2) + ['date' => 'date'] + array_slice($figures, 2);
+                $fields = array_keys($figures);
+                $words = Arr::join(array_values($figures), ', ', ' and ');
+            }
+
             $remedy = $row->type === TransactionType::Payment->value
                 ? 'Delete this payment and settle the statement again.'
                 : 'Delete the payment that settled it, make the change, and settle it again.';
@@ -424,11 +441,10 @@ class TransactionData extends Data
             return [
                 'fields' => $fields,
                 'message' => sprintf(
-                    'The statement due %s has been settled, so this %s\'s %s are fixed%s. %s',
+                    'The statement due %s has been settled, so this %s\'s %s are fixed. %s',
                     $dueDate,
                     $row->type,
                     $words,
-                    $isCharge ? ', and its date can only move within that statement' : '',
                     $remedy
                 ),
                 'refusal' => "The statement due {$dueDate} has been settled, so this {$row->type}'s %s "
@@ -458,10 +474,8 @@ class TransactionData extends Data
      */
     public function guardFigures(Transaction $row): void
     {
-        $changed = $this->changedFigure($row);
-
         // Checked before anything is read, since nearly every edit changes none.
-        if ($changed === null) {
+        if ($this->changedFigure($row, array_keys(self::LOCKABLE)) === null) {
             return;
         }
 
@@ -474,32 +488,36 @@ class TransactionData extends Data
             $paired !== null && Transaction::whereKey($paired)->exists(),
         );
 
-        [$field, $label] = $changed;
+        $changed = $lock === null ? null : $this->changedFigure($row, $lock['fields']);
 
-        if ($lock === null || ! in_array($field, $lock['fields'], true)) {
+        if ($changed === null) {
             return;
         }
+
+        [$field, $label] = $changed;
 
         throw ValidationException::withMessages([$field => sprintf($lock['refusal'], $label)]);
     }
 
     /**
-     * The first of FIGURES this payload changes, as the error key and the words for
-     * it, or null when it changes none.
+     * The first of these LOCKABLE fields this payload changes, as the error key and the
+     * words for it, or null when it changes none.
      *
      * Amounts compared as decimals: the column reads back '120.0000' and a form may
      * send '120', which is no change.
      *
+     * @param  list<string>  $fields
      * @return array{0: string, 1: string}|null
      */
-    private function changedFigure(Transaction $row): ?array
+    private function changedFigure(Transaction $row, array $fields): ?array
     {
-        foreach (self::FIGURES as $field => $label) {
-            // A field added to FIGURES without a line here is an UnhandledMatchError,
+        foreach ($fields as $field) {
+            // A field added to LOCKABLE without a line here is an UnhandledMatchError,
             // not a figure quietly never compared.
             [$sent, $stored] = match ($field) {
                 'account_id' => [(string) $this->account_id, (string) $row->account_id],
                 'type' => [$this->type->value, $row->type],
+                'date' => [$this->date, $row->date],
                 'amount' => [$this->amount, $row->amount],
                 'ccy' => [$this->ccy->value, $row->ccy],
                 'status' => [$this->status->value, $row->status],
@@ -515,7 +533,7 @@ class TransactionData extends Data
                 : $sent !== $stored;
 
             if ($differs) {
-                return [$field, $label];
+                return [$field, self::LOCKABLE[$field]];
             }
         }
 

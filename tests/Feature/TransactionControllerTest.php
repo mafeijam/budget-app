@@ -1122,6 +1122,26 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('posted', $payment->fresh()->status);
     }
 
+    public function test_a_paid_charge_cannot_be_re_dated_even_within_its_statement(): void
+    {
+        // The 10th is in the same period as the 1st, so the move guard has nothing to
+        // say. The date is locked anyway, because the form disables it and the server
+        // must not accept what the form will not let anyone send.
+        $transaction = $this->storedCharge();
+
+        $this->settleTheStatementDue('2026-02-09', '120.0000');
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'date' => '2026-01-10',
+            'meta_data' => ['due_date' => '2026-02-09'],
+        ]))->assertSessionHasErrors([
+            'date' => 'The statement due 2026-02-09 has been settled, so this charge\'s date cannot be '
+                .'changed. Delete the payment that settled it, make the change, and settle it again.',
+        ]);
+
+        $this->assertSame('2026-01-01', $transaction->fresh()->date);
+    }
+
     public function test_an_amount_written_differently_is_not_a_change(): void
     {
         // The column reads back at four places and a form may send fewer. Comparing the
@@ -1157,13 +1177,14 @@ class TransactionControllerTest extends TestCase
         $figures = ['account_id', 'type', 'amount', 'ccy', 'status'];
 
         $this->get('/transactions?per_page=10')->assertInertia(fn (Assert $page) => $page
-            ->where("editLocks.{$paid->id}.fields", [...$figures, 'meta_data.card_amount'])
+            ->where("editLocks.{$paid->id}.fields", [
+                'account_id', 'type', 'date', 'amount', 'ccy', 'status', 'meta_data.card_amount',
+            ])
             ->where(
                 "editLocks.{$paid->id}.message",
-                'The statement due 2026-02-09 has been settled, so this charge\'s account, type, amount, '
-                    .'currency, status and amount in the card\'s currency are fixed, and its date can only '
-                    .'move within that statement. Delete the payment that settled it, make the change, and '
-                    .'settle it again.'
+                'The statement due 2026-02-09 has been settled, so this charge\'s account, type, date, '
+                    .'amount, currency, status and amount in the card\'s currency are fixed. Delete the '
+                    .'payment that settled it, make the change, and settle it again.'
             )
             ->where("editLocks.{$payment->id}.fields", $figures)
             ->where("editLocks.{$transfer->id}.fields", $figures)
