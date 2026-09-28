@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\PositionController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,8 @@ Route::post('accounts/{account}/settle', [TransactionController::class, 'settle'
 // either, and the day it is keyed on travels in the body rather than in the URL.
 Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveDueDate'])
     ->name('accounts.due-date');
+
+Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
