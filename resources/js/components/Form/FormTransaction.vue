@@ -25,13 +25,19 @@
         offered only once the form has moved off what it was filled with, since
         overwriting a template with the values it already holds is a way of losing one
         for nothing.
+
+        Padding rather than size="sm", and grey rather than no colour at all, which is
+        the Reset button's treatment in this same dialog and the reason for it: size="sm"
+        drops the label below the 14px the rest of the app sets its body copy at, and a
+        button with no colour prop takes the full-strength text colour rather than the
+        muted one every other unemphasised control here uses.
       -->
       <div class="col-12 row items-center q-gutter-sm">
         <q-btn
           flat
-          dense
           no-caps
-          size="sm"
+          color="grey-6"
+          padding="sm md"
           icon="bookmark_add"
           label="Save as template"
           :disable="!canTemplate"
@@ -40,9 +46,9 @@
 
         <q-btn
           flat
-          dense
           no-caps
-          size="sm"
+          color="grey-6"
+          padding="sm md"
           icon="bookmark"
           label="Use template"
           :disable="templates.length === 0 || !!target"
@@ -66,11 +72,12 @@
                       flat
                       dense
                       round
-                      size="sm"
                       icon="delete"
                       color="negative"
                       @click.stop="destroyTemplate(template)"
-                    />
+                    >
+                      <q-tooltip :delay="500" :offset="[0, 6]">Delete this template</q-tooltip>
+                    </q-btn>
                   </q-item-section>
                 </q-item>
               </template>
@@ -81,9 +88,9 @@
         <q-btn
           v-if="loadedTemplate"
           flat
-          dense
           no-caps
-          size="sm"
+          color="grey-6"
+          padding="sm md"
           icon="save"
           :label="`Update ${loadedTemplate.name}`"
           :disable="!form.isDirty"
