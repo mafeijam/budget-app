@@ -642,6 +642,15 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_seeds_the_form_as_posted(): void
+    {
+        // What the DTO defaults an absent status to, so the picker shows the value the
+        // save will store rather than a blank.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('formEmpty.status', TransactionStatus::Posted->value)
+        );
+    }
+
     public function test_the_seeded_date_does_not_survive_into_an_edit(): void
     {
         // The other half, and the reason for seeding formEmpty rather than assigning

@@ -34,7 +34,13 @@ class TransactionController extends Controller
         // today() rather than a JS date, so "today" is the one Asia/Hong_Kong the rest
         // of the app already formats with (config/app.php, useHongKongTime) and not
         // whatever half-hour the browser thinks it is in.
-        $formEmpty = TransactionData::empty(['date' => today()->toDateString()]);
+        //
+        // Posted, the default the DTO applies to a payload without one -- seeded too, so
+        // the picker shows what will be saved rather than a blank the server then fills.
+        $formEmpty = TransactionData::empty([
+            'date' => today()->toDateString(),
+            'status' => TransactionStatus::Posted->value,
+        ]);
 
         // type and ccy ride along: the form needs both and has no other source.
         // Not the paginated set -- a card on page two must stay selectable.
