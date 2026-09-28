@@ -37,27 +37,27 @@ enum AccountType: string
     }
 
     /**
-     * The transaction type to offer first on this account type, or null.
+     * The transaction type to offer first on this account type.
      *
      * A convenience for the form, not a rule: the server accepts anything
      * accountTypes() permits. Cash and card each have an obvious common case, and
      * pre-filling it saves a pick on nearly every transaction.
      *
-     * Null for a securities account rather than a guess. Buy and sell are both
-     * ordinary there and neither is the usual one, so any default hands the
-     * user a type they did not choose -- and the alternative, an empty picker, is
-     * something they can already reason about.
+     * Every account type has one, so the form has a type to show the moment an account
+     * is picked. A brokerage's is a buy: a sell and a dividend are both ordinary on one
+     * too, and a default they have to change is a field they were going to open anyway,
+     * where no type at all means opening a picker first for every trade.
      *
      * Here rather than in the template because the pairing of an account type with a
      * transaction type is already this enum's business. A second copy in the browser
      * would be free to drift from accountTypes() without anything noticing.
      */
-    public function defaultTransactionType(): ?TransactionType
+    public function defaultTransactionType(): TransactionType
     {
         return match ($this) {
             self::Cash => TransactionType::Deposit,
             self::Card => TransactionType::Charge,
-            self::Security => null,
+            self::Security => TransactionType::Buy,
         };
     }
 }

@@ -879,16 +879,20 @@ watch(
 
     const account = chosenAccount.value
 
-    // The type the new account most likely wants, and null where the enum has no
-    // opinion -- a securities account accepts a buy, a sell and a dividend, and
-    // pre-filling one hands the user a type they did not choose.
+    // The type the new account most likely wants, from the enum that decides it, which
+    // names one for every account type. The `?? null` is for a page that has not sent
+    // the prop, as on every other list this form reads.
     form.type = account?.type ? (typeDefaults.value[account.type] ?? null) : null
 
-    // The account's own currency, which is right almost every time and saves re-picking
-    // it. A charge on a card may differ and this leaves it alone, because currencyLocked
-    // below is false for exactly that case and the card-currency figure is what covers
-    // the one where this default would not be the answer.
-    if (account?.ccy && currencyLocked.value) form.ccy = account.ccy
+    // The account's own currency, as a default and not a lock: right almost every time,
+    // and where it is not -- a charge on a card in another currency -- the field stays
+    // editable, and needsCardAmount asks what it came to in the card's own currency.
+    //
+    // Not conditioned on currencyLocked, which is false for a charge on a card and a
+    // card's default type is a charge. Editable is not the same as right to start empty,
+    // and a card is the account whose currency the form would leave unset, on a field
+    // the server requires.
+    if (account?.ccy) form.ccy = account.ccy
   },
 )
 

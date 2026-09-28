@@ -796,7 +796,7 @@ class TransactionControllerTest extends TestCase
         // picker nobody would think to report.
         $expected = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => $accountType->defaultTransactionType()?->value,
+                $accountType->value => $accountType->defaultTransactionType()->value,
             ])
             ->all();
 
@@ -815,10 +815,6 @@ class TransactionControllerTest extends TestCase
         foreach (AccountType::cases() as $accountType) {
             $default = $accountType->defaultTransactionType();
 
-            if ($default === null) {
-                continue;
-            }
-
             $this->assertTrue(
                 $default->isAllowedFor($accountType),
                 "The default for a {$accountType->value} account is '{$default->value}', which "
@@ -828,16 +824,14 @@ class TransactionControllerTest extends TestCase
         }
     }
 
-    public function test_a_securities_account_is_offered_no_default_type(): void
+    public function test_a_securities_account_is_offered_a_buy(): void
     {
-        // Null rather than a guess. Buy, sell and dividend are all ordinary on a
-        // brokerage and none of them is the usual one, so any default hands the user a
-        // type they did not choose -- and an empty picker is something they can reason
-        // about. Asserted so the decision is visible rather than an absence.
-        $this->assertNull(AccountType::Security->defaultTransactionType());
+        // Buy, the ordinary trade on a brokerage, and the one field a sell or a dividend
+        // changes. Asserted so the decision is visible rather than an absence.
+        $this->assertSame(TransactionType::Buy, AccountType::Security->defaultTransactionType());
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('typeDefaults.security', null)
+            ->where('typeDefaults.security', 'buy')
         );
     }
 
