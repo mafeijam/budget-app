@@ -317,6 +317,8 @@ const confirm = () => {
     {
       preserveScroll: true,
       preserveState: true,
+      // Settle's own spinner -- see plugins/quasar.js.
+      showProgress: false,
       onError: errors => {
         fieldError.value = errors.date ?? null
         bankError.value = errors.settlement_account_id ?? null

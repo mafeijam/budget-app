@@ -208,6 +208,8 @@ const confirm = () => {
     {
       preserveScroll: true,
       preserveState: true,
+      // Save's own spinner -- see plugins/quasar.js.
+      showProgress: false,
       onError: errors => {
         fieldError.value = errors.new_due_date ?? null
         error.value = errors.due_date ?? "That statement's due date could not be changed."

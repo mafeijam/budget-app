@@ -37,6 +37,8 @@ export function useSubmit(form, pagination) {
 
     form[method](targetUrl, {
       preserveScroll: true,
+      // Submit's own spinner is the indicator -- see plugins/quasar.js.
+      showProgress: false,
       onBefore: () => form.clearErrors(),
       onSuccess: resp => {
         notifySuccess()
@@ -131,6 +133,8 @@ export function useDestroy(pagination) {
       router.delete(`${meta.path}/${row.id}`, {
         preserveScroll: true,
         preserveState: true,
+        // The row's own spinner, while the confirmation is gone -- see plugins/quasar.js.
+        showProgress: false,
         onBefore: () => (loading.value = row.id),
         onSuccess: resp => {
           notifySuccess()

@@ -11,11 +11,28 @@ import 'quasar/dist/quasar.css'
 
 let timeout = null
 
-router.on('start', () => {
+/*
+  Started here rather than by Inertia, because skipHijack below keeps Quasar off the
+  router -- which also means Inertia's own showProgress flag does nothing unless it is
+  read here. A request answered by its own control's spinner passes showProgress: false
+  and this honours it: the button names what is being waited on, and two indicators are
+  the same answer twice.
+
+  The button's :loading is also what disables it, which is why the spinner is the one that
+  stays. Drop it to keep the bar and a second press on Fetch prices fires a second fetch,
+  with no disabled button in the way.
+*/
+router.on('start', event => {
+  if (event.detail.visit.showProgress === false) return
+
   timeout = setTimeout(() => LoadingBar.start(), 300)
 })
 
-router.on('finish', () => {
+// Stopped by the request that started it: a quiet one finishing alongside a navigating
+// one would switch off a bar the second is still using.
+router.on('finish', event => {
+  if (event.detail.visit.showProgress === false) return
+
   clearTimeout(timeout)
   LoadingBar.stop()
 })

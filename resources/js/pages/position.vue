@@ -172,6 +172,9 @@ const fetchPrices = () => {
     {},
     {
       preserveScroll: true,
+      // A few symbols and a few seconds, and the button says so for all of it -- see
+      // plugins/quasar.js.
+      showProgress: false,
       onStart: () => (fetching.value = true),
       onSuccess: () => notifySuccess(),
       onFinish: () => (fetching.value = false),
