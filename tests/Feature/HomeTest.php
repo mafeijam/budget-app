@@ -1,0 +1,122 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Account;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsACard;
+use Tests\TestCase;
+
+/**
+ * The home page: what is held in cash, and what is owed on the cards.
+ */
+class HomeTest extends TestCase
+{
+    use BuildsACard, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->setUpCard();
+    }
+
+    public function test_it_shows_each_cash_account_with_its_balance(): void
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id,
+            'date' => '2026-01-01',
+            'type' => 'income',
+            'description' => 'Salary',
+            'amount' => '30000.0000',
+            'ccy' => 'HKD',
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->component('index')
+            ->has('cash', 1)
+            ->where('cash.0.name', 'Bank')
+            ->where('cash.0.balance', '30000.0000')
+        );
+    }
+
+    public function test_cash_is_totalled_per_currency_and_never_across_them(): void
+    {
+        $usd = Account::create(['name' => 'Dollar', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+
+        foreach ([[$this->bank, 'HKD', '100.0000'], [$usd, 'USD', '7.5000']] as [$account, $ccy, $amount]) {
+            $this->post('/transactions', [
+                'account_id' => $account->id,
+                'date' => '2026-01-01',
+                'type' => 'income',
+                'description' => 'In',
+                'amount' => $amount,
+                'ccy' => $ccy,
+            ])->assertSessionHasNoErrors();
+        }
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('cashTotals', ['HKD' => '100.0000', 'USD' => '7.5000'])
+        );
+    }
+
+    public function test_a_closed_cash_account_shows_only_while_it_holds_money(): void
+    {
+        // Hidden with money in it, the total would be a figure nobody can account for.
+        Account::create(['name' => 'Old empty', 'status' => 'inactive', 'type' => 'cash', 'ccy' => 'HKD']);
+        $holding = Account::create(['name' => 'Old holding', 'status' => 'inactive', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->post('/transactions', [
+            'account_id' => $holding->id,
+            'date' => '2026-01-01',
+            'type' => 'income',
+            'description' => 'Left over',
+            'amount' => '5.0000',
+            'ccy' => 'HKD',
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('cash', fn ($rows) => $rows->pluck('name')->all() === ['Bank', 'Old holding'])
+        );
+    }
+
+    public function test_it_lists_the_statements_still_owing_soonest_first(): void
+    {
+        $this->travelTo(Carbon::parse('2026-02-01 12:00', 'Asia/Hong_Kong'));
+
+        $this->charge('2026-01-01', '120.0000');
+        $this->charge('2026-02-10', '80.0000');
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->has('statements', 2)
+            ->where('statements.0.due_date', self::PERIOD)
+            ->where('statements.0.owed', '120.0000')
+            ->where('statements.0.days_until_due', 8)
+            ->where('statements.0.card.name', 'Card')
+            ->where('statements.1.owed', '80.0000')
+            ->where('owedTotals', ['HKD' => '200.0000'])
+        );
+    }
+
+    public function test_a_settled_statement_is_not_listed(): void
+    {
+        $this->charge('2026-01-01', '120.0000');
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->has('statements', 0)
+            ->where('owedTotals', [])
+        );
+    }
+
+    public function test_a_brokerage_is_neither_cash_nor_a_card(): void
+    {
+        Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('cash', fn ($rows) => $rows->pluck('name')->all() === ['Bank'])
+        );
+    }
+}

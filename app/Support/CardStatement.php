@@ -6,6 +6,7 @@ use App\Enums\TransactionStatus;
 use App\Models\Account;
 use App\Models\Transaction;
 use Brick\Math\BigDecimal;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -191,6 +192,32 @@ class CardStatement
     public function owed(): string
     {
         return self::decimal(BigDecimal::of($this->charged)->minus($this->paid));
+    }
+
+    /**
+     * The period as the pages show it: the transactions panel and the home page both.
+     *
+     * One shape for both, so the two cannot disagree about what a period owes or how
+     * long it has left. days_until_due is counted from today(), which is
+     * Asia/Hong_Kong, and not in the browser, whose date differs from it for six hours
+     * a day -- a statement due today would read as due tomorrow or overdue.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'first_charge_date' => $this->firstChargeDate,
+            'last_charge_date' => $this->lastChargeDate,
+            'due_date' => $this->dueDate,
+            'charge_count' => $this->chargeCount,
+            'payment_count' => $this->paymentCount,
+            'pending_count' => $this->pendingCount,
+            'charged' => $this->charged,
+            'paid' => $this->paid,
+            'owed' => $this->owed(),
+            'days_until_due' => (int) today()->diffInDays(Carbon::parse($this->dueDate), false),
+        ];
     }
 
     public function isSettled(): bool

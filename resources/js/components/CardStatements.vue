@@ -151,23 +151,7 @@ const bankLine = group => {
   return bank ? `Paid from ${bank.name}` : 'No bank named yet'
 }
 
-// How close the due date is, counted by the server from Hong Kong's today rather than
-// the browser's -- see days_until_due in TransactionController::index().
-const dueBadge = period => {
-  const days = period.days_until_due
-
-  if (days < 0) {
-    return {
-      color: 'red-1',
-      textColor: 'red-9',
-      label: `${-days} day${days === -1 ? '' : 's'} overdue`,
-    }
-  }
-
-  if (days === 0) return { color: 'amber-2', textColor: 'amber-10', label: 'due today' }
-
-  return { color: 'grey-2', textColor: 'grey-8', label: `in ${days} day${days === 1 ? '' : 's'}` }
-}
+const dueBadge = useDueBadge()
 
 // Red while it owes; a period paid beyond its charges is in credit and reads green.
 const owedClass = period =>

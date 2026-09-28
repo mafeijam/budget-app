@@ -14,7 +14,6 @@ use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use Brick\Math\BigDecimal;
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -223,21 +222,7 @@ class TransactionController extends Controller
                 // period list keyed 1, 3, 7 reaches Vue as an object rather than the
                 // list the v-for is written against.
                 'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
-                    ->map(fn (CardStatement $statement) => [
-                        'first_charge_date' => $statement->firstChargeDate,
-                        'last_charge_date' => $statement->lastChargeDate,
-                        'due_date' => $statement->dueDate,
-                        'charge_count' => $statement->chargeCount,
-                        'payment_count' => $statement->paymentCount,
-                        'pending_count' => $statement->pendingCount,
-                        'charged' => $statement->charged,
-                        'paid' => $statement->paid,
-                        'owed' => $statement->owed(),
-                        // Counted here from today(), which is Asia/Hong_Kong, and not in
-                        // the browser, whose date differs from it for six hours a day --
-                        // a statement due today would read as due tomorrow or overdue.
-                        'days_until_due' => (int) today()->diffInDays(Carbon::parse($statement->dueDate), false),
-                    ])
+                    ->map(fn (CardStatement $statement) => $statement->toArray())
                     ->all(),
             ])
             // A card with nothing outstanding is not worth a heading.
