@@ -174,6 +174,7 @@ const metaChips = row => {
 const columns = reactive([
   {
     name: 'date',
+    width: '110px',
     label: 'Date',
     field: 'date',
     align: 'left',
@@ -181,6 +182,7 @@ const columns = reactive([
   },
   {
     name: 'account',
+    width: '130px',
     label: 'Account',
     // Whose money the row is. Without it a table of cash, card and trade rows gives a
     // number in the corner and nothing else to tell them apart.
@@ -195,6 +197,7 @@ const columns = reactive([
   },
   {
     name: 'type',
+    width: '120px',
     label: 'Type',
     field: 'type',
     align: 'left',
@@ -202,6 +205,7 @@ const columns = reactive([
   },
   {
     name: 'description',
+    width: '220px',
     label: 'Description',
     field: 'description',
     align: 'left',
@@ -210,6 +214,7 @@ const columns = reactive([
   },
   {
     name: 'amount',
+    width: '160px',
     label: 'Amount',
     // Money arrives as a string precisely so a float never rounds it on the way here.
     // Rendered by the body-cell-amount slot, with the currency beside it rather than in
@@ -220,6 +225,7 @@ const columns = reactive([
   },
   {
     name: 'status',
+    width: '100px',
     label: 'Status',
     field: 'status',
     align: 'left',
@@ -227,6 +233,7 @@ const columns = reactive([
   },
   {
     name: 'metaData',
+    width: '300px',
     label: 'Details',
     // Rendered by the body-cell-metaData slot above. The field is what the table sorts
     // and filters on, so it is the same words joined.
@@ -239,6 +246,7 @@ const columns = reactive([
   },
   {
     name: 'created_at',
+    width: '170px',
     label: 'Created At',
     field: 'created_at',
     format: val => formatDate(val),
@@ -247,6 +255,7 @@ const columns = reactive([
   },
   {
     name: 'action',
+    width: '100px',
     label: 'Action',
     align: 'right',
   },

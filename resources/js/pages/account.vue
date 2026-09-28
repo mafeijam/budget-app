@@ -116,6 +116,7 @@ const metaLabels = row => {
 const columns = reactive([
   {
     name: 'name',
+    width: '180px',
     label: 'Name',
     field: 'name',
     align: 'left',
@@ -124,6 +125,7 @@ const columns = reactive([
   },
   {
     name: 'type',
+    width: '120px',
     label: 'Type',
     field: 'type',
     align: 'left',
@@ -131,6 +133,7 @@ const columns = reactive([
   },
   {
     name: 'ccy',
+    width: '80px',
     label: 'CCY',
     field: 'ccy',
     align: 'left',
@@ -138,6 +141,7 @@ const columns = reactive([
   },
   {
     name: 'balance',
+    width: '150px',
     label: 'Balance',
     align: 'right',
     // Not sortable: the list orders against the accounts table and a balance is a sum
@@ -155,6 +159,7 @@ const columns = reactive([
   },
   {
     name: 'status',
+    width: '100px',
     label: 'Status',
     field: 'status',
     align: 'left',
@@ -162,6 +167,7 @@ const columns = reactive([
   },
   {
     name: 'metaData',
+    width: '380px',
     label: 'Details',
     // Rendered by the body-cell-metaData slot above; the field is the same words
     // joined, for the table to sort and filter on.
@@ -171,6 +177,7 @@ const columns = reactive([
   },
   {
     name: 'created_at',
+    width: '170px',
     label: 'Created At',
     field: 'created_at',
     format: val => formatDate(val),
@@ -178,6 +185,7 @@ const columns = reactive([
   },
   {
     name: 'action',
+    width: '100px',
     label: 'Action',
     align: 'right',
   },
