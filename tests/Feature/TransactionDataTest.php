@@ -679,16 +679,54 @@ class TransactionDataTest extends TestCase
     {
         // A dividend is recorded on a securities account but is not a trade: it
         // arrives as a fixed sum with no quantity or price, so deriving one
-        // would be nonsense.
+        // would be nonsense. The symbol says which holding paid it, and is required
+        // for exactly that reason -- see guardCashSide().
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->securityId,
             'type' => 'deposit',
             'ccy' => 'HKD',
             'category_id' => null,
             'amount' => '312.4400',
+            'meta_data' => ['symbol' => '0700.HK'],
         ]));
 
         $this->assertSame('312.4400', $data->amount);
+        $this->assertSame('0700.HK', $data->meta_data->symbol);
+    }
+
+    public function test_a_dividend_with_no_symbol_is_refused(): void
+    {
+        // Which share paid it is the fact being recorded, and there is no default for it.
+        // Refused rather than stored: a dividend under no symbol would be found only by
+        // noticing a total that is right by accident.
+        $this->assertFieldRejected(
+            [
+                'account_id' => $this->securityId,
+                'type' => 'deposit',
+                // The brokerage's own currency, which every row on it must be in --
+                // otherwise guardTradeCurrency() refuses first and this says nothing
+                // about the symbol.
+                'ccy' => 'HKD',
+                'meta_data' => ['symbol' => null],
+            ],
+            'meta_data.symbol'
+        );
+    }
+
+    public function test_a_deposit_on_a_bank_needs_no_symbol(): void
+    {
+        // The mirror: the same type on a cash account is ordinary money in, and asking
+        // for a symbol would be asking which share paid a salary.
+        $data = TransactionData::from($this->postRequest([
+            'account_id' => $this->accountId,
+            'type' => 'deposit',
+            'ccy' => 'HKD',
+            'category_id' => null,
+            'amount' => '312.4400',
+            'meta_data' => ['symbol' => null],
+        ]));
+
+        $this->assertNull($data->meta_data->symbol);
     }
 
     public function test_a_non_trade_requires_an_amount(): void

@@ -114,6 +114,44 @@ class TransactionTypeTest extends TestCase
         $this->assertFalse(TransactionType::Deposit->derivesAmount());
     }
 
+    public function test_a_cash_side_is_a_trade_or_a_dividend_on_a_brokerage(): void
+    {
+        // needsCashSide() is what decides whether a row is written beside another one, and
+        // it is the same answer the form is sent for which fields to show. Asserted across
+        // every type and every account type so a case added to the enum cannot arrive
+        // without a decision here.
+        foreach (TransactionType::cases() as $type) {
+            foreach (AccountType::cases() as $accountType) {
+                $expected = $type->derivesAmount()
+                    || ($type === TransactionType::Deposit && $accountType === AccountType::Security);
+
+                $this->assertSame(
+                    $expected,
+                    $type->needsCashSide($accountType),
+                    "{$type->value} on a {$accountType->value} account disagrees with the "
+                        .'trades-and-dividends rule.'
+                );
+            }
+        }
+
+        // And the three that answer yes, by name, so the assertion above is not the only
+        // thing holding the shape.
+        $this->assertSame(
+            ['buy', 'sell', 'deposit'],
+            array_values(array_map(
+                fn (TransactionType $type) => $type->value,
+                array_filter(
+                    TransactionType::cases(),
+                    fn (TransactionType $type) => $type->needsCashSide(AccountType::Security)
+                )
+            ))
+        );
+
+        // A deposit on a bank is the same type and has no cash side: the account is what
+        // decides, which is why this takes one.
+        $this->assertFalse(TransactionType::Deposit->needsCashSide(AccountType::Cash));
+    }
+
     public function test_only_a_charge_requires_a_category(): void
     {
         $this->assertTrue(TransactionType::Charge->requiresCategory());

@@ -133,6 +133,27 @@ enum TransactionType: string
     }
 
     /**
+     * Whether recording one of these writes a row in the settlement account.
+     *
+     * A trade, and a deposit on a brokerage -- which is a dividend, and is money
+     * arriving rather than money already sitting in a bank being counted a second time.
+     * Both pay into the brokerage's settlement account, so both are written as a pair.
+     *
+     * The account type is a parameter for the reason accountTypes() takes one: a deposit
+     * is money in on either kind of account, and only a brokerage's has a bank behind it.
+     *
+     * Here rather than in TradeCash, which is the other caller: the form needs the same
+     * answer per account type to know which fields to show, and a second copy of it in
+     * the browser would be free to drift from the first -- a field shown for a type whose
+     * cash side is not written, or hidden for one whose is.
+     */
+    public function needsCashSide(AccountType $accountType): bool
+    {
+        return $this->derivesAmount()
+            || ($this === self::Deposit && $accountType === AccountType::Security);
+    }
+
+    /**
      * Whether a category is mandatory.
      *
      * A charge is money spent and is labelled. A withdrawal is not required to be, and

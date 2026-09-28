@@ -223,6 +223,32 @@ class TransactionController extends Controller
             ])
             ->all();
 
+        // Which types the server derives an amount for, and which write a row in a
+        // brokerage's settlement account. Both keyed by account type and both sent rather
+        // than restated in the browser: the form decides which fields to show, disable and
+        // clear from them, and a hand-written list is a second copy of the enum method
+        // behind them -- free to drift, and the drift is silent because a field that is
+        // shown for a type nothing derives is merely a field the save ignores.
+        //
+        // Two props rather than one because they are two different questions. The first
+        // does not depend on the account type at all, and is keyed by it only so the form
+        // can read both the same way.
+        $derivesAmountTypes = collect(TransactionType::cases())
+            ->filter(fn (TransactionType $type) => $type->derivesAmount())
+            ->map(fn (TransactionType $type) => $type->value)
+            ->values()
+            ->all();
+
+        $cashSideTypes = collect(AccountType::cases())
+            ->mapWithKeys(fn (AccountType $accountType) => [
+                $accountType->value => collect(TransactionType::cases())
+                    ->filter(fn (TransactionType $type) => $type->needsCashSide($accountType))
+                    ->map(fn (TransactionType $type) => $type->value)
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
+
         // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
@@ -367,6 +393,8 @@ class TransactionController extends Controller
             'filterOptions',
             'typeOptions',
             'typeDefaults',
+            'derivesAmountTypes',
+            'cashSideTypes',
             'statusOptions',
             'currencyOptions',
             'templates',
@@ -444,8 +472,13 @@ class TransactionController extends Controller
 
         $data->keepLinksOf($transaction);
 
-        // What it was, for TradeCash: a buy edited into a dividend has cash to remove.
+        // What it was, for TradeCash: a buy edited into a dividend still has a cash side
+        // but a buy edited into an expense has none, and a dividend moved off a brokerage
+        // must have the cash row it left behind taken off with it. Both halves, because
+        // neither the old type nor the old account says it alone -- a deposit wanted a
+        // cash side on a brokerage and not on a bank.
         $wasType = $transaction->type;
+        $wasAccountId = $transaction->account_id;
 
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
@@ -471,7 +504,7 @@ class TransactionController extends Controller
 
             // The cash side follows the corrected trade: its amount, date and status,
             // and its bank if the trade moved brokerage.
-            TradeCash::sync($transaction, $wasType);
+            TradeCash::sync($transaction, $wasType, $wasAccountId);
 
             DB::commit();
         } catch (Exception $e) {
@@ -846,11 +879,12 @@ class TransactionController extends Controller
         }
 
         // Read the pairing, and the settlement's period, before anything is deleted:
-        // both live in bags, and both bags are about to go.
+        // both live in bags, and both bags are about to go. The account too, since
+        // describe() and hasCashSide() both need to know which kind of row this is.
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
-        $partner = $pairedId === null ? null : Transaction::with('meta')->find($pairedId);
+        $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
         $period = $this->settlementPeriod($transaction, $partner);
-        $trade = TradeCash::isTrade($transaction) ? TradeCash::describe($transaction) : null;
+        $cashSide = TradeCash::hasCashSide($transaction) ? TradeCash::describe($transaction) : null;
 
         // A settlement is two rows and must not come apart: deleting one half leaves a
         // card that says it was paid and a bank that says the money is still there. Both
@@ -890,8 +924,10 @@ class TransactionController extends Controller
             return back()->with('message', "Transaction [{$transaction->type}] deleted");
         }
 
-        if ($trade !== null) {
-            return back()->with('message', "Trade {$trade} deleted with its cash side: 2 transactions");
+        if ($cashSide !== null) {
+            $noun = $transaction->type === TransactionType::Deposit->value ? 'Dividend' : 'Trade';
+
+            return back()->with('message', "{$noun} {$cashSide} deleted with its cash side: 2 transactions");
         }
 
         return back()->with('message', $period === null
@@ -945,17 +981,22 @@ class TransactionController extends Controller
             return $this->buyRefusal($transaction);
         }
 
-        // The cash side of a trade goes with its trade and not on its own: deleting it
-        // here would take the trade too, past the holdings check a buy's delete gets.
+        // The cash side of a trade or a dividend goes with it and not on its own:
+        // deleting it here would take the other row too, past the holdings check a buy's
+        // delete gets.
         $pairedId = $transaction?->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
 
-        if (TradeCash::isTrade($partner)) {
+        if (TradeCash::hasCashSide($partner)) {
+            $noun = $partner->type === TransactionType::Deposit->value ? 'dividend' : 'trade';
+
             return sprintf(
-                'This %s is the cash side of the trade %s. Delete the trade instead, and its cash '
+                'This %s is the cash side of the %s %s. Delete the %s instead, and its cash '
                     .'goes with it.',
                 $transaction->type,
-                TradeCash::describe($partner)
+                $noun,
+                TradeCash::describe($partner),
+                $noun
             );
         }
 
@@ -1145,9 +1186,16 @@ class TransactionController extends Controller
                 'amount' => $other->amount,
                 'ccy' => $other->ccy,
                 'account_name' => $other->account?->name,
-                // What the pair is, so the delete confirmation names it: a trade and
-                // its cash, or the two halves of a card settlement.
-                'kind' => TradeCash::isTrade($other) || TradeCash::isTrade($row) ? 'trade' : 'settlement',
+                // What the pair is, so the delete confirmation names it: a trade and its
+                // cash, a dividend and its cash, or the two halves of a card settlement.
+                // A dividend named a trade would send the user to a picker holding only
+                // buys and sells.
+                'kind' => match (true) {
+                    TransactionType::Deposit->value === $other->type
+                        || TransactionType::Deposit->value === $row->type => 'dividend',
+                    TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',
+                    default => 'settlement',
+                },
                 // For figureLock(), which needs the other row itself; not sent.
                 'row' => $other,
             ];

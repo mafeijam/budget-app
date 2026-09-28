@@ -93,18 +93,14 @@ class TransactionMetaData extends Data
             ],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
 
-            // Prohibited rather than ignored on every other type, which is what
-            // card_amount does for the same reason: a flag left sitting in the bag of a
-            // row that has no cash side is a claim nothing downstream would ever
-            // contradict, so a type change that should have cleared it is caught here.
-            //
-            // The trades and not the two named, since `prohibited_unless` permits what
-            // it lists -- and the trades are already decided by derivesAmount(), which is
-            // the same answer TradeCash gives when it asks whether a row has a cash side.
-            'no_cash' => [
-                'nullable',
-                'prohibited_unless:type,'.self::typesWhere(fn (TransactionType $type) => $type->derivesAmount()),
-            ],
+            // no_cash has no rule here, and its absence is deliberate. The flag says a
+            // row's money side is not in these accounts, which is a question about the
+            // row's *account* and not its type: a deposit on a brokerage has one and a
+            // deposit on a bank does not, and both are the same type. A conditional rule
+            // can only see the type, so permitting the trades would also permit a bank
+            // deposit's flag, and refusing the rest would refuse a dividend's. Both
+            // halves are settled in TransactionData::guardCashSide(), which has the row's
+            // account to hand.
 
             // `nullable` first, as on every other key here. Not required for a charge
             // even though the constructor fills it in, because it is filled in after

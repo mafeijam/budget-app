@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Category;
 use App\Models\Transaction;
 use App\Support\CardStatementCycle;
+use App\Support\TradeCash;
 use Carbon\Carbon;
 use Database\Seeders\Concerns\GuardsAgainstNonTestDatabase;
 use Illuminate\Database\Seeder;
@@ -53,6 +54,8 @@ use RuntimeException;
  *   writes, so the two halves are recognisable as a pair.
  * - One card left owing something and one card fully settled, so the Balance column
  *   has both a figure and a zero to show rather than only one.
+ * - A dividend on a brokerage, the one row here that writes a second row of its own:
+ *   its cash side, which is why Dev Cash's balance below depends on it.
  */
 class DevTransactionSeeder extends Seeder
 {
@@ -112,11 +115,22 @@ class DevTransactionSeeder extends Seeder
 
         $meta = array_filter($meta, fn ($value) => $value !== null);
 
-        if ($meta === []) {
-            return;
+        if ($meta !== []) {
+            $transaction->meta()->create(['meta' => $meta]);
         }
 
-        $transaction->meta()->create(['meta' => $meta]);
+        // A brokerage row's cash side, written the way a real save writes it rather than
+        // as a row of its own below. Two reasons, and the second is the one that matters:
+        // a hand-written second row would be a figure in the bank that nothing links to
+        // the dividend it belongs to, so deleting the dividend would leave the money
+        // behind and the pair would read as two unrelated transactions. TradeCash writes
+        // the link, the description and the amount together, and this is the same call the
+        // controller makes.
+        //
+        // Everything else is written directly because nothing else has a second half. The
+        // card settlement's bank row below is the exception and it is unpaired: it is
+        // there to look like the other half of the pair beside it, not to be one.
+        TradeCash::sync($transaction->fresh());
     }
 
     /**
@@ -213,7 +227,7 @@ class DevTransactionSeeder extends Seeder
         return [
             // ------------------------------------------------------------------
             // Dev Cash: money in, money out, and the withdrawal half of the card
-            // settlement below. Leaves 2819.5000.
+            // settlement below, plus the dividend the brokerage pays into it. Leaves 3131.9400.
             // ------------------------------------------------------------------
             [
                 'account' => 'Dev Cash',
@@ -412,12 +426,29 @@ class DevTransactionSeeder extends Seeder
                 'meta' => [],
             ],
 
-            // No brokerage rows, and that is deliberate rather than an oversight:
-            // a trade's worth needs a price this app does not carry, and DevAccountSeeder
-            // supplies two brokerages so this is reachable. A dividend would not need one
-            // -- a deposit on a brokerage moves no balance and the positions page prints
-            // it as received -- so the only reason there is none here is that inventing a
-            // dividend is not this file's to do.
+            // ------------------------------------------------------------------
+            // Dev Brokerage: a dividend, which is a deposit on a brokerage and
+            // names the holding that paid it. No quantity or price -- a dividend
+            // is not a trade and there is no market figure for one.
+            //
+            // Unlike every row above, this one is not inert. A brokerage row writes
+            // a second row depositing the same money into Dev Cash, so Dev Cash ends
+            // 312.4400 higher than the brokerage row alone would leave it. That is
+            // the point of recording a dividend here rather than as cash in the bank:
+            // the money is attributed to the holding, and the positions page's
+            // Dividends figure and the bank balance are the same number.
+            // ------------------------------------------------------------------
+            [
+                'account' => 'Dev Brokerage',
+                'date' => '2026-01-15',
+                'type' => TransactionType::Deposit->value,
+                'description' => 'Dividend 0700.HK',
+                'amount' => '312.4400',
+                'ccy' => $hkd,
+                'status' => $posted,
+                'category' => null,
+                'meta' => ['symbol' => '0700.HK'],
+            ],
         ];
     }
 }

@@ -169,9 +169,17 @@ const metaChips = row => {
   }
 
   if (meta.symbol) {
-    const fees = meta.fees ? `, fees ${meta.fees}` : ''
+    // A dividend names its holding and stops there, because there is no quantity or
+    // price for one: it is an amount received, not a trade in anything. Printing the
+    // two absent figures beside the symbol reads as a broken number rather than an
+    // absent one, and the number is what someone would go and check.
+    if (meta.quantity) {
+      const fees = meta.fees ? `, fees ${meta.fees}` : ''
 
-    plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+      plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+    } else {
+      plain(meta.symbol)
+    }
   }
 
   const known = [

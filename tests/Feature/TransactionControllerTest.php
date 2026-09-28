@@ -182,9 +182,13 @@ class TransactionControllerTest extends TestCase
             'description' => 'Dividend',
             'amount' => '312.4400',
             'ccy' => 'HKD',
+            'meta_data' => ['symbol' => 'NVDA'],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('312.4400', Transaction::firstOrFail()->amount);
+        // The dividend itself, not the deposit its cash side writes into the bank.
+        $dividend = Transaction::where('type', 'deposit')->where('account_id', $this->broker->id)->firstOrFail();
+
+        $this->assertSame('312.4400', $dividend->amount);
     }
 
     public function test_a_new_row_is_posted_and_stamped_by_the_server(): void

@@ -334,7 +334,17 @@
         :error-message="form.errors['meta_data.card_amount']"
       />
 
-      <template v-if="derivesAmount">
+      <!--
+        A symbol for anything that writes a cash side: a buy, a sell, and a dividend on
+        a brokerage. That last is a deposit, so without it here the form would offer a
+        dividend with nowhere to say which holding paid it, and the save would be refused
+        for a field that was never on screen.
+
+        The two conditions are separate rather than one nested template because the symbol
+        and the flag follow the wider rule while quantity, price and fees follow the
+        narrower one -- a dividend is not a quantity of anything.
+      -->
+      <template v-if="writesCashSide">
         <q-input
           v-model="form.meta_data.symbol"
           class="col-6"
@@ -343,6 +353,32 @@
           :error="!!form.errors['meta_data.symbol']"
           :error-message="form.errors['meta_data.symbol']"
         />
+
+        <!--
+          The money side is skipped rather than the row, so a dividend or a position
+          back-dated from before the settlement account was tracked can be recorded
+          without inventing a bank row for money that moved outside these accounts. The
+          shares still count.
+
+          false-value, because Quasar's off value is false and ticking then unticking
+          would store one -- a second spelling of "not skipped" beside an absent key, and
+          the one value TradeCash's own check has to be careful of, since Laravel reads
+          filled(false) as true. Naming null as the off value leaves absence the only way
+          to say no.
+        -->
+        <q-toggle
+          v-model="form.meta_data.no_cash"
+          :false-value="null"
+          class="col-6"
+          label="No cash side"
+          color="primary"
+          dense
+          :error="!!form.errors['meta_data.no_cash']"
+          :error-message="form.errors['meta_data.no_cash']"
+        />
+      </template>
+
+      <template v-if="derivesAmount">
         <q-input
           v-model="form.meta_data.quantity"
           class="col-6"
@@ -372,28 +408,6 @@
           step="0.0001"
           :error="!!form.errors['meta_data.fees']"
           :error-message="form.errors['meta_data.fees']"
-        />
-
-        <!--
-          The money side is skipped rather than the trade, so a position back-dated from
-          before the settlement account was tracked can be recorded without inventing a
-          bank row for money that moved outside these accounts. The shares still count.
-
-          false-value, because Quasar's off value is false and ticking then unticking
-          would store one -- a second spelling of "not skipped" beside an absent key, and
-          the one value TradeCash's own check has to be careful of, since Laravel reads
-          filled(false) as true. Naming null as the off value leaves absence the only way
-          to say no.
-        -->
-        <q-toggle
-          v-model="form.meta_data.no_cash"
-          :false-value="null"
-          class="col-12"
-          label="No cash side"
-          color="primary"
-          dense
-          :error="!!form.errors['meta_data.no_cash']"
-          :error-message="form.errors['meta_data.no_cash']"
         />
       </template>
     </q-form>
@@ -488,11 +502,29 @@ const accountOptionList = computed(() =>
 
 const categoryOptions = computed(() => props.options?.categories ?? [])
 
-// A trade's amount is computed on the server and TransactionData prohibits a
-// client-supplied one for those types. Disabled rather than hidden so the shape of
-// the form does not jump, and cleared below -- otherwise a buy made after an expense
-// would carry an amount the server refuses.
-const derivesAmount = computed(() => ['buy', 'sell'].includes(form.type))
+// The types the server derives an amount for: a trade, and only a trade. A client's
+// amount for one of those is prohibited, so the field is disabled and cleared rather than
+// hidden -- the shape of the form should not jump between types.
+//
+// From the prop rather than `['buy', 'sell']` written here, which was a fourth copy of
+// TransactionType::derivesAmount() and the one most likely to drift from it.
+const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).includes(form.type))
+
+// Whether this row writes a row in a brokerage's settlement account: a trade, or a
+// dividend. Symbol and the cash-side flag are offered for those and nothing else.
+//
+// Keyed by account type, because needsCashSide() takes one -- a deposit qualifies on a
+// brokerage and not on a bank, so the same type shows different fields depending on where
+// it sits. Falls back to the derived list, so a page that has not sent the prop behaves as
+// it did before the flag existed rather than showing nothing.
+const cashSideTypesByAccount = computed(() => usePage().props.cashSideTypes ?? {})
+
+const writesCashSide = computed(() => {
+  const type = chosenAccount.value?.type
+  const forAccount = type ? cashSideTypesByAccount.value[type] : null
+
+  return (forAccount ?? usePage().props.derivesAmountTypes ?? []).includes(form.type)
+})
 
 // Only what the chosen account accepts, because the pairing is what makes a type legal
 // at all. Empty until an account is picked, since there is nothing to narrow by.
@@ -815,7 +847,10 @@ watch(
     if (!previousType) return
 
     if (derivesAmount.value) form.amount = null
-    else form.meta_data.no_cash = null
+
+    // Off anything with no cash side at all, rather than off anything that is not a
+    // trade: a dividend writes one too and may be back-dated the same way a position is.
+    if (!writesCashSide.value) form.meta_data.no_cash = null
   },
 )
 

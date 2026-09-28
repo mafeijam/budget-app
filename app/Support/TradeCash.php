@@ -8,20 +8,25 @@ use App\Models\Account;
 use App\Models\Transaction;
 
 /**
- * The cash side of a trade: the row in the brokerage's settlement account that a buy
- * takes money out of and a sell pays into.
+ * The cash side of a brokerage row: the row in the settlement account that a buy takes
+ * money out of, and that a sell or a dividend pays into.
  *
  * A brokerage holds no balance -- AccountType::hasBalance() -- so without this row a
  * trade moved no money anywhere, and the bank it settles through read as though
- * nothing had been bought or sold. It is written beside the trade, not by the user,
- * and linked to it by paired_transaction_id both ways, the link a card settlement
- * uses: destroy() deletes the pair together, and the cash row's figures are locked,
- * since they are the trade's and follow it.
+ * nothing had been bought or sold. The same is true of a dividend: it arrives at the
+ * brokerage and stops there, and the bank it was actually paid into never learns of it.
+ * Which rows get one is TransactionType::needsCashSide()'s answer, not this class's --
+ * the form needs the same answer per account type to know which fields to show.
  *
- * A trade may opt out with meta_data.no_cash, for a position back-dated from before
- * the settlement account existed. The shares are the position either way -- Positions
- * replays the trades, not the cash -- so what is skipped is the invention of a
- * bank row for money that moved outside these accounts.
+ * It is written beside the row, not by the user, and linked to it by
+ * paired_transaction_id both ways, the link a card settlement uses: destroy() deletes
+ * the pair together, and the cash row's figures are locked, since they are the trade's
+ * and follow it.
+ *
+ * A trade or a dividend may opt out with meta_data.no_cash, for a position back-dated
+ * from before the settlement account existed. The shares are the position either way --
+ * Positions replays the trades, not the cash -- so what is skipped is the invention of
+ * a bank row for money that moved outside these accounts.
  *
  * The trade is the record and this follows it. An edit to the trade rewrites the cash
  * row -- its amount, date, currency, status, and the bank if the trade moved to another
@@ -34,22 +39,29 @@ use App\Models\Transaction;
 class TradeCash
 {
     /**
-     * Write, update, move or remove a trade's cash row to match the trade as stored.
+     * Write, update, move or remove a cash row to match the row as stored.
      *
      * Inside the write's database transaction, after the trade and its bag are saved: a
-     * trade without its cash, or cash without its trade, is the state the transaction
-     * exists to prevent.
+     * brokerage row without its cash, or cash without its row, is the state this exists
+     * to prevent.
      *
-     * Only for a row that is a trade or was one before this edit, which is why update()
-     * passes the type it had. Any other row's pairing is not a trade's: a card payment
-     * is paired with its bank transfer, and treating that as cash to remove would delete
-     * half a settlement on a description fix.
+     * $wasType and $wasAccountId are what it was, for a row that has just changed either.
+     * Both are needed: a type says whether a cash side was wanted, and only an account
+     * says whether it could be -- a deposit on a brokerage has one and a deposit on a bank
+     * does not, and they are the same type. Without the previous account, a dividend moved
+     * onto a bank account would leave its cash row behind, pointing at a brokerage the
+     * dividend no longer belongs to.
+     *
+     * Nothing outside a brokerage is ever touched. A card payment is paired with its bank
+     * withdrawal, and treating that pairing as cash to remove would delete half a
+     * settlement on a description fix.
      */
-    public static function sync(Transaction $trade, ?string $wasType = null): void
-    {
-        $isTrade = fn (?string $type) => $type !== null && TransactionType::from($type)->derivesAmount();
-
-        if (! $isTrade($trade->type) && ! $isTrade($wasType)) {
+    public static function sync(
+        Transaction $trade,
+        ?string $wasType = null,
+        ?int $wasAccountId = null
+    ): void {
+        if (! self::wantedCashSide($trade, $wasType, $wasAccountId)) {
             return;
         }
 
@@ -100,38 +112,82 @@ class TradeCash
     }
 
     /**
-     * Whether a row is a trade -- asked of a row's partner, it says the row is that
-     * trade's cash side.
+     * Whether a row is a trade or a dividend -- asked of a row's partner, it says the row
+     * is that cash side.
+     *
+     * Not `isTrade()` any more, and the name is the reason: a dividend is a deposit and
+     * not a trade, and calling it one would have every caller reading it as a question
+     * about the type rather than about whether a row beside it should exist.
+     *
+     * False for null and for a row on anything but a brokerage, so a card payment's pair is
+     * not mistaken for a cash side.
      */
-    public static function isTrade(?Transaction $row): bool
+    public static function hasCashSide(?Transaction $row): bool
     {
-        return $row !== null && TransactionType::from($row->type)->derivesAmount();
+        return $row?->account?->type === AccountType::Security->value
+            && TransactionType::from($row->type)->needsCashSide(AccountType::Security);
     }
 
     /**
-     * The trade in words, as the cash row and the refusals name it: "Buy 10 NVDA [Broker]".
+     * Whether this row should have a cash row written, updated or removed by this sync.
+     *
+     * Now, or before this edit: a row that has just moved off a brokerage owes the
+     * removal of the cash row it left there, and the only record of that is what it was.
+     */
+    private static function wantedCashSide(
+        Transaction $row,
+        ?string $wasType,
+        ?int $wasAccountId
+    ): bool {
+        if ($row->account?->type === AccountType::Security->value) {
+            return TransactionType::from($row->type)->needsCashSide(AccountType::Security);
+        }
+
+        if ($wasType === null || $wasAccountId === null) {
+            return false;
+        }
+
+        // One query, and only on the rare path of a row that has just left a brokerage.
+        $wasBrokerage = Account::find($wasAccountId)?->type === AccountType::Security->value;
+
+        return $wasBrokerage && TransactionType::from($wasType)->needsCashSide(AccountType::Security);
+    }
+
+    /**
+     * The row in words, as the cash row and the refusals name it: "Buy 10 NVDA [Broker]",
+     * or "Dividend NVDA [Broker]" for the one with no quantity to name.
      */
     public static function describe(Transaction $trade): string
     {
         $meta = $trade->meta?->meta?->getArrayCopy() ?? [];
 
+        $symbol = strtoupper(trim((string) ($meta['symbol'] ?? '')));
+        $account = $trade->account?->name;
+
+        // A dividend is not a quantity of anything, and running the trade's format over it
+        // leaves the two spaces where the quantity would be -- a description the delete
+        // confirmation quotes back to the user.
+        if (! TransactionType::from($trade->type)->derivesAmount()) {
+            return sprintf('Dividend %s [%s]', $symbol, $account);
+        }
+
         return sprintf(
             '%s %s %s [%s]',
             ucfirst($trade->type),
             Positions::plain((string) ($meta['quantity'] ?? '')),
-            strtoupper(trim((string) ($meta['symbol'] ?? ''))),
-            $trade->account?->name
+            $symbol,
+            $account
         );
     }
 
-    /** The bank a trade settles through, or null when it has no cash side. */
+    /** The bank a brokerage row settles through, or null when it has no cash side. */
     private static function bankFor(Transaction $trade): ?Account
     {
-        if (! TransactionType::from($trade->type)->derivesAmount()) {
+        if ($trade->account?->type !== AccountType::Security->value) {
             return null;
         }
 
-        if ($trade->account?->type !== AccountType::Security->value) {
+        if (! TransactionType::from($trade->type)->needsCashSide(AccountType::Security)) {
             return null;
         }
 

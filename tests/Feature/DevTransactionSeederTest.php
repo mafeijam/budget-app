@@ -110,22 +110,44 @@ class DevTransactionSeederTest extends TestCase
         $this->assertGreaterThan(0, Transaction::count());
     }
 
-    public function test_it_leaves_a_brokerage_with_no_transactions(): void
+    public function test_it_gives_no_brokerage_a_trade(): void
     {
-        // The same reason a brokerage reports no balance: a trade's worth needs a
-        // price this app does not carry, so a fixture trade would be a figure on
-        // screen meaning nothing.
+        // The same reason a brokerage reports no balance: a trade's worth needs a price
+        // this app does not carry, so a fixture trade would be a figure on screen meaning
+        // nothing. DevAccountSeeder provides two brokerages so this is reachable.
+        //
+        // Trades only. A dividend is not one: it is an amount actually received, printed
+        // as-is, and it writes its own cash side into the bank so the positions figure and
+        // the balance agree. Asserted separately below.
         $this->seed(DevTransactionSeeder::class);
 
         $brokerages = Account::where('type', AccountType::Security->value)->pluck('id');
 
         $this->assertSame(
             0,
-            Transaction::whereIn('account_id', $brokerages)->count(),
-            'A brokerage was given transactions. A cash or card balance says nothing '
+            Transaction::whereIn('account_id', $brokerages)
+                ->whereIn('type', [TransactionType::Buy->value, TransactionType::Sell->value])
+                ->count(),
+            'A brokerage was given a trade. A cash or card balance says nothing '
             .'about what a brokerage holds, and DevAccountSeeder provides two of them '
             .'so this is reachable.'
         );
+    }
+
+    public function test_a_seeded_dividend_writes_its_cash_side_into_the_bank(): void
+    {
+        $this->seed(DevTransactionSeeder::class);
+
+        $dividend = Transaction::where('type', TransactionType::Deposit->value)
+            ->whereHas('account', fn ($query) => $query->where('type', AccountType::Security->value))
+            ->firstOrFail();
+
+        $cash = Transaction::with('meta')->findOrFail($dividend->meta->meta['paired_transaction_id']);
+
+        // The money is in the bank, which is the whole reason a brokerage row writes one.
+        $this->assertSame('deposit', $cash->type);
+        $this->assertSame($dividend->amount, $cash->amount);
+        $this->assertSame('Dividend 0700.HK [Dev Brokerage]', $cash->description);
     }
 
     public function test_every_type_it_writes_is_legal_on_the_account_it_sits_on(): void
@@ -272,7 +294,7 @@ class DevTransactionSeederTest extends TestCase
         // Asserted, not discovered. A fixture that took whatever the balance query
         // said would be the query's own evidence.
         //
-        //   Dev Cash         5000 - 1200.50 - 80 - 900        =  2819.5000
+        //   Dev Cash         5000 - 1200.50 - 80 - 900 + 312.44 =  3131.9400
         //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded =     0.3000
         //   Dev Card         -120 - 780 + 900 - 250           =  -250.0000
         //   Dev Card Everyday -45.25, pending 99 excluded     =   -45.2500
@@ -281,10 +303,15 @@ class DevTransactionSeederTest extends TestCase
         // 45.25 leaves the user down 45.25. The statement period for the same card
         // reads owed 45.2500, and both are right -- see
         // test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge.
+        //
+        // Dev Cash carries the dividend twice over, in effect: the brokerage row writes
+        // a deposit into it, and 312.44 is the figure the positions page shows as
+        // dividends received. The brokerage itself is not listed, because a securities
+        // account has no balance -- that row moves nothing.
         $this->seed(DevTransactionSeeder::class);
 
         $expected = [
-            'Dev Cash' => '2819.5000',
+            'Dev Cash' => '3131.9400',
             'Dev Cash Reserve' => '0.3000',
             'Dev Card' => '-250.0000',
             'Dev Card Everyday' => '-45.2500',

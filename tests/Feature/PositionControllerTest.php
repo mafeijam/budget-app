@@ -19,13 +19,15 @@ class PositionControllerTest extends TestCase
 
     private Account $broker;
 
+    private Account $bank;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $bank = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->bank = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
         $this->broker = Account::create(['name' => 'Broker USD', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
-        $this->broker->meta()->create(['meta' => ['settlement_account_id' => $bank->id]]);
+        $this->broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
     }
 
     public function test_it_lists_each_brokerage_with_its_positions_and_totals(): void
@@ -159,12 +161,36 @@ class PositionControllerTest extends TestCase
                 'amount' => $amount,
                 'ccy' => 'USD',
                 'status' => $status,
+                // A dividend names the holding that paid it, and writes its cash side
+                // into the settlement account -- which is why a pending one is not
+                // counted here but also has not reached the bank yet.
+                'meta_data' => ['symbol' => 'NVDA'],
             ])->assertSessionHasNoErrors();
         }
 
         $this->get('/positions')->assertInertia(fn (Assert $page) => $page
             ->where('brokerages.0.dividends', '12.5000')
         );
+    }
+
+    public function test_a_dividend_reaches_the_settlement_account(): void
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id,
+            'date' => '2026-03-01',
+            'type' => 'deposit',
+            'description' => 'Dividend',
+            'amount' => '12.5000',
+            'ccy' => 'USD',
+            'meta_data' => ['symbol' => 'NVDA'],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('transactions', [
+            'account_id' => $this->bank->id,
+            'type' => 'deposit',
+            'amount' => '12.5000',
+            'description' => 'Dividend NVDA [Broker USD]',
+        ]);
     }
 
     public function test_a_closed_brokerage_shows_only_while_it_holds_shares(): void

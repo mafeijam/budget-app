@@ -95,8 +95,11 @@ class TradeCashTest extends TestCase
         $this->assertSame('10000.0000', $this->balance());
     }
 
-    public function test_a_trade_edited_into_a_dividend_loses_its_cash(): void
+    public function test_a_trade_edited_into_a_dividend_pays_in_rather_than_out(): void
     {
+        // The opposite of what this asserted when a dividend was a type of its own: a
+        // dividend pays money in, so the cash row does not vanish -- it changes direction.
+        // What must not happen is a second row appearing, or the pairing pointing at both.
         $buy = $this->trade('buy', '2026-01-05', '1', '100');
 
         $this->put("/transactions/{$buy->id}", [
@@ -106,10 +109,17 @@ class TradeCashTest extends TestCase
             'description' => 'Dividend',
             'amount' => '3.0000',
             'ccy' => 'USD',
+            'meta_data' => ['symbol' => 'NVDA'],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(0, Transaction::where('type', 'withdraw')->count());
-        $this->assertArrayNotHasKey('paired_transaction_id', $buy->fresh()->meta?->meta?->getArrayCopy() ?? []);
+        // The buy's withdrawal became a deposit on the same row: the bank still holds
+        // the one cash side beside the salary, not two.
+        $this->assertSame(2, Transaction::where('account_id', $this->bank->id)->count());
+
+        $cash = $this->cashOf($buy->fresh());
+        $this->assertSame('deposit', $cash->type);
+        $this->assertSame('3.0000', $cash->amount);
+        $this->assertSame('Dividend NVDA [Broker USD]', $cash->description);
     }
 
     public function test_the_cash_side_is_locked_to_its_trade(): void
@@ -205,9 +215,11 @@ class TradeCashTest extends TestCase
         $this->assertSame('9000.0000', $this->balance());
     }
 
-    public function test_the_flag_is_refused_on_a_type_that_has_no_cash_side(): void
+    public function test_the_flag_is_refused_on_an_account_with_no_cash_side(): void
     {
-        // Income, so a missing category is not also in the way of the message under test.
+        // A bank deposit, which is the same type as a dividend and has no cash side to
+        // skip. A rule cannot refuse one and permit the other -- both are `deposit` -- so
+        // this is guardCashSide(), which has the account.
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-01-02',
@@ -217,10 +229,70 @@ class TradeCashTest extends TestCase
             'ccy' => 'USD',
             'meta_data' => ['no_cash' => true],
         ])->assertSessionHasErrors([
-            'meta_data.no_cash' => 'Only a buy or a sell has a cash side to skip.',
+            'meta_data.no_cash' => '[Bank USD] is a cash account, so a deposit has no cash side to '
+                .'skip. The flag is for a trade or a dividend on a brokerage, where the money may '
+                .'have moved outside these accounts.',
         ]);
 
         $this->assertSame(0, Transaction::where('type', 'deposit')->where('description', 'Refund')->count());
+    }
+
+    public function test_a_dividend_may_opt_out_of_its_cash_side_like_a_trade(): void
+    {
+        // The back-dating case: a dividend received before the settlement account was
+        // tracked records the share but not the bank row it never had.
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id,
+            'date' => '2026-01-05',
+            'type' => 'deposit',
+            'description' => 'Dividend',
+            'amount' => '312.4400',
+            'ccy' => 'USD',
+            'meta_data' => ['symbol' => 'NVDA', 'no_cash' => true],
+        ])->assertSessionHasNoErrors();
+
+        // Only the salary the set-up paid in: no second bank row for the dividend.
+        $this->assertSame(1, Transaction::where('account_id', $this->bank->id)->count());
+
+        $dividend = Transaction::where('account_id', $this->broker->id)->firstOrFail();
+
+        $this->assertSame('deposit', $dividend->type);
+        $this->assertSame('10000.0000', $this->balance());
+    }
+
+    public function test_a_dividend_writes_its_money_into_the_settlement_account(): void
+    {
+        $dividend = $this->dividend('2026-01-05', '312.4400');
+
+        $cash = $this->cashOf($dividend);
+
+        $this->assertSame($this->bank->id, $cash->account_id);
+        $this->assertSame('deposit', $cash->type);
+        $this->assertSame('312.4400', $cash->amount);
+        $this->assertSame('2026-01-05', $cash->date);
+        $this->assertSame('USD', $cash->ccy);
+        $this->assertSame('posted', $cash->status);
+        $this->assertSame('Dividend NVDA [Broker USD]', $cash->description);
+        $this->assertSame($dividend->id, (int) $cash->meta->meta['paired_transaction_id']);
+
+        // And the bank reads it as money in, which is the whole point of writing it.
+        $this->assertSame('10312.4400', $this->balance());
+    }
+
+    /** A dividend recorded through the form, so it passes every guard a real one does. */
+    private function dividend(string $date, string $amount): Transaction
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id,
+            'date' => $date,
+            'type' => 'deposit',
+            'description' => 'Dividend',
+            'amount' => $amount,
+            'ccy' => 'USD',
+            'meta_data' => ['symbol' => 'NVDA'],
+        ])->assertSessionHasNoErrors();
+
+        return Transaction::where('account_id', $this->broker->id)->latest('id')->firstOrFail();
     }
 
     // ---------------------------------------------------------------------

@@ -110,12 +110,16 @@ export function useDestroy(pagination) {
         // undone is a statement, and the row clicked is only the half of it the list
         // happened to show.
         //
-        // A trade's pair is the trade and its cash, which the server says by kind rather
-        // than this restating which types are trades.
+        // A trade's pair is the trade and its cash; a dividend's is the dividend and its
+        // cash. The server says which by kind rather than this restating which types are
+        // trades -- a dividend is a deposit and not a trade, so a list written here would
+        // call it a trade and send the user to a picker holding only buys and sells.
         title: other
           ? other.kind === 'trade'
             ? 'delete trade'
-            : 'delete card settlement'
+            : other.kind === 'dividend'
+              ? 'delete dividend'
+              : 'delete card settlement'
           : `delete ${things[meta.path] ?? 'row'}`,
         message: other
           ? other.kind === 'trade'
