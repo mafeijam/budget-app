@@ -7,7 +7,7 @@
     :rows="rows"
     :columns="sized"
     wrap-cells
-    table-style="table-layout: fixed"
+    :table-style="tableStyle"
     class="text-grey-8 sticky-table"
     @request="onPageRequest"
   >
@@ -30,6 +30,27 @@ const props = defineProps({
 })
 
 const pagination = inject('pagination')
+
+// A floor for the table at the sum of the declared column widths, which is the whole
+// point of declaring them: without it table-layout: fixed honours the widths only while
+// they happen to fit, and the moment they do not the browser shrinks every column
+// proportionally instead. Nothing reports that. The columns simply get narrower than
+// they were specified to be and their contents start wrapping -- on this table the
+// transaction type's icon dropped onto its own line above the word, and the two action
+// buttons stacked instead of sitting side by side, both in cells that had been written
+// to be wide enough. Declaring the floor makes "a narrower one scrolls" true, which is
+// what the sticky action column in app.css is already built to handle.
+const tableStyle = computed(() => {
+  const total = props.columns.reduce((sum, column) => sum + (parseInt(column.width, 10) || 0), 0)
+
+  // A custom property rather than min-width, because QTable applies tableStyle to the
+  // .q-table__middle div and not to the table inside it. A min-width set there lands as an
+  // inline style on the middle -- which is the one element that has to be allowed to
+  // shrink for the sideways scroll to exist at all, and which app.css gives min-width: 0.
+  // An inline min-width beats that and silently undoes the scroll. So the number is handed
+  // over as a property and the table reads it.
+  return { tableLayout: 'fixed', '--table-min-width': `${total}px` }
+})
 
 // Fixed layout, with each column's `width` on its header, so the columns hold still
 // when the page changes. The default layout sizes every column to the rows on screen,

@@ -170,6 +170,17 @@ body {
   1480px wide inside a 1198px container, never overflows itself, and the scrollbar this
   rule is for never appears; the overflow just escapes and is clipped.
 */
+.q-table__middle {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+/* The floor, read off the property AppTable sets rather than set here: the sum of the
+   declared column widths differs per page, so it is computed where the columns are. */
+.q-table__middle table {
+  min-width: var(--table-min-width, 0);
+}
+
 .q-card--bordered,
 .q-table--bordered {
   border-color: var(--app-border);
@@ -388,6 +399,11 @@ body {
 .sticky-table th:last-child {
   position: sticky;
   right: 0;
+
+  /* An edge, so the pinned column reads as sitting on top of the scrolling ones rather
+     than as columns having been cut off. The content behind it is genuinely underneath --
+     that is what pinned means -- and without a shadow the boundary is invisible. */
+  box-shadow: -6px 0 6px -6px rgba(15, 23, 42, 0.16);
 }
 .sticky-table tr:last-child th:last-child {
   z-index: 3;
