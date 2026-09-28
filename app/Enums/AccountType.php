@@ -43,8 +43,8 @@ enum AccountType: string
      * accountTypes() permits. Cash and card each have an obvious common case, and
      * pre-filling it saves a pick on nearly every transaction.
      *
-     * Null for a securities account rather than a guess. Buy, sell and dividend are
-     * all ordinary there and none of them is the usual one, so any default hands the
+     * Null for a securities account rather than a guess. Buy and sell are both
+     * ordinary there and neither is the usual one, so any default hands the
      * user a type they did not choose -- and the alternative, an empty picker, is
      * something they can already reason about.
      *
@@ -55,7 +55,7 @@ enum AccountType: string
     public function defaultTransactionType(): ?TransactionType
     {
         return match ($this) {
-            self::Cash => TransactionType::Income,
+            self::Cash => TransactionType::Deposit,
             self::Card => TransactionType::Charge,
             self::Security => null,
         };

@@ -850,7 +850,7 @@ class AccountControllerTest extends TestCase
         DB::table('transactions')->insert([
             'account_id' => $account->id,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',
@@ -894,7 +894,7 @@ class AccountControllerTest extends TestCase
         DB::table('transactions')->insert([
             'account_id' => $bank->id,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',
@@ -951,7 +951,7 @@ class AccountControllerTest extends TestCase
         DB::table('transactions')->insert([
             'account_id' => $used->id,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',

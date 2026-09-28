@@ -75,8 +75,12 @@ class TradeCash
             'account_id' => $bank->id,
             'category_id' => null,
             'date' => $trade->date,
+            // A withdrawal for the money a buy takes out, a deposit for what a sell
+            // pays in. A transfer used to be its own type for the buy so that paying a
+            // card would not count as spending; that distinction is gone with the
+            // other cash types and nothing reads it now.
             'type' => $trade->type === TransactionType::Buy->value
-                ? TransactionType::Transfer->value
+                ? TransactionType::Withdraw->value
                 : TransactionType::Deposit->value,
             'description' => self::describe($trade),
             'amount' => $trade->amount,

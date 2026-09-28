@@ -31,7 +31,7 @@ class TradeCashTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-01-01',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Salary',
             'amount' => '10000.0000',
             'ccy' => 'USD',
@@ -45,7 +45,7 @@ class TradeCashTest extends TestCase
         $cash = $this->cashOf($buy);
 
         $this->assertSame($this->bank->id, $cash->account_id);
-        $this->assertSame('transfer', $cash->type);
+        $this->assertSame('withdraw', $cash->type);
         $this->assertSame('1005.0000', $cash->amount);
         $this->assertSame('2026-01-05', $cash->date);
         $this->assertSame('Buy 10 NVDA [Broker USD]', $cash->description);
@@ -78,7 +78,7 @@ class TradeCashTest extends TestCase
         $this->assertSame('1200.0000', $cash->amount);
         $this->assertSame('2026-01-08', $cash->date);
         $this->assertSame('pending', $cash->status);
-        $this->assertSame(1, Transaction::where('type', 'transfer')->count(), 'The edit wrote a second cash row.');
+        $this->assertSame(1, Transaction::where('type', 'withdraw')->count(), 'The edit wrote a second cash row.');
     }
 
     public function test_moving_a_trade_to_another_brokerage_moves_its_cash_to_that_bank(): void
@@ -102,13 +102,13 @@ class TradeCashTest extends TestCase
         $this->put("/transactions/{$buy->id}", [
             'account_id' => $this->broker->id,
             'date' => '2026-01-05',
-            'type' => 'dividend',
+            'type' => 'deposit',
             'description' => 'Dividend',
             'amount' => '3.0000',
             'ccy' => 'USD',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(0, Transaction::where('type', 'transfer')->count());
+        $this->assertSame(0, Transaction::where('type', 'withdraw')->count());
         $this->assertArrayNotHasKey('paired_transaction_id', $buy->fresh()->meta?->meta?->getArrayCopy() ?? []);
     }
 
@@ -120,12 +120,12 @@ class TradeCashTest extends TestCase
         $this->put("/transactions/{$cash->id}", [
             'account_id' => $this->bank->id,
             'date' => $cash->date,
-            'type' => 'transfer',
+            'type' => 'withdraw',
             'description' => $cash->description,
             'amount' => '1.0000',
             'ccy' => 'USD',
         ])->assertSessionHasErrors([
-            'amount' => 'This transfer is the cash side of the trade Buy 10 NVDA [Broker USD], so its '
+            'amount' => 'This withdraw is the cash side of the trade Buy 10 NVDA [Broker USD], so its '
                 .'amount cannot be changed here. Edit the trade instead.',
         ]);
 
@@ -144,7 +144,7 @@ class TradeCashTest extends TestCase
 
         $this->delete("/transactions/{$cash->id}")->assertSessionHas(
             'message',
-            'This transfer is the cash side of the trade Buy 10 NVDA [Broker USD]. Delete the trade '
+            'This withdraw is the cash side of the trade Buy 10 NVDA [Broker USD]. Delete the trade '
                 .'instead, and its cash goes with it.'
         );
         $this->assertNotNull($cash->fresh());
@@ -163,7 +163,7 @@ class TradeCashTest extends TestCase
 
         $this->trade('buy', '2026-01-05', '1', '100');
 
-        $this->assertSame(0, Transaction::where('type', 'transfer')->count());
+        $this->assertSame(0, Transaction::where('type', 'withdraw')->count());
     }
 
     public function test_a_trade_can_be_recorded_without_its_cash_side(): void
@@ -173,7 +173,7 @@ class TradeCashTest extends TestCase
         $buy = $this->trade('buy', '2026-01-05', '10', '100', '5', noCash: true);
 
         $this->assertTrue($buy->fresh()->load('meta')->meta->meta['no_cash']);
-        $this->assertSame(0, Transaction::where('type', 'transfer')->count());
+        $this->assertSame(0, Transaction::where('type', 'withdraw')->count());
         $this->assertSame('10000.0000', $this->balance());
     }
 
@@ -199,7 +199,7 @@ class TradeCashTest extends TestCase
 
         $cash = $this->cashOf($buy->fresh());
 
-        $this->assertSame('transfer', $cash->type);
+        $this->assertSame('withdraw', $cash->type);
         $this->assertSame('2026-01-05', $cash->date);
         $this->assertSame('1000.0000', $cash->amount);
         $this->assertSame('9000.0000', $this->balance());
@@ -211,7 +211,7 @@ class TradeCashTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-01-02',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Refund',
             'amount' => '40.0000',
             'ccy' => 'USD',
@@ -220,7 +220,7 @@ class TradeCashTest extends TestCase
             'meta_data.no_cash' => 'Only a buy or a sell has a cash side to skip.',
         ]);
 
-        $this->assertSame(0, Transaction::where('type', 'income')->where('description', 'Refund')->count());
+        $this->assertSame(0, Transaction::where('type', 'deposit')->where('description', 'Refund')->count());
     }
 
     // ---------------------------------------------------------------------

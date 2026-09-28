@@ -103,15 +103,12 @@ const accountTypeBadges = {
 }
 
 const typeIcons = {
-  expense: 'shopping_cart',
-  income: 'savings',
-  transfer: 'swap_horiz',
+  withdraw: 'shopping_cart',
   deposit: 'move_to_inbox',
   charge: 'credit_card',
   payment: 'task_alt',
   buy: 'trending_up',
   sell: 'trending_down',
-  dividend: 'paid',
 }
 
 // Posted and not yet posted are the brand's positive and warning, which is a real

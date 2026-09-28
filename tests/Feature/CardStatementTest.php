@@ -208,7 +208,7 @@ class CardStatementTest extends TestCase
             'account_id' => $bank->id,
             'category_id' => null,
             'date' => '2026-01-01',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',

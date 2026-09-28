@@ -61,21 +61,21 @@ class TransactionControllerTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',
         ]);
 
         $response->assertSessionHasNoErrors();
-        $response->assertSessionHas('message', 'Transaction [expense] recorded');
+        $response->assertSessionHas('message', 'Transaction [withdraw] recorded');
 
         $this->assertDatabaseCount('transactions', 1);
         $this->assertDatabaseHas('transactions', [
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',
@@ -178,7 +178,7 @@ class TransactionControllerTest extends TestCase
             'account_id' => $this->broker->id,
             'category_id' => null,
             'date' => '2026-02-02',
-            'type' => 'dividend',
+            'type' => 'deposit',
             'description' => 'Dividend',
             'amount' => '312.4400',
             'ccy' => 'HKD',
@@ -620,7 +620,7 @@ class TransactionControllerTest extends TestCase
         // moves none. The same answers movesBalanceOn() gives, since that is the source.
         $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
         $this->post('/transactions', $this->chargePayload())->assertSessionHasNoErrors();
-        $this->post('/transactions', $this->expense(['type' => 'income', 'category_id' => null]))
+        $this->post('/transactions', $this->expense(['type' => 'deposit', 'category_id' => null]))
             ->assertSessionHasNoErrors();
         $this->post('/transactions', $this->tradePayload())->assertSessionHasNoErrors();
 
@@ -1284,7 +1284,7 @@ class TransactionControllerTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
             // The whole map in one assertion. A prop of this shape arrives as a
@@ -1348,7 +1348,7 @@ class TransactionControllerTest extends TestCase
         $this->post('/transactions', $this->expense())->assertSessionHasNoErrors();
 
         $this->delete('/transactions/'.Transaction::firstOrFail()->id)
-            ->assertSessionHas('message', 'Transaction [expense] deleted');
+            ->assertSessionHas('message', 'Transaction [withdraw] deleted');
 
         $this->assertDatabaseCount('transactions', 0);
     }
@@ -1434,7 +1434,7 @@ class TransactionControllerTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',

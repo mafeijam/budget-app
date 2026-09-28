@@ -738,7 +738,10 @@ class TransactionController extends Controller
                 // act, and two rows describing it differently would be two facts about
                 // one event.
                 'date' => $paidOn,
-                'type' => TransactionType::Transfer->value,
+                // A withdrawal, like any other money leaving the bank. This row used to
+                // be a transfer of its own so that paying a card would not count as
+                // spending; that is not a distinction the types carry now.
+                'type' => TransactionType::Withdraw->value,
                 'description' => sprintf('Card payment [%s]', $account->name),
                 'amount' => $owed,
                 'ccy' => $account->ccy,

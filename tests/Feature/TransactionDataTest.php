@@ -79,7 +79,7 @@ class TransactionDataTest extends TestCase
             'account_id' => $this->accountId,
             'category_id' => $this->categoryId,
             'date' => '2026-01-01',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Coffee',
             'amount' => '4.5000',
             'ccy' => 'USD',
@@ -142,7 +142,7 @@ class TransactionDataTest extends TestCase
         $this->assertSame($this->accountId, $data->account_id);
         $this->assertSame($this->categoryId, $data->category_id);
         $this->assertSame('2026-01-01', $data->date);
-        $this->assertSame(TransactionType::Expense, $data->type);
+        $this->assertSame(TransactionType::Withdraw, $data->type);
         $this->assertSame('Coffee', $data->description);
         $this->assertSame('4.5000', $data->amount);
         $this->assertSame(Currency::Usd, $data->ccy);
@@ -178,7 +178,7 @@ class TransactionDataTest extends TestCase
         // enum becomes a broken INSERT that no test currently stands between.
         $array = TransactionData::from($this->postRequest())->toArray();
 
-        $this->assertSame('expense', $array['type']);
+        $this->assertSame('withdraw', $array['type']);
         $this->assertSame('posted', $array['status']);
         $this->assertSame('USD', $array['ccy']);
     }
@@ -363,9 +363,9 @@ class TransactionDataTest extends TestCase
             'a charge spends a card, not a cash account' => ['cash', 'charge'],
             'a charge spends a card, not a broker account' => ['security', 'charge'],
             'a trade belongs on a broker account, not a cash account' => ['cash', 'buy'],
-            'an expense is not spending a card' => ['card', 'expense'],
-            'income into a cash account is not income on a card' => ['card', 'income'],
-            'a dividend belongs on a broker account, not a card' => ['card', 'dividend'],
+            'an expense is not spending a card' => ['card', 'withdraw'],
+            'income into a cash account is not income on a card' => ['card', 'deposit'],
+            'a dividend belongs on a broker account, not a card' => ['card', 'deposit'],
         ];
     }
 
@@ -438,9 +438,13 @@ class TransactionDataTest extends TestCase
     // Category
     // ---------------------------------------------------------------------
 
-    public function test_an_expense_must_be_categorised(): void
+    public function test_a_withdrawal_need_not_be_categorised(): void
     {
-        $this->assertFieldRejected(['category_id' => null], 'category_id');
+        // Optional, not required and not prohibited. The app writes withdrawals of its own
+        // beside buys and card payments, and neither has a category to give.
+        $data = TransactionData::from($this->postRequest(['category_id' => null]));
+
+        $this->assertNull($data->category_id);
     }
 
     public function test_a_charge_must_be_categorised(): void
@@ -533,7 +537,7 @@ class TransactionDataTest extends TestCase
         // here would mean picking from a list of spending categories. Optional
         // until that gap is closed.
         $data = TransactionData::from($this->postRequest([
-            'type' => 'income',
+            'type' => 'deposit',
             'category_id' => null,
         ]));
 
@@ -614,7 +618,7 @@ class TransactionDataTest extends TestCase
             account_id: $this->accountId,
             category_id: $this->categoryId,
             date: '2026-01-01',
-            type: TransactionType::Expense,
+            type: TransactionType::Withdraw,
             description: 'Coffee',
             amount: '4.5000',
             ccy: Currency::Hkd,
@@ -678,7 +682,7 @@ class TransactionDataTest extends TestCase
         // would be nonsense.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->securityId,
-            'type' => 'dividend',
+            'type' => 'deposit',
             'ccy' => 'HKD',
             'category_id' => null,
             'amount' => '312.4400',
@@ -829,7 +833,7 @@ class TransactionDataTest extends TestCase
     {
         // A bag sent but no due date in it, so the nullish read below is
         // reading the property rather than short-circuiting on a missing bag.
-        foreach (['expense', 'income'] as $type) {
+        foreach (['withdraw', 'deposit'] as $type) {
             $data = TransactionData::from($this->postRequest([
                 'type' => $type,
                 'meta_data' => [],

@@ -106,8 +106,8 @@ class AccountBalanceTest extends TestCase
 
     public function test_income_raises_a_bank_and_an_expense_lowers_it(): void
     {
-        $this->row($this->bank, 'income', '500.0000');
-        $this->row($this->bank, 'expense', '120.5000');
+        $this->row($this->bank, 'deposit', '500.0000');
+        $this->row($this->bank, 'withdraw', '120.5000');
 
         $this->assertSame('379.5000', $this->balanceOf($this->bank));
     }
@@ -117,24 +117,24 @@ class AccountBalanceTest extends TestCase
         // The whole point of a transfer: money going out to a far side this app does
         // not track, which is why the card half of a card payment is a Payment and not
         // a second transfer.
-        $this->row($this->bank, 'income', '1000.0000');
-        $this->row($this->bank, 'transfer', '250.0000');
+        $this->row($this->bank, 'deposit', '1000.0000');
+        $this->row($this->bank, 'withdraw', '250.0000');
 
         $this->assertSame('750.0000', $this->balanceOf($this->bank));
     }
 
     public function test_a_bank_that_spent_more_than_it_received_reads_negative(): void
     {
-        $this->row($this->bank, 'income', '40.0000');
-        $this->row($this->bank, 'expense', '120.0000');
+        $this->row($this->bank, 'deposit', '40.0000');
+        $this->row($this->bank, 'withdraw', '120.0000');
 
         $this->assertSame('-80.0000', $this->balanceOf($this->bank));
     }
 
     public function test_a_pending_row_does_not_move_a_balance(): void
     {
-        $this->row($this->bank, 'income', '500.0000');
-        $this->row($this->bank, 'expense', '40.0000', status: 'pending');
+        $this->row($this->bank, 'deposit', '500.0000');
+        $this->row($this->bank, 'withdraw', '40.0000', status: 'pending');
 
         $this->assertSame('500.0000', $this->balanceOf($this->bank));
     }
@@ -245,17 +245,17 @@ class AccountBalanceTest extends TestCase
 
     public function test_the_totals_keep_four_decimal_places(): void
     {
-        $this->row($this->bank, 'income', '0.1000');
-        $this->row($this->bank, 'income', '0.2000');
+        $this->row($this->bank, 'deposit', '0.1000');
+        $this->row($this->bank, 'deposit', '0.2000');
 
         $this->assertSame('0.3000', $this->balanceOf($this->bank));
     }
 
     public function test_a_figure_wider_than_a_float_could_hold_is_exact(): void
     {
-        $this->row($this->bank, 'income', '0.1000');
-        $this->row($this->bank, 'income', '0.2000');
-        $this->row($this->bank, 'income', '12345678.9000');
+        $this->row($this->bank, 'deposit', '0.1000');
+        $this->row($this->bank, 'deposit', '0.2000');
+        $this->row($this->bank, 'deposit', '12345678.9000');
 
         $this->assertSame('12345679.2000', $this->balanceOf($this->bank));
     }
@@ -266,7 +266,7 @@ class AccountBalanceTest extends TestCase
         // the page of accounts. Reading it per account would make a five-row page five
         // scans, which is the thing Account::settlementAccount() already cannot afford
         // and this one can.
-        $this->row($this->bank, 'income', '10.0000');
+        $this->row($this->bank, 'deposit', '10.0000');
         $this->charge('2026-01-01', '25.0000');
 
         $queries = 0;
@@ -285,7 +285,7 @@ class AccountBalanceTest extends TestCase
         // The map is built from the accounts handed in, so a row that is not on this
         // page cannot appear in it and a stale figure cannot survive a page change.
         $other = $this->account('Other', 'cash');
-        $this->row($other, 'income', '50.0000');
+        $this->row($other, 'deposit', '50.0000');
 
         $balances = AccountBalance::forAccounts(collect([$this->bank]));
 
@@ -298,9 +298,8 @@ class AccountBalanceTest extends TestCase
 
     public function test_the_sign_of_each_type_follows_the_account_it_sits_on(): void
     {
-        $this->assertSame(1, TransactionType::Income->movesBalanceOn(AccountType::Cash));
-        $this->assertSame(-1, TransactionType::Expense->movesBalanceOn(AccountType::Cash));
-        $this->assertSame(-1, TransactionType::Transfer->movesBalanceOn(AccountType::Cash));
+        $this->assertSame(1, TransactionType::Deposit->movesBalanceOn(AccountType::Cash));
+        $this->assertSame(-1, TransactionType::Withdraw->movesBalanceOn(AccountType::Cash));
 
         $this->assertSame(-1, TransactionType::Charge->movesBalanceOn(AccountType::Card));
         $this->assertSame(1, TransactionType::Payment->movesBalanceOn(AccountType::Card));
@@ -312,7 +311,7 @@ class AccountBalanceTest extends TestCase
         // a guess: a sign for a row that cannot exist is a claim nobody checked.
         $this->assertSame(0, TransactionType::Charge->movesBalanceOn(AccountType::Cash));
         $this->assertSame(0, TransactionType::Payment->movesBalanceOn(AccountType::Cash));
-        $this->assertSame(0, TransactionType::Expense->movesBalanceOn(AccountType::Card));
+        $this->assertSame(0, TransactionType::Withdraw->movesBalanceOn(AccountType::Card));
     }
 
     public function test_a_trade_moves_no_balance_anywhere(): void
@@ -320,8 +319,17 @@ class AccountBalanceTest extends TestCase
         foreach (AccountType::cases() as $accountType) {
             $this->assertSame(0, TransactionType::Buy->movesBalanceOn($accountType));
             $this->assertSame(0, TransactionType::Sell->movesBalanceOn($accountType));
-            $this->assertSame(0, TransactionType::Dividend->movesBalanceOn($accountType));
         }
+    }
+
+    public function test_a_deposit_moves_no_balance_on_a_brokerage(): void
+    {
+        // The other half of deposit being one type for two things. On a cash account it
+        // is money in and carries a sign; on a brokerage it is a dividend, and a
+        // securities account has no balance to move. PositionController reads those rows
+        // for the income they were, and nothing sums them.
+        $this->assertSame(0, TransactionType::Deposit->movesBalanceOn(AccountType::Security));
+        $this->assertSame(1, TransactionType::Deposit->movesBalanceOn(AccountType::Cash));
     }
 
     // ---------------------------------------------------------------------
@@ -330,8 +338,8 @@ class AccountBalanceTest extends TestCase
 
     public function test_the_account_page_sends_a_balance_for_every_account_that_has_one(): void
     {
-        $this->row($this->bank, 'income', '500.0000');
-        $this->row($this->bank, 'expense', '120.5000');
+        $this->row($this->bank, 'deposit', '500.0000');
+        $this->row($this->bank, 'withdraw', '120.5000');
         $this->charge('2026-01-01', '80.0000');
 
         $this->get('/accounts')->assertInertia(fn (Assert $page) => $page

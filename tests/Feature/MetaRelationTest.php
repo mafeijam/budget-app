@@ -60,7 +60,7 @@ class MetaRelationTest extends TestCase
             'account_id' => $account->id,
             'category_id' => null,
             'amount' => 10,
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Foreign lunch',
             'ccy' => 'USD',
             'date' => '2026-01-01',

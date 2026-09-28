@@ -12,46 +12,53 @@ namespace App\Enums;
  * account. accountTypes() is the single place that pairing is defined, and
  * TransactionData validates against it.
  *
+ * Six cases, and the reduction from nine was a correction rather than a tidy-up.
+ * A bank account had four types for two directions of travel: expense and
+ * transfer were both money leaving, income and deposit both money arriving, and
+ * nothing in the balance arithmetic could tell the pairs apart -- AccountBalance's
+ * CASE reads the type to get a sign and the amount, so income and deposit were
+ * the same row with two names. What was lost by collapsing them was a distinction
+ * the app could not act on: expense was distinguished from transfer so that
+ * paying a credit card would not count as spending, which mattered when a card
+ * payment was its own type and a spending total existed to be wrong in. It does
+ * not now -- a withdrawal is categorised or it is not, and the categories page
+ * reads the category rather than the type. So withdraw and deposit say what
+ * happened to the account, and the description says what for.
+ *
  * `amount` is a client-supplied value for every type except the two trades.
  * A trade's amount is quantity x unit price, so it is derived on the server
  * and a client-supplied amount is rejected outright -- see derivesAmount().
  */
 enum TransactionType: string
 {
-    // Cash accounts. The simple case: money in, money out.
-    case Expense = 'expense';
-    case Income = 'income';
-
-    // Money leaving a bank toward something whose far side this app does not track
-    // -- most often a credit card payment, which records two rows: a Payment on the
-    // card and a Transfer on the bank.
-    //
-    // Not an expense, and that is the whole reason it is a case of its own. Expense
-    // requires a category and counts as spending, so recording a card repayment as
-    // one would put money that was never spent into every spending total. Cash only:
-    // the card side of the pair already has a type, and a transfer here would be a
-    // second name for it.
-    case Transfer = 'transfer';
-
-    // Money arriving in a bank from somewhere that is not income -- the proceeds of a
-    // sell, written by TradeCash beside the trade. Transfer's counterpart, and a case of
-    // its own for the reason Transfer is: recorded as income, a sale would count the
-    // return of the user's own money as money earned in every income total.
-    case Deposit = 'deposit';
+    // Cash accounts. Money in, money out, and that is the whole distinction:
+    // a salary and the proceeds of a share sale both arrive, and a shop
+    // purchase and a credit card repayment both leave.
+    case Withdraw = 'withdraw';
 
     // Credit card accounts. A charge spends the card's credit and rolls up into
     // a statement period; a payment reduces what is owed and is deliberately
-    // not an expense, so it need not be categorised -- though a payment may
+    // not a withdrawal, so it need not be categorised -- though a payment may
     // still be labelled, which is useful when one payment covers several
     // purchases or is a reimbursement of a specific one.
     case Charge = 'charge';
     case Payment = 'payment';
 
     // Stock trading accounts. A buy and a sell are trades whose amount is
-    // derived; a dividend is simply income and is client-supplied.
+    // derived.
     case Buy = 'buy';
     case Sell = 'sell';
-    case Dividend = 'dividend';
+
+    // Money arriving, on either kind of account -- which is why it is declared
+    // last rather than beside Withdraw, with which it pairs.
+    //
+    // The declaration order is the order the picker offers, because cases() is walked
+    // in declaration order to build the list. Declared second, this would put a
+    // deposit ahead of both trades on a brokerage, where buy and sell are what a user
+    // reaches for and a dividend is an occasional thing. Last, every account's own
+    // list reads the way a person would expect: a bank is offered a withdrawal then a
+    // deposit, a brokerage a buy, a sell, then a deposit.
+    case Deposit = 'deposit';
 
     /**
      * The account types this transaction type is legal on.
@@ -61,9 +68,10 @@ enum TransactionType: string
     public function accountTypes(): array
     {
         return match ($this) {
-            self::Expense, self::Income, self::Transfer, self::Deposit => [AccountType::Cash],
+            self::Withdraw => [AccountType::Cash],
+            self::Deposit => [AccountType::Cash, AccountType::Security],
             self::Charge, self::Payment => [AccountType::Card],
-            self::Buy, self::Sell, self::Dividend => [AccountType::Security],
+            self::Buy, self::Sell => [AccountType::Security],
         };
     }
 
@@ -85,7 +93,9 @@ enum TransactionType: string
      * magnitude, so it is the pair that says which way.
      *
      * Zero means the row does not count, the answer for a securities account
-     * because it has no balance to move.
+     * because it has no balance to move. That is also why a deposit is legal on
+     * one: a dividend recorded there moves nothing, and is read by
+     * PositionController for the income it was rather than by any balance.
      *
      * The opposite of CardStatement::owed(), which is a period's debt and stays
      * positive. The statement query carries its own CASE and does not read this.
@@ -94,20 +104,20 @@ enum TransactionType: string
     {
         return match ($accountType) {
             AccountType::Cash => match ($this) {
-                self::Income, self::Deposit => 1,
-                self::Expense, self::Transfer => -1,
+                self::Deposit => 1,
+                self::Withdraw => -1,
 
                 // Unreachable -- accountTypes() permits none of these on a cash
                 // account -- but named rather than defaulted, so a case added to
                 // the enum without a decision here fails loudly.
-                self::Charge, self::Payment, self::Buy, self::Sell, self::Dividend => 0,
+                self::Charge, self::Payment, self::Buy, self::Sell => 0,
             },
 
             AccountType::Card => match ($this) {
                 self::Charge => -1,
                 self::Payment => 1,
 
-                self::Expense, self::Income, self::Transfer, self::Deposit, self::Buy, self::Sell, self::Dividend => 0,
+                self::Withdraw, self::Deposit, self::Buy, self::Sell => 0,
             },
 
             AccountType::Security => 0,
@@ -116,9 +126,6 @@ enum TransactionType: string
 
     /**
      * Whether the amount is computed from the trade meta rather than supplied.
-     *
-     * A dividend is not a trade: it arrives as a fixed cash amount with no
-     * quantity or unit price, so it is client-supplied like the other types.
      */
     public function derivesAmount(): bool
     {
@@ -128,18 +135,21 @@ enum TransactionType: string
     /**
      * Whether a category is mandatory.
      *
-     * Only a genuine expense needs one. A payment settles a statement rather
-     * than buying anything, so it is optional rather than forbidden: the
-     * settlement arithmetic is a plain SUM over charge and payment rows and never
-     * looks at category_id, so a label costs nothing and is worth having when
-     * one payment covers several purchases. A trade or dividend is not
-     * categorised spending.
+     * A charge is money spent and is labelled. A withdrawal is not required to be, and
+     * cannot be: TradeCash writes one beside every buy and TransactionController::settle()
+     * writes one beside every card payment, and neither is a purchase with a category to
+     * give. Requiring one would make the app's own rows unsaveable in the form -- the edit
+     * refused over a category the user cannot supply and did not choose to leave off.
      *
-     * Income is optional too, because `categories` has no income/expense
+     * So a label is available and optional, as on a payment: the settlement arithmetic is
+     * a plain SUM over charge and payment rows and never looks at category_id, so a label
+     * costs nothing and is worth having on a withdrawal that really was spending.
+     *
+     * A deposit is optional for a second reason: `categories` has no income/expense
      * discriminator to select from -- see the note in TransactionData.
      */
     public function requiresCategory(): bool
     {
-        return in_array($this, [self::Expense, self::Charge], true);
+        return $this === self::Charge;
     }
 }

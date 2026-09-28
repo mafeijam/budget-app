@@ -184,6 +184,21 @@ class TransactionData extends Data
     }
 
     /**
+     * What a refusal says, where the rule's own message does not.
+     *
+     * required_unless restates its condition, so the category rule reads "required
+     * unless type is in payment, buy, sell, deposit, withdraw" -- a list of the types
+     * that do not need one, presented as though it were the types that do. Which types
+     * require a category is a decision about money spent, so it is said as one.
+     */
+    public static function messages()
+    {
+        return [
+            'category_id.required_unless' => 'A charge is money spent, so it needs a category.',
+        ];
+    }
+
+    /**
      * The transaction types matching a predicate, as a comma-separated list.
      *
      * Derived from the enum so a hand-written list cannot quietly stop matching --

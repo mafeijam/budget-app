@@ -193,7 +193,7 @@ class CardChargeCurrencyTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '100.0000',
             'ccy' => 'USD',
@@ -260,7 +260,7 @@ class CardChargeCurrencyTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         // Both in HKD and both the card-currency figure. The charge's own USD amount
         // is not the number that moves, and nothing about settling converts it.

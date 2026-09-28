@@ -44,7 +44,7 @@ class TransactionTemplateTest extends TestCase
         $this->assertSame('Rent', $template->name);
         $this->assertSame($this->bank->id, $template->account_id);
         $this->assertSame($this->category->id, $template->category_id);
-        $this->assertSame('expense', $template->payload['type']);
+        $this->assertSame('withdraw', $template->payload['type']);
         $this->assertSame('1200.0000', $template->payload['amount']);
         $this->assertSame('Monthly rent', $template->payload['description']);
         $this->assertSame('USD', $template->payload['ccy']);
@@ -197,10 +197,10 @@ class TransactionTemplateTest extends TestCase
         // here is that the server refuses them at all. The account's message is the one
         // asserted in full, since attributes() is what turns "account_id" into something
         // a person would recognise.
-        $this->post('/transaction-templates', ['account_id' => $this->bank->id, 'payload' => ['type' => 'expense']])
+        $this->post('/transaction-templates', ['account_id' => $this->bank->id, 'payload' => ['type' => 'withdraw']])
             ->assertSessionHasErrors(['name' => 'The name field is required.']);
 
-        $this->post('/transaction-templates', ['name' => 'Rent', 'payload' => ['type' => 'expense']])
+        $this->post('/transaction-templates', ['name' => 'Rent', 'payload' => ['type' => 'withdraw']])
             ->assertSessionHasErrors(['account_id' => 'The account field is required.']);
 
         $this->post('/transaction-templates', ['name' => 'Rent', 'account_id' => $this->bank->id, 'payload' => []])
@@ -265,7 +265,7 @@ class TransactionTemplateTest extends TestCase
             ->has('templates', 1)
             ->where('templates.0.name', 'Rent')
             ->where('templates.0.account_name', 'Bank USD')
-            ->where('templates.0.payload.type', 'expense')
+            ->where('templates.0.payload.type', 'withdraw')
         );
     }
 
@@ -296,7 +296,7 @@ class TransactionTemplateTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category->id,
             'date' => '2026-03-01',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Monthly rent',
             'amount' => '1200.0000',
             'ccy' => 'USD',

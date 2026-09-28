@@ -43,13 +43,13 @@ use RuntimeException;
  *   currency. The account table's Balance column sums the stated figure, so a card
  *   that owes 780 and not 100 is the difference between a right column and a wrong
  *   one that still looks plausible.
- * - A pending charge and a pending income. Neither counts toward a balance, and both
+ * - A pending charge and a pending deposit. Neither counts toward a balance, and both
  *   are on screen somewhere, so a build that counted them would show a number
  *   disagreeing with the rows above it.
- * - Two incomes of 0.1000 and 0.2000. A balance that has been through a float reads
+ * - Two deposits of 0.1000 and 0.2000. A balance that has been through a float reads
  *   0.30000000000000004, and a column asserting its own arithmetic is a lie the eye
  *   cannot catch.
- * - A transfer and a payment for the same 900.0000, which is what a card settlement
+ * - A withdrawal and a payment for the same 900.0000, which is what a card settlement
  *   writes, so the two halves are recognisable as a pair.
  * - One card left owing something and one card fully settled, so the Balance column
  *   has both a figure and a zero to show rather than only one.
@@ -212,13 +212,13 @@ class DevTransactionSeeder extends Seeder
 
         return [
             // ------------------------------------------------------------------
-            // Dev Cash: money in, money out, and the transfer half of the card
+            // Dev Cash: money in, money out, and the withdrawal half of the card
             // settlement below. Leaves 2819.5000.
             // ------------------------------------------------------------------
             [
                 'account' => 'Dev Cash',
                 'date' => '2026-01-01',
-                'type' => TransactionType::Income->value,
+                'type' => TransactionType::Deposit->value,
                 'description' => 'Salary',
                 'amount' => '5000.0000',
                 'ccy' => $hkd,
@@ -229,7 +229,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Cash',
                 'date' => '2026-01-05',
-                'type' => TransactionType::Expense->value,
+                'type' => TransactionType::Withdraw->value,
                 'description' => 'Rent',
                 'amount' => '1200.5000',
                 'ccy' => $hkd,
@@ -240,7 +240,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Cash',
                 'date' => '2026-01-12',
-                'type' => TransactionType::Expense->value,
+                'type' => TransactionType::Withdraw->value,
                 'description' => 'Coffee',
                 'amount' => '80.0000',
                 'ccy' => $hkd,
@@ -250,12 +250,12 @@ class DevTransactionSeeder extends Seeder
             ],
 
             // The far half of the settlement under Dev Card, for the same 900. A
-            // transfer leaves a bank toward a far side this app does not track, which
-            // is why the card half is a Payment and not a second transfer.
+            // withdrawal leaves a bank toward a far side this app does not track,
+            // which is why the card half is a Payment and not a second withdrawal.
             [
                 'account' => 'Dev Cash',
                 'date' => '2026-02-01',
-                'type' => TransactionType::Transfer->value,
+                'type' => TransactionType::Withdraw->value,
                 'description' => 'Card payment [Dev Card]',
                 'amount' => '900.0000',
                 'ccy' => $hkd,
@@ -271,7 +271,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Cash Reserve',
                 'date' => '2026-01-02',
-                'type' => TransactionType::Income->value,
+                'type' => TransactionType::Deposit->value,
                 'description' => 'Interest',
                 'amount' => '0.1000',
                 'ccy' => $hkd,
@@ -282,7 +282,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Cash Reserve',
                 'date' => '2026-01-03',
-                'type' => TransactionType::Income->value,
+                'type' => TransactionType::Deposit->value,
                 'description' => 'Interest',
                 'amount' => '0.2000',
                 'ccy' => $hkd,
@@ -297,7 +297,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Cash Reserve',
                 'date' => '2026-01-04',
-                'type' => TransactionType::Income->value,
+                'type' => TransactionType::Deposit->value,
                 'description' => 'Refund pending',
                 'amount' => '77.0000',
                 'ccy' => $hkd,
@@ -400,6 +400,24 @@ class DevTransactionSeeder extends Seeder
                 'category' => 'OTHER',
                 'meta' => [],
             ],
+            [
+                'account' => 'Dev Card Everyday',
+                'date' => '2026-01-21',
+                'type' => TransactionType::Charge->value,
+                'description' => 'Pending Shop',
+                'amount' => '99.0000',
+                'ccy' => $hkd,
+                'status' => $pending,
+                'category' => 'OTHER',
+                'meta' => [],
+            ],
+
+            // No brokerage rows, and that is deliberate rather than an oversight:
+            // a trade's worth needs a price this app does not carry, and DevAccountSeeder
+            // supplies two brokerages so this is reachable. A dividend would not need one
+            // -- a deposit on a brokerage moves no balance and the positions page prints
+            // it as received -- so the only reason there is none here is that inventing a
+            // dividend is not this file's to do.
         ];
     }
 }

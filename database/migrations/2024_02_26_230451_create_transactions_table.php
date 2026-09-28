@@ -95,6 +95,21 @@ return new class extends Migration
             // A positive magnitude, not a signed one. See the class docblock.
             $table->decimal('amount', 12, 4);
 
+            // Six values, and what makes one legal here is the owning account's type
+            // rather than the value on its own: a payment only means anything on a card,
+            // a sell only on a brokerage. See TransactionType::accountTypes(), which is
+            // the single place that pairing is defined.
+            //
+            //   cash       withdraw, deposit
+            //   card       charge, payment
+            //   securities buy, sell, deposit (a dividend)
+            //
+            // Plain strings rather than an enum column, so a value this app does not know
+            // is stored rather than refused -- and read back through TransactionType::from()
+            // in TransactionData::fromModel(), which throws on one it does not know. That
+            // makes an unfamiliar value a 500 on the transactions page rather than a row
+            // that renders, which is the reason a change to the vocabulary here needs a
+            // data migration against any database that already holds rows.
             $table->string('type');
             $table->string('description');
             $table->string('ccy');

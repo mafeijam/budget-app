@@ -96,11 +96,11 @@ class TransactionMetaDataTest extends TestCase
     public static function nonTradeTypeProvider(): array
     {
         return [
-            'expense' => ['expense'],
-            'income' => ['income'],
+            'withdraw' => ['withdraw'],
+            'deposit' => ['deposit'],
             'charge' => ['charge'],
             'payment' => ['payment'],
-            'dividend' => ['dividend'],
+            'deposit' => ['deposit'],
         ];
     }
 
@@ -121,8 +121,8 @@ class TransactionMetaDataTest extends TestCase
         // securities account alongside the trades, so a rule keyed on the
         // account type rather than the transaction type would demand a symbol
         // and a unit price for it.
-        $this->assertFalse($this->rejects('symbol', ['symbol' => null], ['type' => 'dividend']));
-        $this->assertFalse($this->rejects('quantity', ['quantity' => null], ['type' => 'dividend']));
+        $this->assertFalse($this->rejects('symbol', ['symbol' => null], ['type' => 'deposit']));
+        $this->assertFalse($this->rejects('quantity', ['quantity' => null], ['type' => 'deposit']));
     }
 
     public function test_fees_are_optional_on_a_trade(): void
@@ -272,11 +272,11 @@ class TransactionMetaDataTest extends TestCase
         // dividend is recorded on a securities account but its amount is simply
         // stated, so deriving one from a stale symbol would be nonsense.
         foreach ([
-            TransactionType::Expense,
-            TransactionType::Income,
+            TransactionType::Withdraw,
+            TransactionType::Deposit,
             TransactionType::Charge,
             TransactionType::Payment,
-            TransactionType::Dividend,
+            TransactionType::Deposit,
         ] as $type) {
             $this->assertNull(
                 $this->meta()->derivedAmount($type),

@@ -229,7 +229,7 @@ class DevTransactionSeederTest extends TestCase
         $this->assertGreaterThan(
             0,
             Transaction::where('status', TransactionStatus::Pending->value)
-                ->where('type', TransactionType::Income->value)
+                ->where('type', TransactionType::Deposit->value)
                 ->count(),
             'No pending income. Pending is the only status that does not count toward a '
             .'balance, and a cash row is where that is easiest to get wrong.'
@@ -238,19 +238,29 @@ class DevTransactionSeederTest extends TestCase
 
     public function test_every_categorised_row_has_a_category(): void
     {
-        // An expense or a charge with no category is a row the edit form would reject
-        // and the create form cannot produce, so it is worse than no fixture.
+        // A charge with no category is a row the edit form would reject and the create
+        // form cannot produce, so it is worse than no fixture.
+        //
+        // A withdrawal is not in this list and its absence is the point: the seeder writes
+        // one with no category for the card payment below, exactly as settle() does, and
+        // requiring a category would make the app's own fixture unsaveable.
         $this->seed(DevTransactionSeeder::class);
 
         $uncategorised = Transaction::whereNull('category_id')
-            ->whereIn('type', [
-                TransactionType::Expense->value,
-                TransactionType::Charge->value,
-            ])
+            ->where('type', TransactionType::Charge->value)
             ->pluck('description')
             ->all();
 
         $this->assertSame([], $uncategorised);
+
+        // And the withdrawal that carries no category is the one the settlement writes.
+        $this->assertContains(
+            'Card payment [Dev Card]',
+            Transaction::whereNull('category_id')
+                ->where('type', TransactionType::Withdraw->value)
+                ->pluck('description')
+                ->all()
+        );
     }
 
     // ---------------------------------------------------------------------

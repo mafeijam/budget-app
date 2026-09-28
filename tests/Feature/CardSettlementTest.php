@@ -61,7 +61,7 @@ class CardSettlementTest extends TestCase
 
         $this->assertSame(
             $other->id,
-            Transaction::where('type', 'transfer')->firstOrFail()->account_id,
+            Transaction::where('type', 'withdraw')->firstOrFail()->account_id,
             'The money did not leave the account the user named.'
         );
     }
@@ -95,7 +95,7 @@ class CardSettlementTest extends TestCase
 
         $this->assertSame(
             $other->id,
-            Transaction::where('type', 'transfer')->latest('id')->firstOrFail()->account_id
+            Transaction::where('type', 'withdraw')->latest('id')->firstOrFail()->account_id
         );
     }
 
@@ -111,7 +111,7 @@ class CardSettlementTest extends TestCase
                 'due_date' => 'Card [Card] does not name the bank it is paid from, so it cannot be settled.',
             ]);
 
-        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
     }
 
     public function test_the_named_account_is_refused_for_being_the_wrong_kind_of_account(): void
@@ -133,7 +133,7 @@ class CardSettlementTest extends TestCase
             session('errors')->getBag('default')->messages()['settlement_account_id'][0]
         );
 
-        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
     }
 
     public function test_the_named_account_is_refused_for_being_in_another_currency(): void
@@ -174,7 +174,7 @@ class CardSettlementTest extends TestCase
             'settlement_account_id' => 'A card can only be paid from a cash account, not a card account.',
         ]);
 
-        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
     }
 
     public function test_the_named_account_must_exist(): void
@@ -223,7 +223,7 @@ class CardSettlementTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->assertSame($payment->date, $transfer->date);
         $this->assertSame('2026-01-28', $payment->date);
@@ -305,7 +305,7 @@ class CardSettlementTest extends TestCase
         $this->assertDatabaseCount('transactions', 4); // two charges, and the pair
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->assertSame($this->card->id, $payment->account_id);
         $this->assertSame('200.5000', $payment->amount);
@@ -329,7 +329,7 @@ class CardSettlementTest extends TestCase
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->assertSame($transfer->id, (int) $payment->meta_data['paired_transaction_id']);
         $this->assertSame($payment->id, (int) $transfer->meta_data['paired_transaction_id']);
@@ -525,7 +525,7 @@ class CardSettlementTest extends TestCase
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         // Deleting one half used to be refused, which protected the pair by refusing
         // the only thing the user came for. Both rows go instead -- which is the same
@@ -549,7 +549,7 @@ class CardSettlementTest extends TestCase
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         // From the other end, and with the same message. The due date is read from
         // whichever half carries one -- only the card side is filed under a period --
@@ -679,7 +679,7 @@ class CardSettlementTest extends TestCase
         $charge = $this->charge('2026-01-01', '120.0000');
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->delete("/transactions/{$transfer->id}")->assertSessionHasNoErrors();
 
@@ -724,13 +724,13 @@ class CardSettlementTest extends TestCase
         $this->charge('2026-01-01', '120.0000');
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $this->put("/transactions/{$transfer->id}", array_merge(
             TransactionData::from($transfer->load('meta', 'account'))->toArray(),
             ['amount' => '100.0000']
         ))->assertSessionHasErrors([
-            'amount' => 'This transfer is one half of a card settlement, so its amount cannot be changed '
+            'amount' => 'This withdraw is one half of a card settlement, so its amount cannot be changed '
                 .'on its own. Delete the settlement and settle the statement again.',
         ]);
 
@@ -744,7 +744,7 @@ class CardSettlementTest extends TestCase
         $orphan = Transaction::create([
             'account_id' => $this->bank->id,
             'date' => '2026-02-01',
-            'type' => 'transfer',
+            'type' => 'withdraw',
             'description' => 'Orphan',
             'amount' => '120.0000',
             'ccy' => 'HKD',
@@ -770,7 +770,7 @@ class CardSettlementTest extends TestCase
         $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         foreach ([$payment, $transfer] as $row) {
             $sent = $row->fresh()->load('meta', 'account');
@@ -814,7 +814,7 @@ class CardSettlementTest extends TestCase
         // Refused from inside the write, after the payment exists: the transaction has
         // to roll back or the card shows a payment with no money having left.
         Transaction::creating(function (Transaction $transaction) {
-            if ($transaction->type === 'transfer') {
+            if ($transaction->type === 'withdraw') {
                 throw new \RuntimeException('simulated failure on the second write');
             }
         });
@@ -825,7 +825,7 @@ class CardSettlementTest extends TestCase
         Transaction::flushEventListeners();
 
         $this->assertSame(1, Transaction::count());
-        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'transfer'])->count());
+        $this->assertSame(0, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
         $this->assertSame('120.0000', CardStatement::forAccount($this->card)->sole()->owed());
     }
 }

@@ -441,7 +441,7 @@ class SettledStatementTest extends TestCase
         $open = Transaction::latest('id')->firstOrFail();
 
         $payment = Transaction::where('type', 'payment')->firstOrFail();
-        $transfer = Transaction::where('type', 'transfer')->firstOrFail();
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
         $figures = ['account_id', 'type', 'amount', 'ccy', 'status'];
 
@@ -459,7 +459,7 @@ class SettledStatementTest extends TestCase
             ->where("editLocks.{$transfer->id}.fields", $figures)
             ->where(
                 "editLocks.{$transfer->id}.message",
-                'This transfer is one half of a card settlement, so its account, type, amount, currency '
+                'This withdraw is one half of a card settlement, so its account, type, amount, currency '
                     .'and status are fixed to match the other half. Delete the settlement and settle the '
                     .'statement again.'
             )
@@ -490,7 +490,7 @@ class SettledStatementTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-01-10',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Lunch',
             'amount' => '42.5000',
             'ccy' => 'HKD',

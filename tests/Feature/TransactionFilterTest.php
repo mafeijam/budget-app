@@ -36,7 +36,7 @@ class TransactionFilterTest extends TestCase
             'account_id' => $this->bank->id,
             'category_id' => $this->category,
             'date' => '2026-02-01',
-            'type' => 'expense',
+            'type' => 'withdraw',
             'description' => 'Rent',
             'amount' => '9000.0000',
             'ccy' => 'HKD',
@@ -44,7 +44,7 @@ class TransactionFilterTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-02-15',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Salary',
             'amount' => '30000.0000',
             'ccy' => 'HKD',
@@ -63,7 +63,7 @@ class TransactionFilterTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $other->id,
             'date' => '2026-03-01',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Refund',
             'amount' => '10.0000',
             'ccy' => 'HKD',
@@ -110,7 +110,7 @@ class TransactionFilterTest extends TestCase
 
     public function test_it_filters_by_several_types_at_once(): void
     {
-        $this->assertListed(['filter' => ['type' => 'income,charge']], ['Salary', 'Books', 'Coffee, tea']);
+        $this->assertListed(['filter' => ['type' => 'deposit,charge']], ['Salary', 'Books', 'Coffee, tea']);
     }
 
     public function test_it_filters_by_the_currency_the_row_was_made_in(): void
@@ -190,7 +190,7 @@ class TransactionFilterTest extends TestCase
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
             ->where('filterOptions.accounts', fn ($accounts) => $accounts->pluck('value')->contains($closed->id))
-            ->where('filterOptions.types', ['expense', 'income', 'transfer', 'deposit', 'charge', 'payment', 'buy', 'sell', 'dividend'])
+            ->where('filterOptions.types', ['withdraw', 'charge', 'payment', 'buy', 'sell', 'deposit'])
         );
     }
 

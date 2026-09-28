@@ -110,21 +110,23 @@ class TransactionTypeTest extends TestCase
         // A dividend arrives as a fixed cash amount with no quantity or unit
         // price, so it must stay client-supplied even though it lives on a
         // securities account alongside the trades.
-        $this->assertTrue(TransactionType::Dividend->isAllowedFor(AccountType::Security));
-        $this->assertFalse(TransactionType::Dividend->derivesAmount());
+        $this->assertTrue(TransactionType::Deposit->isAllowedFor(AccountType::Security));
+        $this->assertFalse(TransactionType::Deposit->derivesAmount());
     }
 
-    public function test_only_expenses_and_charges_require_a_category(): void
+    public function test_only_a_charge_requires_a_category(): void
     {
-        $this->assertTrue(TransactionType::Expense->requiresCategory());
         $this->assertTrue(TransactionType::Charge->requiresCategory());
 
+        // A withdrawal is in this list because the app writes one itself beside every buy
+        // and every card payment, and a required category would refuse the edit of a row
+        // the user never entered. See requiresCategory().
         foreach ([
-            TransactionType::Income,
+            TransactionType::Withdraw,
+            TransactionType::Deposit,
             TransactionType::Payment,
             TransactionType::Buy,
             TransactionType::Sell,
-            TransactionType::Dividend,
         ] as $type) {
             $this->assertFalse(
                 $type->requiresCategory(),

@@ -29,7 +29,7 @@ class HomeTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-01-01',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Salary',
             'amount' => '30000.0000',
             'ccy' => 'HKD',
@@ -52,7 +52,7 @@ class HomeTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $holding->id,
             'date' => '2026-01-01',
-            'type' => 'income',
+            'type' => 'deposit',
             'description' => 'Left over',
             'amount' => '5.0000',
             'ccy' => 'HKD',
