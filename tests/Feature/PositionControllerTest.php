@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Price;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -110,6 +111,41 @@ class PositionControllerTest extends TestCase
             ->assertSessionHasErrors(['account_id', 'close']);
 
         $this->assertSame(0, Price::count());
+    }
+
+    public function test_the_fetch_button_runs_the_fetch_and_reports_each_symbol(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        Http::fake(['query1.finance.yahoo.com/*' => Http::response(['chart' => ['result' => [[
+            'meta' => ['currency' => 'USD', 'exchangeTimezoneName' => 'America/New_York'],
+            'timestamp' => [Carbon::parse('2026-03-05 21:00', 'UTC')->timestamp],
+            'indicators' => ['quote' => [['close' => [130.5]]]],
+        ]], 'error' => null]])]);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page->where('pricesUpdatedAt', null));
+
+        $this->post('/prices/fetch')->assertSessionHas('message', 'Prices fetched: NVDA: 1 day');
+
+        $this->assertSame('130.5000', Price::where('symbol', 'NVDA')->sole()->close);
+
+        // How fresh the table is, for the caption beside the button.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('pricesUpdatedAt', '2026-03-06T12:00:00+08:00')
+        );
+    }
+
+    public function test_the_fetch_button_says_when_a_symbol_was_not_fetched(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        Http::fake(['*' => Http::response(['chart' => ['result' => null, 'error' => ['description' => 'Not found']]], 404)]);
+
+        $this->post('/prices/fetch')->assertSessionHas(
+            'message',
+            fn (string $message) => str_starts_with($message, 'Some prices were not fetched: Yahoo did not return prices for NVDA')
+        );
     }
 
     public function test_only_received_dividends_are_totalled(): void

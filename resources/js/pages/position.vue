@@ -3,7 +3,27 @@
     <div class="row items-center">
       <div class="text-h6 text-weight-medium">Positions</div>
       <q-space />
-      <q-toggle v-model="showClosed" label="Show sold out" color="blue-9" dense />
+      <q-toggle v-model="showClosed" label="Show sold out" color="blue-9" dense class="q-mr-md" />
+      <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
+      <div class="text-caption text-grey-7 q-mr-sm">
+        {{
+          pricesUpdatedAt
+            ? `Prices updated ${formatTime(pricesUpdatedAt)}`
+            : 'No prices fetched yet'
+        }}
+      </div>
+      <!-- The scheduled fetch runs once a morning; this is the same fetch, now. -->
+      <q-btn
+        unelevated
+        no-caps
+        color="indigo-1"
+        text-color="blue-9"
+        class="text-weight-bold"
+        icon="sync"
+        label="Fetch prices"
+        :loading="fetching"
+        @click="fetchPrices"
+      />
     </div>
 
     <div v-if="!brokerages.length" class="text-grey-6">
@@ -125,10 +145,12 @@
 <script setup>
 defineProps({
   brokerages: { type: Array, default: Array },
+  pricesUpdatedAt: { type: String, default: null },
 })
 
 const money = useMoney()
 const formatDate = useCalendarDay()
+const formatTime = useHongKongTime()
 
 const showClosed = ref(false)
 
@@ -144,6 +166,22 @@ const quantity = value => {
 
 const $q = useQuasar()
 
+const fetching = ref(false)
+
+// The result arrives as the page's flash message, a line per symbol.
+const fetchPrices = () => {
+  router.post(
+    '/prices/fetch',
+    {},
+    {
+      preserveScroll: true,
+      onStart: () => (fetching.value = true),
+      onSuccess: () => notifySuccess(),
+      onFinish: () => (fetching.value = false),
+    },
+  )
+}
+
 // Today's price, typed in. The server files it under its own today and marks it manual
 // so the next fetch leaves it alone.
 const savePrice = (broker, position, close) => {
@@ -152,6 +190,7 @@ const savePrice = (broker, position, close) => {
     { account_id: broker.id, symbol: position.symbol, close },
     {
       preserveScroll: true,
+      onSuccess: () => notifySuccess(),
       onError: errors => $q.notify({ type: 'negative', message: Object.values(errors)[0] }),
     },
   )
