@@ -13,6 +13,8 @@ use App\Models\Category;
 use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
+use App\Support\Positions;
+use App\Support\TradeCash;
 use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +29,9 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class TransactionController extends Controller
 {
+    /** @var array<int, list<array<string, mixed>>> each brokerage's trades, read once per request */
+    private array $tradesByBroker = [];
+
     private const DEFAULT_SORT = 'date';
 
     /** The columns the transactions table marks sortable. */
@@ -151,6 +156,9 @@ class TransactionController extends Controller
         // Which figures each row on this page cannot change, and why, so the edit form
         // can say so and disable them rather than let the save be refused.
         $editLocks = $this->editLocks($page, $cardPeriods, $linked);
+
+        // The partner rows were for the locks; the page gets the fields it names.
+        $linked = array_map(fn (array $pair) => Arr::except($pair, 'row'), $linked);
 
         // Which way each row moves its account's balance, 1, -1 or 0, so the table can
         // mark money in and out. From movesBalanceOn() rather than a list in the page,
@@ -290,6 +298,7 @@ class TransactionController extends Controller
     {
         // Outside the try, for the reason given in update().
         $data->guardNewChargePeriod(Account::with('meta')->find($data->account_id));
+        $data->guardHoldings();
 
         // Two writes, so a failure between them must leave neither. As
         // AccountController::store().
@@ -307,6 +316,10 @@ class TransactionController extends Controller
                     'meta' => $meta,
                 ]);
             }
+
+            // A buy or sell's cash side, in the same write, so a trade never exists
+            // without the money it moved.
+            TradeCash::sync($transaction);
 
             DB::commit();
         } catch (Exception $e) {
@@ -339,8 +352,12 @@ class TransactionController extends Controller
         // After the move guard, whose message is the better one when a charge changes
         // card out of a paid statement.
         $data->guardFigures($transaction);
+        $data->guardHoldings($transaction);
 
         $data->keepLinksOf($transaction);
+
+        // What it was, for TradeCash: a buy edited into a dividend has cash to remove.
+        $wasType = $transaction->type;
 
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
@@ -363,6 +380,10 @@ class TransactionController extends Controller
                 // which the query groups on the bag's due_date.
                 $transaction->meta()->delete();
             }
+
+            // The cash side follows the corrected trade: its amount, date and status,
+            // and its bank if the trade moved brokerage.
+            TradeCash::sync($transaction, $wasType);
 
             DB::commit();
         } catch (Exception $e) {
@@ -637,6 +658,7 @@ class TransactionController extends Controller
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with('meta')->find($pairedId);
         $period = $this->settlementPeriod($transaction, $partner);
+        $trade = TradeCash::isTrade($transaction) ? TradeCash::describe($transaction) : null;
 
         // A settlement is two rows and must not come apart: deleting one half leaves a
         // card that says it was paid and a bank that says the money is still there. Both
@@ -674,6 +696,10 @@ class TransactionController extends Controller
 
         if ($partner === null) {
             return back()->with('message', "Transaction [{$transaction->type}] deleted");
+        }
+
+        if ($trade !== null) {
+            return back()->with('message', "Trade {$trade} deleted with its cash side: 2 transactions");
         }
 
         return back()->with('message', $period === null
@@ -723,6 +749,24 @@ class TransactionController extends Controller
      */
     private function deleteRefusal(?Transaction $transaction, ?Collection $cardPeriods = null): ?string
     {
+        if ($transaction?->type === TransactionType::Buy->value) {
+            return $this->buyRefusal($transaction);
+        }
+
+        // The cash side of a trade goes with its trade and not on its own: deleting it
+        // here would take the trade too, past the holdings check a buy's delete gets.
+        $pairedId = $transaction?->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
+        $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
+
+        if (TradeCash::isTrade($partner)) {
+            return sprintf(
+                'This %s is the cash side of the trade %s. Delete the trade instead, and its cash '
+                    .'goes with it.',
+                $transaction->type,
+                TradeCash::describe($partner)
+            );
+        }
+
         if ($transaction === null || $transaction->type !== TransactionType::Charge->value) {
             return null;
         }
@@ -747,6 +791,36 @@ class TransactionController extends Controller
                 .'on its own. Delete the payment that settled it first.',
             $transaction->description,
             $dueDate
+        );
+    }
+
+    /**
+     * Why deleting this buy is refused: a later sell would be selling shares no longer
+     * held. Only a shortfall the delete causes, as in TransactionData::guardHoldings(),
+     * and with the way out -- a buy can go once the sells after it are gone or smaller.
+     *
+     * A brokerage's trades are read once per request, since the index asks this of
+     * every buy on the page.
+     */
+    private function buyRefusal(Transaction $buy): ?string
+    {
+        $trades = $this->tradesByBroker[$buy->account_id] ??= $buy->account === null
+            ? []
+            : Positions::tradesOf($buy->account);
+
+        $short = Positions::shortfall(array_values(array_filter($trades, fn (array $t) => $t['id'] !== $buy->id)));
+
+        if ($short === null || $short === Positions::shortfall($trades)) {
+            return null;
+        }
+
+        return sprintf(
+            'Deleting this buy leaves the sell of %s %s on %s with only %s held. Delete or reduce '
+                .'that sell first.',
+            Positions::plain($short['selling']),
+            $short['symbol'],
+            $short['date'],
+            Positions::plain($short['held'])
         );
     }
 
@@ -782,9 +856,9 @@ class TransactionController extends Controller
      * The figure locks for a page of rows, keyed by id, for the edit form.
      *
      * TransactionData::figureLock() decides, and update() asks it again, so the form
-     * and the refusal cannot disagree about which rows are fixed. A partner exists
-     * exactly when linkedCounterparts() found one, which is the question figureLock()
-     * asks of it.
+     * and the refusal cannot disagree about which rows are fixed. The partner is the row
+     * linkedCounterparts() found, handed over whole because figureLock() locks a
+     * trade's cash differently from half a card settlement.
      *
      * @param  Collection<int, Transaction>  $rows
      * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
@@ -799,7 +873,7 @@ class TransactionController extends Controller
             $lock = TransactionData::figureLock(
                 $row,
                 $cardPeriods[$row->account_id] ?? null,
-                isset($linked[$row->id])
+                $linked[$row->id]['row'] ?? null
             );
 
             if ($lock !== null) {
@@ -856,7 +930,7 @@ class TransactionController extends Controller
         }
 
         $counterparts = Transaction::query()
-            ->with('account')
+            ->with(['account', 'meta'])
             ->whereIn('id', $counterpartIds)
             ->get()
             ->keyBy('id');
@@ -879,6 +953,11 @@ class TransactionController extends Controller
                 'amount' => $other->amount,
                 'ccy' => $other->ccy,
                 'account_name' => $other->account?->name,
+                // What the pair is, so the delete confirmation names it: a trade and
+                // its cash, or the two halves of a card settlement.
+                'kind' => TradeCash::isTrade($other) || TradeCash::isTrade($row) ? 'trade' : 'settlement',
+                // For figureLock(), which needs the other row itself; not sent.
+                'row' => $other,
             ];
         }
 

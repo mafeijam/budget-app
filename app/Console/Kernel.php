@@ -12,7 +12,11 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Twice a day, each after a market the app holds has closed, in Hong Kong time:
+        // Hong Kong closes at 16:00 and New York at 04:00 or 05:00 the next morning.
+        // Only runs if something calls schedule:run every minute -- see README.
+        $schedule->command('prices:fetch')->dailyAt('17:00')->timezone('Asia/Hong_Kong');
+        $schedule->command('prices:fetch')->dailyAt('06:30')->timezone('Asia/Hong_Kong');
     }
 
     /**

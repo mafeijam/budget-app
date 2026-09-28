@@ -83,6 +83,7 @@ const typeIcons = {
   expense: 'shopping_cart',
   income: 'savings',
   transfer: 'swap_horiz',
+  deposit: 'move_to_inbox',
   charge: 'credit_card',
   payment: 'task_alt',
   buy: 'trending_up',

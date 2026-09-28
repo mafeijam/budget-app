@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Meta;
+use App\Models\Price;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +45,7 @@ class MassAssignmentTest extends TestCase
         Account::class => ['table' => 'accounts', 'not_client_set' => []],
         Category::class => ['table' => 'categories', 'not_client_set' => []],
         Meta::class => ['table' => 'meta', 'not_client_set' => ['model_id', 'model_type']],
+        Price::class => ['table' => 'prices', 'not_client_set' => []],
         Transaction::class => ['table' => 'transactions', 'not_client_set' => []],
     ];
 

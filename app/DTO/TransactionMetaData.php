@@ -5,7 +5,7 @@ namespace App\DTO;
 use App\Enums\TransactionType;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use InvalidArgumentException;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
 
 /**
@@ -158,22 +158,25 @@ class TransactionMetaData extends Data
 
         $scaled = $net->toScale(self::AMOUNT_SCALE, RoundingMode::HalfUp);
 
+        // Field errors rather than exceptions, keyed where TransactionData nests this
+        // bag: the constructor calls this on a request, and anything else there is a 500
+        // with the user's figures gone and nothing on the form to say which was wrong.
         if ($scaled->isNegative()) {
-            throw new InvalidArgumentException(
-                "A {$type->value} of {$this->quantity} at {$this->unit_price} with fees of "
-                ."{$this->fees} nets to a negative amount. Fees exceed the proceeds, which "
-                .'usually means the fee was entered against the wrong side of the trade.'
-            );
+            throw ValidationException::withMessages([
+                'meta_data.fees' => "A {$type->value} of {$this->quantity} at {$this->unit_price} with fees "
+                    ."of {$this->fees} nets to a negative amount. Fees exceed the proceeds, which "
+                    .'usually means the fee was entered against the wrong side of the trade.',
+            ]);
         }
 
         $max = BigDecimal::of(self::MAX_AMOUNT);
 
         if ($scaled->isGreaterThan($max)) {
-            throw new InvalidArgumentException(
-                "A {$type->value} of {$this->quantity} at {$this->unit_price} comes to "
-                ."{$scaled}, which is past the {$max} the amount column can hold. Left to the "
-                .'database this would be silently rounded down, losing money with no error.'
-            );
+            throw ValidationException::withMessages([
+                'meta_data.quantity' => "A {$type->value} of {$this->quantity} at {$this->unit_price} comes "
+                    ."to {$scaled}, which is past the {$max} the amount column can hold. Left to the "
+                    .'database this would be silently rounded down, losing money with no error.',
+            ]);
         }
 
         return $scaled->toString();

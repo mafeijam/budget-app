@@ -64,6 +64,12 @@ const menus = computed(() => {
       to: () => to('/transactions'),
     },
     {
+      label: 'Positions',
+      active: active('position'),
+      icon: 'show_chart',
+      to: () => to('/positions'),
+    },
+    {
       label: 'Categories',
       active: active('category'),
       icon: 'category',

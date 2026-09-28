@@ -161,6 +161,17 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('0700.HK', $transaction->meta_data['symbol']);
     }
 
+    public function test_a_sell_whose_fees_exceed_its_proceeds_is_a_field_error_not_a_500(): void
+    {
+        // The derived amount would be negative. This was an exception out of the DTO's
+        // constructor, which a request turned into a 500 with the form's figures lost.
+        $this->post('/transactions', array_merge($this->tradePayload(['fees' => '99999']), ['type' => 'sell']))
+            ->assertStatus(302)
+            ->assertSessionHasErrors('meta_data.fees');
+
+        $this->assertSame(0, Transaction::count());
+    }
+
     public function test_a_dividend_keeps_its_supplied_amount(): void
     {
         $this->post('/transactions', [
@@ -1220,6 +1231,7 @@ class TransactionControllerTest extends TestCase
                     'amount' => '120.0000',
                     'ccy' => 'HKD',
                     'account_name' => 'Bank',
+                    'kind' => 'settlement',
                 ],
                 $transfer->id => [
                     'id' => $payment->id,
@@ -1228,6 +1240,7 @@ class TransactionControllerTest extends TestCase
                     'amount' => '120.0000',
                     'ccy' => 'HKD',
                     'account_name' => 'Card',
+                    'kind' => 'settlement',
                 ],
             ])
         );

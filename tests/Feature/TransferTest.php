@@ -77,7 +77,7 @@ class TransferTest extends TestCase
         // Derived from the enum, so adding the case put it in the picker without
         // touching a template. Asserted through the endpoint the form reads.
         $this->get('/transactions')->assertInertia(fn ($page) => $page
-            ->where('typeOptions.cash', ['expense', 'income', 'transfer'])
+            ->where('typeOptions.cash', ['expense', 'income', 'transfer', 'deposit'])
             ->where('typeOptions.card', ['charge', 'payment'])
             ->where('typeOptions.security', ['buy', 'sell', 'dividend'])
         );
