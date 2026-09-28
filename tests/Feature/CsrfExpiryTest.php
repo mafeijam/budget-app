@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Exceptions\Handler;
-use App\Http\Middleware\PreventRequestForgery;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Exceptions\OriginMismatchException;
@@ -18,7 +18,7 @@ use Tests\TestCase;
 /**
  * Covers the app's CUSTOM request-forgery behaviour.
  *
- * App\Exceptions\Handler::render() turns request-forgery failures into a
+ * bootstrap/app.php's withExceptions() turns request-forgery failures into a
  * friendly back()->with('message_csrf', ...) redirect, which
  * resources/js/components/Form/FormDialog.vue renders as an amber banner.
  *
@@ -68,7 +68,7 @@ class CsrfExpiryTest extends TestCase
 
     public function test_handler_converts_a_token_mismatch_into_a_redirect(): void
     {
-        $handler = app(Handler::class);
+        $handler = app(ExceptionHandler::class);
 
         $response = $handler->render(
             Request::create('/accounts', 'POST'),
@@ -83,8 +83,8 @@ class CsrfExpiryTest extends TestCase
     {
         // OriginMismatchException is the L13 Sec-Fetch-Site failure. The
         // framework maps it to 403, so without the explicit branch in
-        // Handler::render() this would render as a bare 403 error page.
-        $handler = app(Handler::class);
+        // render() in bootstrap/app.php this would be a bare 403 error page.
+        $handler = app(ExceptionHandler::class);
 
         $response = $handler->render(
             Request::create('/accounts', 'POST'),
@@ -99,7 +99,7 @@ class CsrfExpiryTest extends TestCase
     {
         // The override keys off the exception type, not the 403 status, so a
         // real authorization failure must keep its own response.
-        $handler = app(Handler::class);
+        $handler = app(ExceptionHandler::class);
 
         $response = $handler->render(
             Request::create('/accounts', 'POST'),
@@ -113,7 +113,7 @@ class CsrfExpiryTest extends TestCase
     public function test_handler_does_not_swallow_non_419_exceptions(): void
     {
         // The override must stay narrow: a 404 has to remain a 404.
-        $handler = app(Handler::class);
+        $handler = app(ExceptionHandler::class);
 
         $response = $handler->render(
             Request::create('/nope', 'GET'),
@@ -170,8 +170,9 @@ class CsrfExpiryTest extends TestCase
 
     public function test_csrf_middleware_is_registered_on_the_web_group(): void
     {
-        // Guards the L13 rename: the web group must still have exactly one
-        // forgery-protection middleware in it, and it must be the renamed class.
+        // Guards the L13 rename: the web group must have exactly one
+        // forgery-protection middleware in it, and it must be the renamed class --
+        // the framework's own, since the app no longer subclasses it.
         $kernel = app(Kernel::class);
 
         $middleware = method_exists($kernel, 'getMiddlewareGroups')
@@ -192,26 +193,16 @@ class CsrfExpiryTest extends TestCase
         $this->assertSame(
             PreventRequestForgery::class,
             $forgery[0],
-            'The web group must reference App\Http\Middleware\PreventRequestForgery. '
+            'The web group must use Illuminate\Foundation\Http\Middleware\PreventRequestForgery. '
                 .'Laravel 13 renamed VerifyCsrfToken to PreventRequestForgery and left the '
                 .'old name as a deprecated alias, so a stale reference still works but '
                 .'is no longer correct.'
         );
     }
 
-    public function test_app_middleware_extends_the_laravel_13_base_class(): void
-    {
-        // The app subclass exists only to hold $except, so it must track the
-        // framework class or it would silently stop enforcing anything.
-        $this->assertTrue(
-            is_a(PreventRequestForgery::class, \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class, true)
-        );
-    }
-
     private function isForgeryMiddleware(string $class): bool
     {
-        return $class === PreventRequestForgery::class
-            || is_a($class, \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class, true)
+        return is_a($class, PreventRequestForgery::class, true)
             || is_a($class, ValidateCsrfToken::class, true)
             || is_a($class, VerifyCsrfToken::class, true);
     }
