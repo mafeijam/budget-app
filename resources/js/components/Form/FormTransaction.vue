@@ -421,7 +421,7 @@
       <template v-if="derivesAmount">
         <q-input
           v-model="form.meta_data.quantity"
-          class="col-6"
+          class="col-4"
           label="Quantity"
           filled
           type="number"
@@ -431,7 +431,7 @@
         />
         <q-input
           v-model="form.meta_data.unit_price"
-          class="col-6"
+          class="col-4"
           label="Unit price"
           filled
           type="number"
@@ -441,7 +441,7 @@
         />
         <q-input
           v-model="form.meta_data.fees"
-          class="col-6"
+          class="col-4"
           label="Fees"
           filled
           type="number"
