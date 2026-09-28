@@ -113,6 +113,30 @@ class Positions
     }
 
     /**
+     * The symbols a brokerage holds right now, for the dividend picker.
+     *
+     * Open positions only, which is the question rather than a filter: a dividend is money
+     * received on a holding already owned, so a symbol sold out is not one of the answers.
+     * A closed one is not refused either -- a position sold after the ex-date still pays
+     * out, and the server does not check this list -- so the field stays a free choice with
+     * a list under it, rather than a picker that cannot record what happened.
+     *
+     * In replay()'s order, which is alphabetical: ksort() puts the book in that order
+     * before it becomes positions, and a list of ticker symbols is read by shape.
+     *
+     * @return list<string>
+     */
+    public static function heldSymbols(Account $broker): array
+    {
+        $positions = self::replay(self::tradesOf($broker))['positions'];
+
+        return array_values(array_keys(array_filter(
+            $positions,
+            fn (array $position) => $position['open']
+        )));
+    }
+
+    /**
      * The first sell that sells more than was held on its day, or null when none does.
      *
      * @param  list<array<string, mixed>>  $trades  as tradesOf() returns them

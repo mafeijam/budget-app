@@ -11,6 +11,7 @@ use App\Models\Transaction;
 use App\Support\AccountBalance;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
+use App\Support\Positions;
 use Carbon\Carbon;
 use Database\Seeders\DevAccountSeeder;
 use Database\Seeders\DevCategorySeeder;
@@ -110,28 +111,40 @@ class DevTransactionSeederTest extends TestCase
         $this->assertGreaterThan(0, Transaction::count());
     }
 
-    public function test_it_gives_no_brokerage_a_trade(): void
+    public function test_the_dividend_is_on_a_position_the_brokerage_holds(): void
     {
-        // The same reason a brokerage reports no balance: a trade's worth needs a price
-        // this app does not carry, so a fixture trade would be a figure on screen meaning
-        // nothing. DevAccountSeeder provides two brokerages so this is reachable.
-        //
-        // Trades only. A dividend is not one: it is an amount actually received, printed
-        // as-is, and it writes its own cash side into the bank so the positions figure and
-        // the balance agree. Asserted separately below.
+        // A dividend names the holding that paid it, and the form's symbol picker offers
+        // the brokerage's holdings. So a fixture dividend with no position behind it is a
+        // dividend with nothing to be one of, and the picker is empty when someone opens
+        // the form to try the thing.
         $this->seed(DevTransactionSeeder::class);
 
-        $brokerages = Account::where('type', AccountType::Security->value)->pluck('id');
+        $broker = Account::where('name', 'Dev Brokerage')->firstOrFail();
 
-        $this->assertSame(
-            0,
-            Transaction::whereIn('account_id', $brokerages)
-                ->whereIn('type', [TransactionType::Buy->value, TransactionType::Sell->value])
-                ->count(),
-            'A brokerage was given a trade. A cash or card balance says nothing '
-            .'about what a brokerage holds, and DevAccountSeeder provides two of them '
-            .'so this is reachable.'
+        $dividend = Transaction::where('type', TransactionType::Deposit->value)
+            ->where('account_id', $broker->id)
+            ->firstOrFail();
+
+        $this->assertContains(
+            $dividend->meta->meta['symbol'],
+            Positions::heldSymbols($broker),
+            'The seeded dividend is on a symbol the brokerage does not hold, so the form has '
+                .'nothing to offer for it.'
         );
+    }
+
+    public function test_the_other_brokerage_is_left_with_nothing(): void
+    {
+        // DevAccountSeeder supplies two brokerages so that the one with a settlement
+        // account of its own is not the only one, and a brokerage holding nothing is a
+        // state the positions page and the picker both have to survive. Left empty on
+        // purpose: a second position would say nothing the first does not.
+        $this->seed(DevTransactionSeeder::class);
+
+        $alt = Account::where('name', 'Dev Brokerage Alt')->firstOrFail();
+
+        $this->assertSame([], Positions::heldSymbols($alt));
+        $this->assertSame(0, Transaction::where('account_id', $alt->id)->count());
     }
 
     public function test_a_seeded_dividend_writes_its_cash_side_into_the_bank(): void
@@ -294,24 +307,25 @@ class DevTransactionSeederTest extends TestCase
         // Asserted, not discovered. A fixture that took whatever the balance query
         // said would be the query's own evidence.
         //
-        //   Dev Cash         5000 - 1200.50 - 80 - 900 + 312.44 =  3131.9400
-        //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded =     0.3000
-        //   Dev Card         -120 - 780 + 900 - 250           =  -250.0000
-        //   Dev Card Everyday -45.25, pending 99 excluded     =   -45.2500
+        //   Dev Cash         8000 - 1200.50 - 80 - 900 - 4000 + 312.44 =  2131.9400
+        //   Dev Cash Reserve 0.10 + 0.20, pending 77 excluded       =     0.3000
+        //   Dev Card         -120 - 780 + 900 - 250                 =  -250.0000
+        //   Dev Card Everyday -45.25, pending 99 excluded           =   -45.2500
         //
         // The card rows are negative because a balance is a position: a card owing
         // 45.25 leaves the user down 45.25. The statement period for the same card
         // reads owed 45.2500, and both are right -- see
         // test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge.
         //
-        // Dev Cash carries the dividend twice over, in effect: the brokerage row writes
-        // a deposit into it, and 312.44 is the figure the positions page shows as
-        // dividends received. The brokerage itself is not listed, because a securities
-        // account has no balance -- that row moves nothing.
+        // Dev Cash carries the brokerage twice over, in both directions: the buy takes
+        // 4000.0000 out of it and the dividend pays 312.44 back in, so the -4000 and the
+        // +312.44 are the cash sides TradeCash wrote rather than rows of their own. The
+        // brokerage itself is not listed, because a securities account has no balance --
+        // that row moves nothing.
         $this->seed(DevTransactionSeeder::class);
 
         $expected = [
-            'Dev Cash' => '3131.9400',
+            'Dev Cash' => '2131.9400',
             'Dev Cash Reserve' => '0.3000',
             'Dev Card' => '-250.0000',
             'Dev Card Everyday' => '-45.2500',

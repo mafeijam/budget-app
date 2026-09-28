@@ -920,6 +920,80 @@ class TransactionControllerTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // The dividend's symbol picker
+    // ---------------------------------------------------------------------
+
+    public function test_the_form_offers_a_brokerage_the_symbols_it_holds(): void
+    {
+        // Keyed by account id, so switching accounts in the form offers that account's own
+        // holdings. Read off the wire rather than off Positions, because what the browser
+        // has is the question: a prop that is right and unsent is a picker offering nothing,
+        // and the one user of it is a dividend, which cannot be recorded without a symbol.
+        $this->post('/transactions', $this->tradePayload([
+            'symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '150.50',
+        ]))->assertSessionHasNoErrors();
+
+        $held = $this->get('/transactions')->viewData('page')['props']['heldSymbols'];
+
+        $this->assertSame(['0700.HK'], $held[$this->broker->id]);
+
+        // And nothing for a bank or a card: a deposit on a bank is money arriving and has
+        // no holding behind it, so a list keyed to one would only be somewhere for the two
+        // to be confused.
+        $this->assertArrayNotHasKey($this->bank->id, $held);
+        $this->assertArrayNotHasKey($this->card->id, $held);
+    }
+
+    public function test_a_brokerage_is_not_offered_a_symbol_it_has_sold_out_of(): void
+    {
+        $this->post('/transactions', $this->tradePayload([
+            'symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '150.50',
+        ]))->assertSessionHasNoErrors();
+
+        $this->post('/transactions', array_merge($this->tradePayload([
+            'symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '160.00',
+        ]), [
+            'type' => 'sell',
+            'date' => '2026-02-01',
+            'description' => 'Sell 0700.HK',
+        ]))->assertSessionHasNoErrors();
+
+        $held = $this->get('/transactions')->viewData('page')['props']['heldSymbols'];
+
+        $this->assertSame([], $held[$this->broker->id]);
+
+        // The picker is not a gate: the symbol is still submittable, since a position sold
+        // after the ex-date still pays out and nothing in the DTO checks the list.
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id,
+            'category_id' => null,
+            'date' => '2026-03-02',
+            'type' => 'deposit',
+            'description' => 'Dividend 0700.HK',
+            'amount' => '312.4400',
+            'ccy' => 'HKD',
+            'meta_data' => ['symbol' => '0700.HK'],
+        ])->assertSessionHasNoErrors();
+    }
+
+    public function test_a_closed_brokerage_is_not_read_for_holdings(): void
+    {
+        // The form's account picker offers active accounts only, so a list for a closed one
+        // is a query and a payload nobody can reach. Asserted by the key being absent rather
+        // than empty, which is what the browser distinguishes.
+        Account::create(['name' => 'Old broker', 'status' => 'inactive', 'type' => 'security', 'ccy' => 'HKD']);
+
+        $held = $this->get('/transactions')->viewData('page')['props']['heldSymbols'];
+
+        $this->assertSame(
+            [$this->broker->id],
+            array_keys($held),
+            'A closed brokerage was read. It cannot be picked in the form, so the list is '
+                .'never shown.'
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // Description hints
     // ---------------------------------------------------------------------
 

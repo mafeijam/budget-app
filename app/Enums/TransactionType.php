@@ -149,8 +149,25 @@ enum TransactionType: string
      */
     public function needsCashSide(AccountType $accountType): bool
     {
-        return $this->derivesAmount()
-            || ($this === self::Deposit && $accountType === AccountType::Security);
+        return $this->derivesAmount() || $this->isDividend($accountType);
+    }
+
+    /**
+     * Whether a row of this type is a dividend: money received on a holding already owned.
+     *
+     * A deposit on a brokerage, and a deposit nowhere else. The account type is a parameter
+     * for the reason accountTypes() takes one -- a deposit is money in on either kind of
+     * account, and only a brokerage's has shares behind it.
+     *
+     * A name for the thing, rather than left to each caller to spot. Three places had it
+     * written out as `type === Deposit`, and each of them was reaching it to choose a noun
+     * for a message -- "Delete the dividend instead, and its cash goes with it" -- so the
+     * failure of a fourth copy would be a user told to edit a trade on a row that is a
+     * deposit, and sent to a picker holding only buys and sells.
+     */
+    public function isDividend(AccountType $accountType): bool
+    {
+        return $this === self::Deposit && $accountType === AccountType::Security;
     }
 
     /**

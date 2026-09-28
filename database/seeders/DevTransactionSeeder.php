@@ -226,15 +226,21 @@ class DevTransactionSeeder extends Seeder
 
         return [
             // ------------------------------------------------------------------
-            // Dev Cash: money in, money out, and the withdrawal half of the card
-            // settlement below, plus the dividend the brokerage pays into it. Leaves 3131.9400.
+            // Dev Cash: money in, money out, the withdrawal half of the card
+            // settlement below, the brokerage's buy, and the dividend it pays into
+            // it. Leaves 2131.9400.
+            //
+            // The salary is 8000 rather than 5000 so the buy below has to come out of
+            // it and the bank is still in credit afterwards: a fixture set that ends
+            // overdrawn reads as a mistake in the app rather than a choice in the
+            // fixture.
             // ------------------------------------------------------------------
             [
                 'account' => 'Dev Cash',
                 'date' => '2026-01-01',
                 'type' => TransactionType::Deposit->value,
                 'description' => 'Salary',
-                'amount' => '5000.0000',
+                'amount' => '8000.0000',
                 'ccy' => $hkd,
                 'status' => $posted,
                 'category' => null,
@@ -427,17 +433,42 @@ class DevTransactionSeeder extends Seeder
             ],
 
             // ------------------------------------------------------------------
-            // Dev Brokerage: a dividend, which is a deposit on a brokerage and
-            // names the holding that paid it. No quantity or price -- a dividend
-            // is not a trade and there is no market figure for one.
+            // Dev Brokerage: the holding, and a dividend on it.
             //
-            // Unlike every row above, this one is not inert. A brokerage row writes
-            // a second row depositing the same money into Dev Cash, so Dev Cash ends
-            // 312.4400 higher than the brokerage row alone would leave it. That is
-            // the point of recording a dividend here rather than as cash in the bank:
-            // the money is attributed to the holding, and the positions page's
-            // Dividends figure and the bank balance are the same number.
+            // The buy is here for the dividend's sake, and only for it. A dividend
+            // names the holding that paid it, and the form offers the brokerage's
+            // holdings to pick from -- so a fixture with a dividend and no position is
+            // a dividend with nothing to be one of, and the picker is empty.
+            //
+            // No price fixture, so the position reads as unpriced on the positions
+            // page. That is a state that page handles and counts, and the picker's
+            // question is the symbol rather than its value; a price would have to be a
+            // fourth Dev seeder for a number nothing here depends on.
+            //
+            // Unlike every other row above, these two write a second row each. A
+            // brokerage row writes its cash side into Dev Cash, so Dev Cash ends 312.44
+            // higher and 4000.0000 lower than the bank rows alone would leave it, and
+            // the positions page's Dividends figure and the bank balance are the same
+            // number.
+            //
+            // The buy's amount is the derived figure written out, 10 x 400. TradeCash
+            // copies it onto the cash row it writes, and the column is NOT NULL, so a
+            // fixture trade has to say what the server would have worked out. It is the
+            // one place in this file where a figure is restated rather than given, and
+            // it is here because the derivation lives in the DTO, which this file does
+            // not go through.
             // ------------------------------------------------------------------
+            [
+                'account' => 'Dev Brokerage',
+                'date' => '2026-01-08',
+                'type' => TransactionType::Buy->value,
+                'description' => 'Buy 10 0700.HK',
+                'amount' => '4000.0000',
+                'ccy' => $hkd,
+                'status' => $posted,
+                'category' => null,
+                'meta' => ['symbol' => '0700.HK', 'quantity' => '10', 'unit_price' => '400.0000'],
+            ],
             [
                 'account' => 'Dev Brokerage',
                 'date' => '2026-01-15',

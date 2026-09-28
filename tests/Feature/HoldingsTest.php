@@ -84,6 +84,37 @@ class HoldingsTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // What is held, for the dividend picker
+    // ---------------------------------------------------------------------
+
+    public function test_the_held_symbols_are_the_ones_still_open(): void
+    {
+        // The dividend picker offers this list, and the question it is asking is what the
+        // brokerage owns now. A position sold out is not an answer -- a dividend is money
+        // received on a holding already owned -- so it is the *open* positions and not the
+        // whole book, which still carries what they realised.
+        $this->trade('buy', '2026-01-05', '10', '100', null, 'nvda');
+        $this->trade('buy', '2026-01-06', '10', '120', null, '0700.HK');
+        $this->trade('sell', '2026-02-01', '10', '150', null, '0700.HK');
+
+        $this->assertSame(['NVDA'], Positions::heldSymbols($this->broker));
+        $this->assertSame(
+            ['0700.HK', 'NVDA'],
+            array_keys(Positions::forAccount($this->broker)),
+            'The closed position is still in the book itself, so this is a narrowing and '
+                .'not a different reading of the same thing.'
+        );
+    }
+
+    public function test_a_brokerage_holding_nothing_offers_nothing(): void
+    {
+        // A brokerage with no trades is reachable -- DevAccountSeeder supplies two -- and
+        // an empty list has to be an empty list, not a missing key: the form reads it with
+        // ?? [] either way, but the picker must open rather than fail on it.
+        $this->assertSame([], Positions::heldSymbols($this->broker));
+    }
+
+    // ---------------------------------------------------------------------
     // Selling what is not held
     // ---------------------------------------------------------------------
 

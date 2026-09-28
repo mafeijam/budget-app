@@ -124,8 +124,28 @@ class TradeCash
      */
     public static function hasCashSide(?Transaction $row): bool
     {
-        return $row?->account?->type === AccountType::Security->value
+        return self::onBrokerage($row)
             && TransactionType::from($row->type)->needsCashSide(AccountType::Security);
+    }
+
+    /**
+     * Whether a row is a dividend, and not a trade.
+     *
+     * Asked of either half of a pair, since a dividend's cash side is a *deposit on a
+     * bank* -- the same type as the dividend itself, on an account that holds no shares.
+     * So the pair cannot be called a dividend by looking for a deposit; it has to be
+     * looked for on the brokerage.
+     */
+    public static function isDividend(?Transaction $row): bool
+    {
+        return self::onBrokerage($row)
+            && TransactionType::from($row->type)->isDividend(AccountType::Security);
+    }
+
+    /** Whether a row is on a brokerage at all, which half the question above is. */
+    private static function onBrokerage(?Transaction $row): bool
+    {
+        return $row?->account?->type === AccountType::Security->value;
     }
 
     /**

@@ -586,8 +586,9 @@ class TransactionData extends Data
             // What the other row is called, so the refusal names it. A dividend is a
             // deposit and not a trade, and telling a user to edit the trade when the row
             // they are looking at is a dividend sends them to a picker that does not hold
-            // it.
-            $noun = $partner->type === TransactionType::Deposit->value ? 'dividend' : 'trade';
+            // it. Asked of the account as well as the type, since a dividend's cash side is
+            // itself a deposit -- on a bank.
+            $noun = TradeCash::isDividend($partner) ? 'dividend' : 'trade';
             $other = TradeCash::describe($partner);
             $words = Arr::join(array_values($cash), ', ', ' and ');
 

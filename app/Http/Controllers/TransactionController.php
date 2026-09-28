@@ -249,6 +249,24 @@ class TransactionController extends Controller
             ])
             ->all();
 
+        // What each brokerage holds, for the dividend's symbol picker: a dividend is money
+        // received on something already owned, so the answers are the open positions rather
+        // than every symbol the account has ever traded. Keyed by account id, since that is
+        // what the form has, and read for the active brokerages only -- the form's account
+        // picker offers nothing else, so a list for one would be a query and a payload
+        // nobody could reach.
+        //
+        // One query per brokerage, which is the cost of Positions::heldSymbols() and the
+        // price of the answer: the trades are what say what is held, so there is no smaller
+        // read to make it from. Two brokerages is two queries; a page of transactions that
+        // shows holdings is a brokerage's own.
+        $heldSymbols = Account::query()
+            ->where('type', AccountType::Security->value)
+            ->where('status', 'active')
+            ->get()
+            ->mapWithKeys(fn (Account $broker) => [$broker->id => Positions::heldSymbols($broker)])
+            ->all();
+
         // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
@@ -395,6 +413,7 @@ class TransactionController extends Controller
             'typeDefaults',
             'derivesAmountTypes',
             'cashSideTypes',
+            'heldSymbols',
             'statusOptions',
             'currencyOptions',
             'templates',
@@ -925,7 +944,7 @@ class TransactionController extends Controller
         }
 
         if ($cashSide !== null) {
-            $noun = $transaction->type === TransactionType::Deposit->value ? 'Dividend' : 'Trade';
+            $noun = TradeCash::isDividend($transaction) ? 'Dividend' : 'Trade';
 
             return back()->with('message', "{$noun} {$cashSide} deleted with its cash side: 2 transactions");
         }
@@ -988,7 +1007,7 @@ class TransactionController extends Controller
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
 
         if (TradeCash::hasCashSide($partner)) {
-            $noun = $partner->type === TransactionType::Deposit->value ? 'dividend' : 'trade';
+            $noun = TradeCash::isDividend($partner) ? 'dividend' : 'trade';
 
             return sprintf(
                 'This %s is the cash side of the %s %s. Delete the %s instead, and its cash '
@@ -1190,9 +1209,14 @@ class TransactionController extends Controller
                 // cash, a dividend and its cash, or the two halves of a card settlement.
                 // A dividend named a trade would send the user to a picker holding only
                 // buys and sells.
+                //
+                // Either half, and through the enum rather than by comparing the type: a
+                // dividend's cash side is a deposit on a bank, the same type as the
+                // dividend itself, so what identifies the pair is a deposit on a
+                // *brokerage* -- which is also the only thing separating it from a card
+                // settlement, whose halves are a payment and a withdrawal.
                 'kind' => match (true) {
-                    TransactionType::Deposit->value === $other->type
-                        || TransactionType::Deposit->value === $row->type => 'dividend',
+                    TradeCash::isDividend($other), TradeCash::isDividend($row) => 'dividend',
                     TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',
                     default => 'settlement',
                 },

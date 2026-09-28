@@ -345,7 +345,47 @@
         narrower one -- a dividend is not a quantity of anything.
       -->
       <template v-if="writesCashSide">
+        <!--
+          A picker for a dividend and a plain field for a trade, which is one question
+          answered two ways: a dividend is money received on something already held, so
+          the holdings are the answers, while a buy is for something not held yet and
+          there is no list to choose from.
+
+          Still a field and not a closed list, so a symbol the brokerage does not hold can
+          be typed -- a position sold after the ex-date still pays out, and the server
+          refuses no symbol it does not recognise. The list is a head start, not a gate.
+
+          No fill-input, which a use-input field looks like it wants: QSelect draws the
+          selected value in a span of its own beside the input, so fill-input puts a
+          second copy of the label in the input next to the first.
+        -->
+        <q-select
+          v-if="isDividend"
+          v-model="form.meta_data.symbol"
+          :options="shownSymbols"
+          class="col-6"
+          label="Symbol"
+          filled
+          emit-value
+          map-options
+          autocomplete="off"
+          use-input
+          input-debounce="0"
+          new-value-mode="add-unique"
+          :clearable="false"
+          :error="!!form.errors['meta_data.symbol']"
+          :error-message="form.errors['meta_data.symbol']"
+          @filter="filterSymbols"
+        >
+          <template #no-option>
+            <q-item>
+              <q-item-section class="text-grey"> Not held here; Enter adds it </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
         <q-input
+          v-else
           v-model="form.meta_data.symbol"
           class="col-6"
           label="Symbol"
@@ -526,9 +566,31 @@ const writesCashSide = computed(() => {
   return (forAccount ?? usePage().props.derivesAmountTypes ?? []).includes(form.type)
 })
 
+// A dividend and not a trade: the one row that writes a cash side while carrying no
+// quantity, because nothing was bought or sold. It is the case the symbol is picked for,
+// since a dividend is money received on a holding already owned and a buy is for
+// something not held yet.
+const isDividend = computed(() => writesCashSide.value && !derivesAmount.value)
+
 // Only what the chosen account accepts, because the pairing is what makes a type legal
 // at all. Empty until an account is picked, since there is nothing to narrow by.
 const chosenAccount = computed(() => accountOptions.value.find(a => a.value === form.account_id))
+
+// What the chosen brokerage holds, as picker options. Keyed by account id on the wire
+// because that is what the form has, and narrowed here so switching accounts offers that
+// account's own holdings rather than every symbol the app has seen.
+//
+// `?? []` as on every other list, so a page that has not sent the prop shows an empty
+// picker rather than one of some other brokerage's holdings -- and an empty list is still
+// a field a symbol can be typed into.
+const heldSymbols = computed(() => usePage().props.heldSymbols ?? {})
+
+const symbolOptions = computed(() =>
+  (heldSymbols.value[chosenAccount.value?.value] ?? []).map(symbol => ({
+    label: symbol,
+    value: symbol,
+  })),
+)
 
 // The calendar's menu, so a chosen day can close it. A template ref rather than
 // $refs, which does not exist under <script setup>.
@@ -627,12 +689,50 @@ const shownDescriptions = ref([])
 
 const shownTemplates = ref([])
 
+const shownSymbols = ref([])
+
 const filterDescriptions = filterInto(shownDescriptions, descriptionHints, (description, needle) =>
   description.toLowerCase().includes(needle),
 )
 
 const filterTemplates = filterInto(shownTemplates, templateOptions, (template, needle) =>
   template.label.toLowerCase().includes(needle),
+)
+
+const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
+  option.label.toLowerCase().includes(needle),
+)
+
+// What the description says because a symbol was picked, and nothing else.
+//
+// The claim is the whole of it: a second pick may rewrite the first, but a description
+// the user typed is never overwritten. An auto-filled field that clobbers what someone
+// typed is worse than no fill at all -- the typed text is the one they meant, and they
+// would only find it gone after saving.
+const claimedDescription = ref(null)
+
+const describeDividend = symbol => {
+  const text = `Dividend ${symbol}`
+
+  if (form.description && form.description !== claimedDescription.value) {
+    // Theirs, so it stands and the claim goes: a later pick starts again from empty
+    // rather than recognising a sentence it never wrote.
+    claimedDescription.value = null
+
+    return
+  }
+
+  form.description = text
+  claimedDescription.value = text
+}
+
+watch(
+  () => form.meta_data.symbol,
+  symbol => {
+    // A dividend only. A trade's description is its own -- "Buy 100 NVDA" -- and the
+    // quantity and price that make it are about to be typed beside it.
+    if (isDividend.value && symbol) describeDividend(symbol)
+  },
 )
 
 // What the picker currently holds, emptied the moment a template is applied. It is a
