@@ -13,6 +13,13 @@
         </TransactionFilters>
       </template>
 
+      <!-- A tint per kind of account, so card rows and bank rows part at a glance. -->
+      <template #body-cell-accountType="cell">
+        <q-td :props="cell">
+          <q-badge v-bind="accountTypeBadges[cell.value] ?? {}" :label="cell.value" />
+        </q-td>
+      </template>
+
       <template #body-cell-type="cell">
         <q-td :props="cell">
           <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
@@ -77,7 +84,14 @@ const props = defineProps({
 
 const pagination = usePagination()
 const formatMoney = useMoney()
-const formatDate = useHongKongTime()
+
+// Light fills in three distinct hues, the status badges' style, so the type reads by
+// colour and does not compete with the Type column's icons beside it.
+const accountTypeBadges = {
+  cash: { color: 'teal-1', textColor: 'teal-9' },
+  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
+  security: { color: 'orange-1', textColor: 'orange-10' },
+}
 
 const typeIcons = {
   expense: 'shopping_cart',
@@ -195,6 +209,16 @@ const columns = reactive([
     sortable: false,
   },
   {
+    name: 'accountType',
+    width: '110px',
+    label: 'Account type',
+    // The account's, not the row's: not sortable, since the list orders against the
+    // transactions table and this is a column on accounts.
+    field: 'account_type',
+    align: 'left',
+    sortable: false,
+  },
+  {
     name: 'type',
     width: '120px',
     label: 'Type',
@@ -253,15 +277,6 @@ const columns = reactive([
         .join(', '),
     align: 'left',
     sortable: false,
-  },
-  {
-    name: 'created_at',
-    width: '170px',
-    label: 'Created At',
-    field: 'created_at',
-    format: val => formatDate(val),
-    classes: 'text-caption text-grey-7',
-    sortable: true,
   },
   {
     name: 'action',

@@ -35,7 +35,7 @@ class TransactionController extends Controller
     private const DEFAULT_SORT = 'date';
 
     /** The columns the transactions table marks sortable. */
-    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status', 'created_at'];
+    private const SORTABLE = ['date', 'type', 'description', 'amount', 'status'];
 
     public function index(Request $r)
     {
@@ -89,6 +89,12 @@ class TransactionController extends Controller
             ->allowedFilters(
                 // Comma-separated for several at once: filter[type]=charge,payment.
                 AllowedFilter::exact('account_id'),
+                // By the owning account's type -- every card row, say -- which is the
+                // account's column, not the transaction's.
+                AllowedFilter::callback('account_type', fn (Builder $q, $value) => $q->whereHas(
+                    'account',
+                    fn (Builder $account) => $account->whereIn('type', (array) $value)
+                )),
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('category_id'),
@@ -183,6 +189,7 @@ class TransactionController extends Controller
             'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
             'types' => array_column(TransactionType::cases(), 'value'),
+            'accountTypes' => array_column(AccountType::cases(), 'value'),
         ];
 
         // The pairing is what makes a type legal, so a flat list would offer "buy" on

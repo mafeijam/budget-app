@@ -58,6 +58,12 @@ class Transaction extends Model
         return $this->account?->ccy;
     }
 
+    /** The owning account's type, read the same way as its name. */
+    public function getAccountTypeAttribute(): ?string
+    {
+        return $this->account?->type;
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);
