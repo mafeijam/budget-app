@@ -65,7 +65,13 @@ const metaLabels = row => {
 
   if (meta.due_date) labels.push(`Due ${meta.due_date}`)
   if (meta.settled_by) labels.push('Paid')
-  if (meta.card_amount) labels.push(`${meta.card_amount} in the card's currency`)
+  if (meta.card_amount) {
+    labels.push(
+      row.account_ccy
+        ? `${meta.card_amount} ${row.account_ccy} on the card`
+        : `${meta.card_amount} in the card's currency`,
+    )
+  }
 
   if (meta.paired_transaction_id) {
     // The other half, as the delete confirmation names it. Absent when it is gone.

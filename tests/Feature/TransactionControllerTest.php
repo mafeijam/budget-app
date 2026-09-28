@@ -557,6 +557,7 @@ class TransactionControllerTest extends TestCase
             ->has('data.data', 1)
             ->where('data.data.0.meta_data.card_amount', '780.0000')
             ->where('data.data.0.account_name', 'Card')
+            ->where('data.data.0.account_ccy', 'USD')
         );
     }
 
