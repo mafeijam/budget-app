@@ -25,11 +25,6 @@
         <slot :name="slot" v-bind="scope" />
       </template>
     </q-table>
-
-    <!-- QTable has no slot here: its footer is one justify-end row, so this sits over its empty left. -->
-    <div v-if="$slots['bottom-left']" class="app-table__bottom-left">
-      <slot name="bottom-left" />
-    </div>
   </div>
 </template>
 

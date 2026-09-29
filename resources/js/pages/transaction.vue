@@ -18,30 +18,6 @@
         </TransactionFilters>
       </template>
 
-      <!-- Every filtered row, not just this page. -->
-      <template v-if="totals.length" #bottom-left>
-        <div class="row items-center no-wrap q-gutter-x-md text-caption text-grey-7 text-no-wrap">
-          <!-- One group per currency: nothing is converted, so HKD and USD never add up. -->
-          <template v-for="(total, i) in totals" :key="total.ccy">
-            <q-separator v-if="i > 0" vertical class="q-mx-sm" />
-            <q-badge outline color="grey-7" :label="total.ccy" />
-            <span v-if="!isZero(total.in)">
-              In <span class="money text-positive">+{{ formatMoney(total.in) }}</span>
-            </span>
-            <span v-if="!isZero(total.out)">
-              Out <span class="money text-negative">−{{ formatMoney(total.out) }}</span>
-            </span>
-            <span v-if="!isZero(total.trades)">
-              Trades <span class="money text-grey-9">{{ formatMoney(total.trades) }}</span>
-            </span>
-            <span class="text-body2 text-weight-medium text-grey-9">
-              Net
-              <span class="money" :class="netClass(total.net)">{{ formatMoney(total.net) }}</span>
-            </span>
-          </template>
-        </div>
-      </template>
-
       <template #body-cell-account="cell">
         <q-td :props="cell">
           {{ cell.value }}
@@ -92,6 +68,37 @@
         </q-td>
       </template>
     </AppTable>
+
+    <!-- Every filtered row, not just this page. Under the table rather than over its
+         footer, which the left of is only empty while the figures fit beside it. -->
+    <div
+      v-if="totals.length"
+      class="row items-center wrap q-gutter-x-md q-gutter-y-xs text-caption text-grey-7"
+    >
+      <!-- One group per currency: nothing is converted, so HKD and USD never add up. A
+           group is its own flex child so a line break falls between currencies and never
+           between a label and its figure. -->
+      <div
+        v-for="total in totals"
+        :key="total.ccy"
+        class="row items-center no-wrap text-no-wrap q-gutter-x-md"
+      >
+        <q-badge outline color="grey-7" :label="total.ccy" />
+        <span v-if="!isZero(total.in)">
+          In <span class="money text-positive">+{{ formatMoney(total.in) }}</span>
+        </span>
+        <span v-if="!isZero(total.out)">
+          Out <span class="money text-negative">−{{ formatMoney(total.out) }}</span>
+        </span>
+        <span v-if="!isZero(total.trades)">
+          Trades <span class="money text-grey-9">{{ formatMoney(total.trades) }}</span>
+        </span>
+        <span class="text-body2 text-weight-medium text-grey-9">
+          Net
+          <span class="money" :class="netClass(total.net)">{{ formatMoney(total.net) }}</span>
+        </span>
+      </div>
+    </div>
   </div>
 </template>
 
