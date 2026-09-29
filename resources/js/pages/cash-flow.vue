@@ -108,36 +108,41 @@
               </td>
             </tr>
 
-            <template v-if="isOpen(section.ccy, month.month)">
-              <tr
-                v-for="category in month.categories"
-                :key="`${month.month}-${category.id}`"
-                class="bg-grey-1"
-              >
-                <td class="q-pl-xl text-grey-8">{{ category.name ?? 'No category' }}</td>
-                <td />
-                <td class="text-right money">{{ money(category.amount) }}</td>
-                <td class="text-right text-caption text-grey-7">
-                  {{ share(category.amount, month.spending) }}
-                </td>
-                <td />
-                <td class="text-right">
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    color="grey-7"
-                    icon="open_in_new"
-                    @click="openTransactions(month, category)"
-                  >
+            <!-- One row spanning the table: the breakdown is spending only, and under the
+                 month's own columns a share read as its net. -->
+            <tr v-if="isOpen(section.ccy, month.month)" class="app-flow-breakdown">
+              <td colspan="6">
+                <div class="text-caption text-grey-7 q-mb-xs">
+                  Spending by category, of {{ money(month.spending) }}
+                </div>
+                <div
+                  v-for="category in month.categories"
+                  :key="`${month.month}-${category.id}`"
+                  class="app-flow-breakdown__row cursor-pointer"
+                  @click="openTransactions(month, category)"
+                >
+                  <div class="ellipsis text-grey-9">{{ category.name ?? 'No category' }}</div>
+                  <q-linear-progress
+                    :value="fraction(category.amount, month.spending)"
+                    color="negative"
+                    track-color="grey-3"
+                    rounded
+                    size="6px"
+                  />
+                  <div class="text-right money text-weight-medium">
+                    {{ money(category.amount) }}
+                  </div>
+                  <div class="text-right text-grey-7">
+                    {{ share(category.amount, month.spending) }}
+                  </div>
+                  <q-icon name="open_in_new" size="xs" color="grey-6">
                     <q-tooltip :delay="500" :offset="[0, 6]">
                       This month's transactions in this category
                     </q-tooltip>
-                  </q-btn>
-                </td>
-              </tr>
-            </template>
+                  </q-icon>
+                </div>
+              </td>
+            </tr>
           </template>
         </tbody>
       </q-markup-table>
@@ -201,6 +206,10 @@ const toggle = (ccy, month) => {
   next.has(key(ccy, month)) ? next.delete(key(ccy, month)) : next.add(key(ccy, month))
   open.value = next
 }
+
+// The bar's length only; the figure beside it is the server's string.
+const fraction = (part, whole) =>
+  Number(whole) > 0 ? Math.min(Number(part) / Number(whole), 1) : 0
 
 // A share for reading, not money: rounded to a whole percent.
 const share = (part, whole) =>

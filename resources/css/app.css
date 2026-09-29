@@ -148,6 +148,40 @@ body {
   app-btn opens something (Add), --positive commits it (Submit, Settle), --negative
   destroys it (Delete). No hover rules: Quasar already darkens a button on hover.
 */
+/* Cash flow: a month's spending by category, indented under the month it opened from. */
+.app-flow-breakdown > td {
+  background: var(--app-header-bg);
+  padding: 8px 16px 12px 40px !important;
+  white-space: normal;
+}
+
+.app-flow-breakdown__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(80px, 1fr) 110px 48px 24px;
+  align-items: center;
+  gap: 16px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+
+.app-flow-breakdown__row:hover {
+  background: var(--app-surface);
+}
+
+@media (max-width: 599px) {
+  .app-flow-breakdown > td {
+    padding-left: 16px !important;
+  }
+
+  .app-flow-breakdown__row {
+    grid-template-columns: minmax(0, 1fr) 90px 40px 20px;
+  }
+
+  .app-flow-breakdown__row .q-linear-progress {
+    display: none;
+  }
+}
+
 /* Home: four headline figures across, two on a phone. */
 .app-home-headline {
   display: grid;
