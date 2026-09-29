@@ -24,42 +24,47 @@
         <template v-for="group in groups" :key="group.card.id">
           <tr class="bg-grey-1">
             <th colspan="6" class="text-left q-py-sm">
-              <q-icon name="credit_card" size="xs" color="grey-7" class="q-mr-sm" />
-              <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
-              <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
-              <span class="text-caption text-grey-7 text-weight-regular q-ml-md">
-                {{ bankLine(group) }}
-              </span>
+              <!-- A flex row: inline, the icon, badge and caption each sat on their own line. -->
+              <div class="row items-center no-wrap">
+                <q-icon name="credit_card" size="xs" color="grey-7" class="q-mr-sm" />
+                <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
+                <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
+                <span class="text-caption text-grey-7 text-weight-regular q-ml-md">
+                  {{ bankLine(group) }}
+                </span>
+              </div>
             </th>
           </tr>
           <tr v-for="period in group.periods" :key="`${group.card.id}-${period.due_date}`">
             <td class="text-grey-8">{{ covers(period) }}</td>
             <td>
-              <span class="text-weight-medium">{{ formatDate(period.due_date) }}</span>
-              <q-badge v-bind="dueBadge(period)" class="q-ml-sm" />
-              <!-- A pending row means the owed total is not final yet. -->
-              <q-badge
-                v-if="period.pending_count"
-                class="q-ml-sm app-tint app-tint--warning"
-                :label="`${period.pending_count} not yet posted`"
-              />
-              <q-btn
-                dense
-                flat
-                round
-                class="q-ml-xs"
-                color="grey-7"
-                icon="edit_calendar"
-                :disable="!correctable(period)"
-                @click="openCorrect(group, period)"
-              >
-                <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
-                  {{ correctionBlocked(period) }}
-                </q-tooltip>
-                <q-tooltip v-else :delay="500" :offset="[0, 6]">
-                  Correct this statement's due date
-                </q-tooltip>
-              </q-btn>
+              <div class="row items-center no-wrap">
+                <span class="text-weight-medium">{{ formatDate(period.due_date) }}</span>
+                <q-badge v-bind="dueBadge(period)" class="q-ml-sm" />
+                <!-- A pending row means the owed total is not final yet. -->
+                <q-badge
+                  v-if="period.pending_count"
+                  class="q-ml-sm app-tint app-tint--warning"
+                  :label="`${period.pending_count} not yet posted`"
+                />
+                <q-btn
+                  dense
+                  flat
+                  round
+                  class="q-ml-xs"
+                  color="grey-7"
+                  icon="edit_calendar"
+                  :disable="!correctable(period)"
+                  @click="openCorrect(group, period)"
+                >
+                  <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
+                    {{ correctionBlocked(period) }}
+                  </q-tooltip>
+                  <q-tooltip v-else :delay="500" :offset="[0, 6]">
+                    Correct this statement's due date
+                  </q-tooltip>
+                </q-btn>
+              </div>
             </td>
             <td class="text-right money">
               {{ money(period.charged) }}
