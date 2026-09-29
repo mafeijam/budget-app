@@ -458,7 +458,7 @@ body {
 /* A card's headline figures in equal columns, so every card's line up with the next. */
 .app-figures {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px 16px;
   padding: 0 16px 16px;
 }
@@ -468,6 +468,17 @@ body {
   margin: 0 16px 16px;
   padding: 0 0 16px;
   border-bottom: 1px dashed var(--app-border);
+}
+
+/*
+  Seven figures need about 870px to sit on one line, which a laptop with the drawer open
+  does not have, so they go to four before the drawer-less three: a money figure at this
+  size is about 110px, and one column narrower than that overflows the card.
+*/
+@media (max-width: 1279px) {
+  .app-figures {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1023px) {

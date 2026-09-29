@@ -258,6 +258,104 @@ class PositionControllerTest extends TestCase
         ])->assertSessionHasNoErrors();
     }
 
+    public function test_a_profit_and_loss_is_the_three_legs_over_the_cost_held(): void
+    {
+        Price::create([
+            'symbol' => 'NVDA', 'date' => today()->toDateString(), 'close' => '125.0000', 'ccy' => 'USD', 'source' => 'yahoo',
+        ]);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->dividend($this->broker, '12.5000');
+
+        // Unrealised 250, realised nothing, dividends 12.50, on a cost of 1,000.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.0.pnl', '262.5000')
+            ->where('brokerages.0.positions.0.pnl_percent', '26.25')
+            ->where('brokerages.0.pnl', '262.5000')
+            ->where('brokerages.0.pnl_percent', '26.25')
+        );
+    }
+
+    public function test_a_sold_out_position_has_a_profit_but_no_return_on_one(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('sell', '2026-02-01', 'NVDA', '10', '120');
+        $this->dividend($this->broker, '12.5000');
+
+        // Realised 200 and the dividend, with nothing held: the capital it was made on has
+        // gone, so there is nothing left to be a percentage of. Blank, not zero.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.0.pnl', '212.5000')
+            ->where('brokerages.0.positions.0.pnl_percent', null)
+            ->where('brokerages.0.pnl', '212.5000')
+            ->where('brokerages.0.pnl_percent', null)
+        );
+    }
+
+    public function test_an_unpriced_holding_has_no_profit_and_loss_to_report(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->dividend($this->broker, '12.5000');
+
+        // The cost of a holding with no price is in none of the three legs, so the row says
+        // nothing rather than reporting a profit on the part of the portfolio it can see.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.unpriced', 1)
+            ->where('brokerages.0.positions.0.pnl', null)
+            ->where('brokerages.0.positions.0.pnl_percent', null)
+            ->where('brokerages.0.pnl', null)
+            ->where('brokerages.0.pnl_percent', null)
+        );
+    }
+
+    public function test_the_base_currency_profit_and_loss_is_the_same_legs_at_the_rate(): void
+    {
+        $hkBank = Account::create(['name' => 'Bank HKD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $hk = Account::create(['name' => 'Broker HKD', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $hk->meta()->create(['meta' => ['settlement_account_id' => $hkBank->id]]);
+
+        $today = today()->toDateString();
+
+        Price::create(['symbol' => 'NVDA', 'date' => $today, 'close' => '125.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => '0700.HK', 'date' => $today, 'close' => '450.0000', 'ccy' => 'HKD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-01-02', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', '0700.HK', '100', '400', $hk);
+        $this->dividend($this->broker, '12.5000');
+
+        // HKD 5,000 of unrealised, and USD 250 + 12.50 at 7.8, over a cost of 47,800. The
+        // percentage is over the summed cost, not an average of the two -- the two returns
+        // are worth what they are worth on the capital behind them.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('combined.pnl', '7047.5000')
+            ->where('combined.pnl_percent', '14.74')
+            // One holding without a price and the whole sum goes, in the base currency too.
+            ->where('combined.unpriced', 0)
+        );
+    }
+
+    public function test_the_base_currency_profit_and_loss_stops_at_an_unpriced_holding(): void
+    {
+        $hkBank = Account::create(['name' => 'Bank HKD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $hk = Account::create(['name' => 'Broker HKD', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $hk->meta()->create(['meta' => ['settlement_account_id' => $hkBank->id]]);
+
+        Price::create([
+            'symbol' => 'NVDA', 'date' => today()->toDateString(), 'close' => '125.0000', 'ccy' => 'USD', 'source' => 'yahoo',
+        ]);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-01-02', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', '0700.HK', '100', '400', $hk);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('combined.unpriced', 1)
+            ->where('combined.pnl', null)
+            ->where('combined.pnl_percent', null)
+        );
+    }
+
     public function test_dividends_are_broken_down_by_symbol(): void
     {
         $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');

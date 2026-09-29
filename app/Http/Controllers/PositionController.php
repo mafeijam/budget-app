@@ -11,6 +11,7 @@ use App\Models\Transaction;
 use App\Support\Fx;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -59,6 +60,28 @@ class PositionController extends Controller
                     ->reduce(fn (BigDecimal $total, $value) => $total->plus($value), BigDecimal::zero())
                     ->toScale(4);
 
+                $positions = array_map(function (array $position) use ($paying, $sum) {
+                    $payments = $paying($position['symbol']);
+                    $dividends = $sum($payments->pluck('amount'));
+
+                    // An open position's price is what makes its unrealised leg known; a
+                    // sold-out one has none because nothing is held.
+                    $unpriced = $position['open'] && $position['market_value'] === null;
+
+                    return $position + [
+                        'dividends' => $dividends,
+                        'dividend_count' => $payments->count(),
+                        ...$this->pnl([
+                            'unrealised' => $position['unrealised'],
+                            'realised' => $position['realised'],
+                            'dividends' => $dividends,
+                            'open_cost' => $position['cost'],
+                        ], $unpriced),
+                    ];
+                }, $valued['positions']);
+
+                $totals = [...$valued['totals'], 'dividends' => $sum($received->collapse()->pluck('amount'))];
+
                 return [
                     'id' => $broker->id,
                     'name' => $broker->name,
@@ -67,15 +90,9 @@ class PositionController extends Controller
                     'settles_into' => $broker->settlementAccount()?->name,
                     // A symbol the brokerage never traded is in this total and in no row, so
                     // the column can read low. It is money received either way.
-                    'positions' => array_map(
-                        fn (array $position) => $position + [
-                            'dividends' => $sum($paying($position['symbol'])->pluck('amount')),
-                            'dividend_count' => $paying($position['symbol'])->count(),
-                        ],
-                        $valued['positions']
-                    ),
-                    ...$valued['totals'],
-                    'dividends' => $sum($received->collapse()->pluck('amount')),
+                    'positions' => $positions,
+                    ...$totals,
+                    ...$this->pnl($totals, $totals['unpriced'] > 0),
                 ];
             })
             ->filter(fn (array $b) => $b['status'] === 'active' || collect($b['positions'])->contains('open', true))
@@ -90,7 +107,7 @@ class PositionController extends Controller
                     ->reduce(fn (BigDecimal $total, array $b) => $total->plus($b[$key]), BigDecimal::zero())
                     ->toScale(4);
 
-                return [
+                $totals = [
                     'ccy' => $ccy,
                     'market_value' => $sum('market_value'),
                     'unrealised' => $sum('unrealised'),
@@ -100,6 +117,8 @@ class PositionController extends Controller
                     'dividends' => $sum('dividends'),
                     'unpriced' => $group->sum('unpriced'),
                 ];
+
+                return [...$totals, ...$this->pnl($totals, $totals['unpriced'] > 0)];
             })
             ->values();
 
@@ -116,6 +135,46 @@ class PositionController extends Controller
             'at' => $at === $today->toDateString() ? null : $at,
             'today' => $today->toDateString(),
         ]);
+    }
+
+    /**
+     * Unrealised plus realised plus dividends, and that over the cost held.
+     *
+     * Null P&L where a holding is unpriced: its cost is in none of the three legs, so a sum
+     * would read as a profit on everything held while leaving that holding out of it. The
+     * percentage is null wherever the P&L is, and where the cost held is nothing -- a
+     * position sold out has banked its P&L and left no capital behind to be a return on.
+     *
+     * Fees are not in it, and neither is tax: realised is gross of both, and fees are a
+     * figure of their own beside this one.
+     *
+     * @param  array<string, string|null>  $totals  unrealised, realised, dividends, open_cost
+     * @param  bool  $unpriced  a holding missing from the unrealised leg
+     * @return array{pnl: ?string, pnl_percent: ?string}
+     */
+    private function pnl(array $totals, bool $unpriced): array
+    {
+        if ($unpriced) {
+            return ['pnl' => null, 'pnl_percent' => null];
+        }
+
+        // A sold-out position's unrealised is null because nothing is held, not because it
+        // is unknown, so here it is a zero in the sum.
+        $pnl = BigDecimal::of($totals['unrealised'] ?? '0')
+            ->plus($totals['realised'])
+            ->plus($totals['dividends'])
+            ->toScale(4, RoundingMode::HalfUp);
+
+        $cost = BigDecimal::of($totals['open_cost']);
+
+        return [
+            'pnl' => (string) $pnl,
+            // Carried wide and rounded once, or a third of a cost reads a hundredth out.
+            'pnl_percent' => $cost->isPositive()
+                ? (string) $pnl->dividedBy($cost, 12, RoundingMode::HalfUp)
+                    ->multipliedBy(100)->toScale(2, RoundingMode::HalfUp)
+                : null,
+        ];
     }
 
     /**
@@ -152,11 +211,16 @@ class PositionController extends Controller
             $unpriced += $total['unpriced'];
         }
 
+        $summed = array_map(fn (BigDecimal $sum) => (string) $sum->toScale(4), $sums);
+
         return [
             'ccy' => Fx::BASE->value,
-            ...array_map(fn (BigDecimal $sum) => (string) $sum->toScale(4), $sums),
+            ...$summed,
             'unpriced' => $unpriced,
             'unconverted' => $unconverted,
+            // The same three legs at the day's rate, over the same unpriced rule: a holding
+            // with no price is out of the unrealised leg here too.
+            ...$this->pnl($summed, $unpriced > 0),
         ];
     }
 

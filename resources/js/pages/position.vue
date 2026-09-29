@@ -150,6 +150,9 @@
           <div class="text-h6 text-weight-bold money" :class="figure.class">
             {{ figure.value }}
           </div>
+          <div v-if="figure.note" class="text-caption q-mt-xs" :class="figure.noteClass">
+            {{ figure.note }}
+          </div>
         </div>
       </div>
 
@@ -169,6 +172,7 @@
             <th class="text-right">Fees</th>
             <th class="text-right">Realised</th>
             <th v-if="view.dividends" class="text-right">Dividends</th>
+            <th class="text-right">P&amp;L</th>
             <th class="text-right">Trades</th>
             <th class="text-right">Last trade</th>
           </tr>
@@ -265,6 +269,17 @@
                       This symbol's dividend transactions
                     </q-tooltip>
                   </q-icon>
+                </div>
+              </template>
+            </td>
+            <!-- What the line has made, over the cost still held. Blank where a holding has
+                 no price: its cost is in none of the three legs, so there is no figure of
+                 the whole that would not be quietly wrong. -->
+            <td class="text-right money" :class="signClass(position.pnl)">
+              <template v-if="position.pnl !== null">
+                {{ money(position.pnl) }}
+                <div class="text-caption" :class="pnlNoteClass(position)">
+                  {{ pnlNote(position) }}
                 </div>
               </template>
             </td>
@@ -512,6 +527,29 @@ const openDividends = position => {
   })
 }
 
+// A return needs the capital behind it, and there are two ways there is none: a holding
+// with no price, which has no P&L to be a return on, and a position sold out, which has
+// banked its P&L and left nothing held. Both say so rather than reading as a blank.
+const pnlNote = totals => {
+  if (totals.pnl === null) return ''
+
+  return totals.pnl_percent === null ? 'no cost held' : `${totals.pnl_percent}%`
+}
+
+const pnlNoteClass = totals =>
+  totals.pnl_percent === null ? 'text-grey-6' : signClass(totals.pnl_percent)
+
+// The seventh figure, and the only one with a note: the percentage is a second reading of
+// the same three legs, and the one that needs a word under it is the blank that means an
+// unpriced holding rather than a loss.
+const pnlFigure = (totals, prefix) => ({
+  label: `${prefix}P&L${totals.unpriced ? ` (${totals.unpriced} unpriced)` : ''}`,
+  value: money(totals.pnl),
+  class: signClass(totals.pnl),
+  note: pnlNote(totals),
+  noteClass: pnlNoteClass(totals),
+})
+
 const figures = (broker, prefix = '') => [
   {
     label: `${prefix}${broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value'}`,
@@ -527,5 +565,6 @@ const figures = (broker, prefix = '') => [
   { label: `${prefix}Realised`, value: money(broker.realised), class: signClass(broker.realised) },
   { label: `${prefix}Fees`, value: money(broker.fees), class: 'text-grey-9' },
   { label: `${prefix}Dividends`, value: money(broker.dividends), class: 'text-grey-9' },
+  pnlFigure(broker, prefix),
 ]
 </script>
