@@ -92,12 +92,15 @@
         <q-icon name="query_stats" size="sm" color="grey-6" />
         <div class="text-subtitle1 text-weight-medium">{{ section.ccy }}</div>
         <q-space />
-        <div v-for="figure in figures(section)" :key="figure.label" class="text-right q-ml-lg">
-          <div class="text-caption text-grey-7">{{ figure.label }}</div>
-          <div class="text-subtitle1 text-weight-bold money" :class="figure.class">
-            {{ money(figure.value) }}
+        <!-- Top-aligned, so a figure with a caption under it does not lift the rest. -->
+        <div class="row items-start no-wrap">
+          <div v-for="figure in figures(section)" :key="figure.label" class="text-right q-ml-lg">
+            <div class="text-caption text-grey-7">{{ figure.label }}</div>
+            <div class="text-subtitle1 text-weight-bold money" :class="figure.class">
+              {{ money(figure.value) }}
+            </div>
+            <div v-if="figure.caption" class="text-caption text-grey-6">{{ figure.caption }}</div>
           </div>
-          <div v-if="figure.caption" class="text-caption text-grey-6">{{ figure.caption }}</div>
         </div>
       </q-card-section>
 
