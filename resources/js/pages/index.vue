@@ -9,7 +9,7 @@
           flat
           bordered
           class="app-home-link"
-          @click="router.visit('/net-worth')"
+          @click="go('/net-worth')"
         >
           <q-card-section>
             <div class="text-caption text-grey-7">{{ figure.label }}</div>
@@ -49,7 +49,7 @@
                 clickable
                 dense
                 class="q-py-sm"
-                @click="router.visit(item.link.path, { data: item.link.data })"
+                @click="go(item.link.path, item.link.data)"
               >
                 <q-item-section avatar class="app-home-attention__icon">
                   <q-icon
@@ -109,7 +109,7 @@
                 class="text-caption"
                 icon-right="chevron_right"
                 :label="`${upcomingMore} more in the forecast`"
-                @click="router.visit('/forecast')"
+                @click="go('/forecast')"
               />
             </q-card-section>
           </q-card>
@@ -121,7 +121,7 @@
             flat
             bordered
             class="full-height app-home-link"
-            @click="router.visit('/cash-flow')"
+            @click="go('/cash-flow')"
           >
             <q-card-section class="row items-center q-pb-sm">
               <q-icon name="insights" size="sm" color="grey-6" class="q-mr-sm" />
@@ -315,6 +315,10 @@ const monthBars = computed(() => {
     bar('Spent of expected', m.so_far.spending, expectedSpending, 'negative'),
   ]
 })
+
+// In the script: the template cannot see the auto-imported router, so a click calling it
+// there throws in the handler and goes nowhere.
+const go = (path, data) => router.visit(path, data ? { data } : {})
 
 // As the forecast page opens the same events.
 const openEvent = event => {
