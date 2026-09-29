@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\RecurringTransaction;
 use App\Models\TransactionTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -272,6 +274,65 @@ class TransactionTemplateTest extends TestCase
     // ---------------------------------------------------------------------
 
     /** A template body as the form sends it: the whole form, keys and all. */
+    public function test_a_recurring_rule_is_read_as_a_template_and_never_written_to(): void
+    {
+        $rule = RecurringTransaction::create([
+            'account_id' => $this->bank->id,
+            'category_id' => $this->category->id,
+            'type' => 'withdraw',
+            'description' => 'Monthly rent',
+            'amount' => '3200.0000',
+            'ccy' => 'USD',
+            'frequency' => 'monthly',
+            'start_date' => '2026-10-01',
+        ]);
+
+        $this->post('/transaction-templates', $this->body('Rent'))->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('templates', function (Collection $templates) use ($rule) {
+                $derived = collect($templates)->firstWhere('derived', true);
+                $saved = collect($templates)->firstWhere('derived', false);
+
+                // Read as a template: enough for the form to fill itself from.
+                $this->assertSame('rule-'.$rule->id, $derived['key']);
+                $this->assertSame('Monthly rent', $derived['name']);
+                $this->assertSame($this->bank->id, $derived['account_id']);
+                $this->assertSame($this->category->id, $derived['category_id']);
+                $this->assertSame([
+                    'type' => 'withdraw',
+                    'description' => 'Monthly rent',
+                    'amount' => '3200.0000',
+                    'ccy' => 'USD',
+                    'status' => 'posted',
+                ], $derived['payload']);
+
+                // And nothing to write to. An id here is what the form's update and the
+                // menu's delete buttons are both keyed on, so an id is a row that can be
+                // overwritten or removed by a button meant for a template.
+                $this->assertNull($derived['id']);
+
+                $this->assertSame('Rent', $saved['name']);
+                $this->assertNotNull($saved['id']);
+
+                return true;
+            })
+        );
+    }
+
+    public function test_a_paused_rule_is_not_offered_as_a_template(): void
+    {
+        RecurringTransaction::create([
+            'account_id' => $this->bank->id, 'category_id' => null, 'type' => 'withdraw',
+            'description' => 'Paused', 'amount' => '10.0000', 'ccy' => 'USD',
+            'frequency' => 'monthly', 'start_date' => '2026-10-01', 'active' => false,
+        ]);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('templates', fn (Collection $templates) => $templates->isEmpty())
+        );
+    }
+
     private function body(string $name, array $overrides = []): array
     {
         return array_merge([

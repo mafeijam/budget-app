@@ -34,15 +34,30 @@
                 <q-item-label header class="q-pt-sm q-pb-xs">{{ group.account }}</q-item-label>
                 <q-item
                   v-for="template in group.templates"
-                  :key="template.id"
+                  :key="template.key"
                   v-close-popup
                   clickable
                   class="app-template-item"
                   @click="applyTemplate(template)"
                 >
-                  <q-item-section>{{ template.name }}</q-item-section>
-                  <q-item-section side>
+                  <q-item-section>
+                    <!-- A recurring rule has no row behind it, so the icon says where the
+                         figure came from: it is read off the rule, and deleting it would
+                         delete the rule rather than a template. -->
+                    <q-icon
+                      v-if="template.derived"
+                      name="autorenew"
+                      size="xs"
+                      color="grey-6"
+                      class="q-mr-xs"
+                    >
+                      <q-tooltip :delay="500" :offset="[0, 6]">From a recurring rule</q-tooltip>
+                    </q-icon>
+                    {{ template.name }}
+                  </q-item-section>
+                  <q-item-section v-if="template.id" side>
                     <q-btn
+                      v-if="template.id"
                       flat
                       dense
                       round
@@ -82,7 +97,11 @@
     </template>
 
     <template #actions-start>
+      <!-- A recurring rule is read as a template and nothing is written back to it: no update,
+           and no copy either, since a saved copy of a subscription is a second figure to keep
+           and the rule it was copied from is the one the scan keeps up to date. -->
       <q-btn
+        v-if="!derived"
         flat
         no-caps
         padding="sm md"
@@ -93,8 +112,10 @@
         @click="saveTemplate"
       />
 
+      <!-- id, and not merely the template: a recurring rule is read as a template and has no
+           row to update, so without this the button PUTs to a route with no id in it. -->
       <q-btn
-        v-if="loadedTemplate && !target"
+        v-if="loadedTemplate && loadedTemplate.id && !target"
         flat
         no-caps
         padding="sm md"
@@ -504,12 +525,16 @@ const templates = computed(() => usePage().props.templates ?? [])
 
 const templateSearch = ref('')
 
-// QList has no groups, so the account names are headers between runs of templates.
+// QList has no groups, so the account names are headers between runs of templates. The
+// recurring rules come first in each account's run: they are the ones with a current figure
+// behind them, and a saved template of the same subscription tends to be the stale one.
 const templateGroups = computed(() => {
   const needle = (templateSearch.value ?? '').toLowerCase()
   const groups = new Map()
 
-  for (const template of templates.value) {
+  for (const template of [...templates.value].sort(
+    (a, b) => Number(b.derived) - Number(a.derived),
+  )) {
     const account = template.account_name ?? ''
 
     if (needle && !`${template.name} ${account}`.toLowerCase().includes(needle)) continue
@@ -571,6 +596,10 @@ const closeForm = () => {
 // Checked here because the prompt closes before the request runs, so a server refusal
 // would land nowhere visible.
 const canTemplate = computed(() => Boolean(form.account_id && form.type))
+
+// What the form is filled from, and whether that thing can be written to. A recurring rule
+// is read as a template, so it has no update, no delete and nothing to save a copy of.
+const derived = computed(() => Boolean(loadedTemplate.value?.derived))
 
 // The whole form: which keys a template keeps is the server's list, not a copy here.
 const templateBody = name => ({

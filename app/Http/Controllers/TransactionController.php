@@ -12,6 +12,7 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\Meta;
+use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Models\TransactionTemplate;
 use App\Support\CardStatement;
@@ -334,14 +335,49 @@ class TransactionController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'account_id', 'category_id', 'payload'])
             ->map(fn (TransactionTemplate $template) => [
+                'key' => 'template-'.$template->id,
                 'id' => $template->id,
                 'name' => $template->name,
                 'account_id' => $template->account_id,
                 'account_name' => $template->account?->name,
                 'category_id' => $template->category_id,
+                'derived' => false,
                 'payload' => $template->payload,
             ])
             ->all();
+
+        // An active recurring rule is a template in substance -- an account, a category, a
+        // type, a description and a figure -- so the form reads it as one instead of it being
+        // copied into a template row. A copy would be a second copy to keep: the rules are
+        // brought up to date from the transaction history, and a copy would offer the figure a
+        // subscription had on the day it was copied. No id, because there is no row behind it
+        // to delete or edit.
+        $rules = RecurringTransaction::query()
+            ->with('account')
+            ->where('active', true)
+            ->orderBy('description')
+            ->get()
+            ->map(fn (RecurringTransaction $rule) => [
+                'key' => 'rule-'.$rule->id,
+                'id' => null,
+                'name' => $rule->description,
+                'account_id' => $rule->account_id,
+                'account_name' => $rule->account?->name,
+                'category_id' => $rule->category_id,
+                'derived' => true,
+                'payload' => [
+                    'type' => $rule->type,
+                    'description' => $rule->description,
+                    'amount' => $rule->amount,
+                    'ccy' => $rule->ccy,
+                    // What the form seeds anyway. A rule carries no status, and a payment
+                    // that has happened is not a pending one.
+                    'status' => TransactionStatus::Posted->value,
+                ],
+            ])
+            ->all();
+
+        $templates = [...$templates, ...$rules];
 
         $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
 
