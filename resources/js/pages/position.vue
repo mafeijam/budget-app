@@ -116,14 +116,26 @@
         <div class="text-subtitle1 text-weight-medium">{{ view.title }}</div>
         <q-badge v-for="ccy in view.currencies" :key="ccy" outline color="grey-7" :label="ccy" />
         <div v-if="view.caption" class="text-caption text-grey-7">{{ view.caption }}</div>
+        <q-space />
+        <q-btn
+          v-if="view.all && combined"
+          flat
+          dense
+          no-caps
+          color="grey-8"
+          class="text-caption q-px-sm"
+          :icon-right="byCurrency ? 'expand_less' : 'expand_more'"
+          :label="byCurrency ? 'Hide each currency' : 'Show each currency'"
+          @click="byCurrency = !byCurrency"
+        />
       </q-card-section>
 
       <!-- One row per currency, and with several, their sum in the base currency first. -->
       <div
-        v-for="row in view.figureRows"
+        v-for="row in view.figureRows.filter(row => row.combined || !combined || byCurrency)"
         :key="row.ccy"
         class="app-figures"
-        :class="{ 'app-figures--combined': row.combined }"
+        :class="{ 'app-figures--combined': row.combined && byCurrency }"
       >
         <div v-for="figure in figures(row.totals, row.prefix)" :key="figure.label">
           <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
@@ -280,6 +292,9 @@ const whenUpdated = value => {
 }
 
 const showClosed = ref(false)
+
+// The per-currency rows under the All view's HKD sum, folded away until asked for.
+const byCurrency = useStorage('positions.byCurrency', false)
 
 // 0 is All. Remembered per browser, so a Fetch prices reload keeps the choice.
 const brokerId = useStorage('positions.broker', 0)
