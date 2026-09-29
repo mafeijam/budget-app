@@ -99,7 +99,9 @@ class NetWorth
             }
         }
 
-        $closeSeries = Price::seriesFor(array_keys($symbols), (string) max($inOrder));
+        // Bounded by the earliest day asked for, since a later close cannot answer for an
+        // earlier day -- and the last close before that bound comes back with it.
+        $closeSeries = Price::seriesFor(array_keys($symbols), (string) min($inOrder), (string) max($inOrder));
 
         $snapshots = [];
 

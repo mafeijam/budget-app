@@ -11,22 +11,21 @@ class CashFlowController extends Controller
     public function index(Request $r)
     {
         // today() is Hong Kong's, so the current month turns over when the app's day does.
-        $byCurrency = CashFlow::lastMonths(today());
-        $currencies = array_column($byCurrency, 'ccy');
+        $both = CashFlow::both(today());
+        $currencies = $both['currencies'];
 
         // A currency with rows, shown in its own money; otherwise everything in the base
         // currency.
         $ccy = in_array($r->input('ccy'), $currencies, true) ? $r->input('ccy') : null;
-        $combined = $ccy === null ? CashFlow::combined(today()) : null;
 
         return inertia('cash-flow', [
             'report' => $ccy === null
-                ? array_filter([$combined['report']])
-                : array_values(array_filter($byCurrency, fn (array $section) => $section['ccy'] === $ccy)),
+                ? array_filter([$both['combined']['report']])
+                : array_values(array_filter($both['by_currency'], fn (array $section) => $section['ccy'] === $ccy)),
             'ccy' => $ccy,
             'currencies' => $currencies,
             'base' => Fx::BASE->value,
-            'unconverted' => $combined['unconverted'] ?? [],
+            'unconverted' => $both['combined']['unconverted'],
             'months' => CashFlow::MONTHS,
         ]);
     }

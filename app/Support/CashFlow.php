@@ -34,18 +34,7 @@ class CashFlow
      */
     public static function lastMonths(Carbon $today, int $count = self::MONTHS): array
     {
-        $months = self::months($today, $count);
-        $report = [];
-
-        // Currency::cases() order, so the report reads the same way as every picker.
-        foreach (self::book($today, $count, null) as $ccy => $byMonth) {
-            $report[$ccy] = self::currencyReport($ccy, $byMonth, $months);
-        }
-
-        return array_values(array_filter(array_map(
-            fn (Currency $currency) => $report[$currency->value] ?? null,
-            Currency::cases()
-        )));
+        return self::byCurrency(self::facts($today, $count), $today, $count);
     }
 
     /**
@@ -56,9 +45,58 @@ class CashFlow
      */
     public static function combined(Carbon $today, int $count = self::MONTHS): array
     {
+        return self::inBase(self::facts($today, $count), $today, $count);
+    }
+
+    /**
+     * Both reports, and the currencies the base one left out, off one reading of the rows.
+     *
+     * The page shows the currencies side by side when one is picked and the combined one
+     * when none is, but it needs the list of currencies either way -- so it needs both
+     * readings always, and asking for them one at a time read a year of transactions twice.
+     *
+     * @return array{currencies: list<string>, by_currency: list<array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}>, combined: array{report: array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}|null, unconverted: list<string>}}
+     */
+    public static function both(Carbon $today, int $count = self::MONTHS): array
+    {
+        $facts = self::facts($today, $count);
+
+        return [
+            'currencies' => array_column($byCurrency = self::byCurrency($facts, $today, $count), 'ccy'),
+            'by_currency' => $byCurrency,
+            'combined' => self::inBase($facts, $today, $count),
+        ];
+    }
+
+    /**
+     * @param  list<array{kind: string, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @return list<array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}>
+     */
+    private static function byCurrency(array $facts, Carbon $today, int $count): array
+    {
+        $months = self::months($today, $count);
+        $report = [];
+
+        // Currency::cases() order, so the report reads the same way as every picker.
+        foreach (self::aggregate($facts, null) as $ccy => $byMonth) {
+            $report[$ccy] = self::currencyReport($ccy, $byMonth, $months);
+        }
+
+        return array_values(array_filter(array_map(
+            fn (Currency $currency) => $report[$currency->value] ?? null,
+            Currency::cases()
+        )));
+    }
+
+    /**
+     * @param  list<array{kind: string, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @return array{report: array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}|null, unconverted: list<string>}
+     */
+    private static function inBase(array $facts, Carbon $today, int $count): array
+    {
         $fx = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
         $unconverted = [];
-        $book = self::book($today, $count, $fx, $unconverted);
+        $book = self::aggregate($facts, $fx, $unconverted);
         $base = Fx::BASE->value;
 
         return [
@@ -80,13 +118,15 @@ class CashFlow
     }
 
     /**
-     * Each row's figure, by currency and month: its own currency's, or with $fx, the base
-     * currency's at the rate on the row's day.
+     * Every row that is money in or money out, with the kind and the figure it is.
      *
-     * @param  list<string>  $unconverted  filled with the currency of every row left out
-     * @return array<string, array<string, array<string, mixed>>>
+     * What a row is does not depend on which currency it is reported in, so this is done
+     * once and handed to the readings below. The date is carried because the base currency's
+     * reading converts at the rate on the row's own day, and a month's rate is not that.
+     *
+     * @return list<array{kind: string, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>
      */
-    private static function book(Carbon $today, int $count, ?Fx $fx, array &$unconverted = []): array
+    private static function facts(Carbon $today, int $count): array
     {
         $first = $today->copy()->startOfMonth()->subMonthsNoOverflow($count - 1);
         $last = $today->copy()->endOfMonth();
@@ -100,8 +140,7 @@ class CashFlow
 
         $partners = self::partnersOf($rows);
 
-        $book = [];
-        $rates = [];
+        $facts = [];
 
         foreach ($rows as $row) {
             $flow = self::classify($row, $partners[$row->id] ?? null);
@@ -111,10 +150,39 @@ class CashFlow
             }
 
             [$kind, $figure] = $flow;
-            $ccy = $row->account->ccy;
+
+            $facts[] = [
+                'kind' => $kind,
+                'figure' => $figure,
+                'ccy' => $row->account->ccy,
+                'month' => substr($row->date, 0, 7),
+                'date' => $row->date,
+                'category' => $kind === 'spending' ? ['id' => $row->category_id, 'name' => $row->category?->name] : null,
+            ];
+        }
+
+        return $facts;
+    }
+
+    /**
+     * The facts by currency and month: each in its own currency's money, or with $fx, in the
+     * base currency's at the rate on its own day.
+     *
+     * @param  list<array{kind: string, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @param  list<string>  $unconverted  filled with the currency of every row left out
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    private static function aggregate(array $facts, ?Fx $fx, array &$unconverted = []): array
+    {
+        $book = [];
+        $rates = [];
+
+        foreach ($facts as $fact) {
+            $figure = $fact['figure'];
+            $ccy = $fact['ccy'];
 
             if ($fx !== null) {
-                $rate = $rates[$ccy][$row->date] ??= $fx->rate($ccy, $row->date);
+                $rate = $rates[$ccy][$fact['date']] ??= $fx->rate($ccy, $fact['date']);
 
                 if ($rate === null) {
                     $unconverted[] = $ccy;
@@ -126,14 +194,12 @@ class CashFlow
                 $ccy = Fx::BASE->value;
             }
 
-            $month = substr($row->date, 0, 7);
+            $entry = &$book[$ccy][$fact['month']];
+            $entry[$fact['kind']] = ($entry[$fact['kind']] ?? BigDecimal::zero())->plus($figure);
 
-            $entry = &$book[$ccy][$month];
-            $entry[$kind] = ($entry[$kind] ?? BigDecimal::zero())->plus($figure);
-
-            if ($kind === 'spending') {
-                $key = $row->category_id ?? 0;
-                $entry['categories'][$key] ??= ['id' => $row->category_id, 'name' => $row->category?->name, 'amount' => BigDecimal::zero()];
+            if ($fact['category'] !== null) {
+                $key = $fact['category']['id'] ?? 0;
+                $entry['categories'][$key] ??= [...$fact['category'], 'amount' => BigDecimal::zero()];
                 $entry['categories'][$key]['amount'] = $entry['categories'][$key]['amount']->plus($figure);
             }
 
