@@ -8,13 +8,7 @@
 
     <q-separator />
 
-    <!--
-      One table for every card, not one per card. A separate table computes its own
-      column widths, so with two or more cards the Due column of one sat wherever its own
-      figures put it and the header repeated above each -- aligned with a single card,
-      visibly not with two. The card name is a spanning row rather than a heading, so it
-      still separates one card's periods from the next.
-    -->
+    <!-- One table for every card, so the columns line up across cards. -->
     <q-markup-table flat dense>
       <thead>
         <tr class="text-left text-grey-7">
@@ -33,7 +27,6 @@
               <q-icon name="credit_card" size="xs" color="grey-7" class="q-mr-sm" />
               <span class="text-subtitle2 text-weight-medium">{{ group.card.name }}</span>
               <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
-              <!-- Where the money leaves, so the settle dialog holds no surprise. -->
               <span class="text-caption text-grey-7 text-weight-regular q-ml-md">
                 {{ bankLine(group) }}
               </span>
@@ -44,23 +37,12 @@
             <td>
               <span class="text-weight-medium">{{ formatDate(period.due_date) }}</span>
               <q-badge v-bind="dueBadge(period)" class="q-ml-sm" />
-              <!--
-                The one thing the figure cannot tell the user: the owed total is correct
-                without a pending row, so a reader who trusted it would pay against a
-                statement that grows once the charge posts and the period would reopen
-                under them having settled it. Said on the due date rather than on Covers
-                because it is about whether the period can be settled at all.
-              -->
+              <!-- A pending row means the owed total is not final yet. -->
               <q-badge
                 v-if="period.pending_count"
                 class="q-ml-sm app-tint app-tint--warning"
                 :label="`${period.pending_count} not yet posted`"
               />
-              <!--
-                After the badge, so the cell reads due, then why it is provisional, then
-                what to do about it. Icon rather than a labelled button because the cell
-                is the width of a date and the words are on hover.
-              -->
               <q-btn
                 dense
                 flat
@@ -93,7 +75,6 @@
               {{ money(period.owed) }}
             </td>
             <td class="text-right">
-              <!-- Disabled rather than hidden, for the reason given on `settleable`. -->
               <q-btn
                 dense
                 unelevated
@@ -127,15 +108,11 @@
 <script setup>
 const props = defineProps({
   groups: { type: Array, default: Array },
-  // The bank each card is paid from, keyed by card id, so the dialog can name where
-  // the money leaves before the user commits.
   banks: { type: Object, default: () => ({}) },
 })
 
 const formatDate = useCalendarDay()
 
-// Rounded as digits, never through a Number -- see money.js. The copy that lived here
-// truncated rather than rounded, so 0.0050 owed printed as 0.00.
 const money = useMoney()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
@@ -152,10 +129,6 @@ const dueBadge = useDueBadge()
 const owedClass = period =>
   String(period.owed).startsWith('-') ? 'text-positive' : 'text-negative'
 
-// The dates of the charges in the period, which is what the statement is about -- Due
-// says when it is payable, this says what it is for. One date when every charge landed
-// on the same day, because "16 Sep – 16 Sep" says less and takes twice the room.
-// Nothing at all for a period with no charge in it, which is honest: it covers nothing.
 const covers = period => {
   const from = period.first_charge_date
   const to = period.last_charge_date
@@ -165,23 +138,9 @@ const covers = period => {
   return from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`
 }
 
-// Whether a period holds anything the issuer has not billed, which is what makes its
-// figures and its due date provisional together. One predicate for the two questions
-// below: they are refused for the same reason, and two functions each testing
-// period.pending_count would be a second copy of a decision the server makes.
 const pending = period => period.pending_count > 0
 
-// The one condition the server refuses on that the panel can see: a period with
-// pending rows has a total that is not final, and offering to settle it would be
-// offering something that comes back as a refusal.
-//
-// Not the bank, which used to be the other half of this. The dialog asks which account
-// to pay from now, so a card that names none is the case it exists for, and disabling
-// the button was the dead end. A card with no cash account anywhere is still stuck, and
-// the dialog is where that gets said.
-//
-// Disabled rather than hidden: the period still shows what it owes, and the control
-// says why it cannot be settled yet.
+// Pending only: a card with no bank is what the dialog's picker is for.
 const settleable = (group, period) => !pending(period)
 
 const blockedReason = (group, period) => {
@@ -192,14 +151,6 @@ const blockedReason = (group, period) => {
   return ''
 }
 
-// The same refusal, asked about a different act, and worded for it: a period that is not
-// final cannot be paid and has not been issued, which are different sentences about
-// different things.
-//
-// A settled period is the other refusal the server has, and the panel never shows one:
-// index() filters them out before the periods reach here. So pending is the only
-// condition this can be disabled for, and the server asks again regardless -- a stale
-// page gets past a disabled button.
 const correctable = period => !pending(period)
 
 const correctionBlocked = period => {
@@ -214,12 +165,7 @@ const dialog = ref(null)
 const dueDialog = ref(null)
 const chosen = ref(null)
 
-// The period and the bank go to show() as well as onto `chosen`, because chosen
-// reaches the dialog as props and a render is queued rather than run: a show()
-// reading props in the same tick as this assignment sees the previous open's
-// values, and the first after a page load sees none at all -- so the dialog would
-// open on an empty date and an empty picker, with its confirm disabled. The
-// caller has both values already, so it passes them.
+// Passed to show() too: `chosen` reaches the dialog as props, which lag this tick.
 const openSettle = (group, period) => {
   const bank = props.banks[group.card.id] ?? null
 
@@ -227,10 +173,6 @@ const openSettle = (group, period) => {
   dialog.value?.show(period, bank)
 }
 
-// The same two lines for the same reason, and the period passed as an argument for the
-// same reason: chosen reaches the dialog as props and a render is queued rather than run,
-// so a show() reading props in the same tick as the assignment sees the previous open's
-// values and the first after a page load sees none at all.
 const openCorrect = (group, period) => {
   chosen.value = { group, period }
   dueDialog.value?.show(period)

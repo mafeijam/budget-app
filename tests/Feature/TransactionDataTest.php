@@ -365,7 +365,9 @@ class TransactionDataTest extends TestCase
             'a trade belongs on a broker account, not a cash account' => ['cash', 'buy'],
             'an expense is not spending a card' => ['card', 'withdraw'],
             'income into a cash account is not income on a card' => ['card', 'deposit'],
-            'a dividend belongs on a broker account, not a card' => ['card', 'deposit'],
+            'a dividend belongs on a broker account, not a card' => ['card', 'dividend'],
+            'a dividend belongs on a broker account, not a bank' => ['cash', 'dividend'],
+            'a deposit on a brokerage is a dividend' => ['security', 'deposit'],
         ];
     }
 
@@ -677,13 +679,10 @@ class TransactionDataTest extends TestCase
 
     public function test_a_dividend_keeps_its_supplied_amount(): void
     {
-        // A dividend is recorded on a securities account but is not a trade: it
-        // arrives as a fixed sum with no quantity or price, so deriving one
-        // would be nonsense. The symbol says which holding paid it, and is required
-        // for exactly that reason -- see guardCashSide().
+        // Not a trade: a fixed sum with no quantity or price to derive one from.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->securityId,
-            'type' => 'deposit',
+            'type' => 'dividend',
             'ccy' => 'HKD',
             'category_id' => null,
             'amount' => '312.4400',
@@ -696,13 +695,10 @@ class TransactionDataTest extends TestCase
 
     public function test_a_dividend_with_no_symbol_is_refused(): void
     {
-        // Which share paid it is the fact being recorded, and there is no default for it.
-        // Refused rather than stored: a dividend under no symbol would be found only by
-        // noticing a total that is right by accident.
         $this->assertFieldRejected(
             [
                 'account_id' => $this->securityId,
-                'type' => 'deposit',
+                'type' => 'dividend',
                 // The brokerage's own currency, which every row on it must be in --
                 // otherwise guardTradeCurrency() refuses first and this says nothing
                 // about the symbol.
@@ -715,8 +711,6 @@ class TransactionDataTest extends TestCase
 
     public function test_a_deposit_on_a_bank_needs_no_symbol(): void
     {
-        // The mirror: the same type on a cash account is ordinary money in, and asking
-        // for a symbol would be asking which share paid a salary.
         $data = TransactionData::from($this->postRequest([
             'account_id' => $this->accountId,
             'type' => 'deposit',

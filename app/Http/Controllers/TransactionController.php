@@ -36,38 +36,20 @@ class TransactionController extends Controller
 
     private const DEFAULT_SORT = 'date';
 
-    /** The columns the transactions table marks sortable. */
     private const SORTABLE = ['date', 'type', 'description', 'amount', 'status'];
 
-    /**
-     * How far back the description hints reach.
-     *
-     * A const rather than a literal in the query so the window is one thing to change,
-     * and so the reason it is two years lives next to the number instead of in a
-     * sentence about a date.
-     */
     private const HINT_YEARS = 2;
 
     public function index(Request $r)
     {
-        // Seeded with today, the way AccountController seeds the account form's status.
-        // useWatchTarget() replaces these with the row's own values when editing, so
-        // the seed reaches a new transaction and never an existing one -- which is why
-        // this belongs here rather than in a watcher that would also fire on an edit.
-        //
-        // today() rather than a JS date, so "today" is the one Asia/Hong_Kong the rest
-        // of the app already formats with (config/app.php, useHongKongTime) and not
-        // whatever half-hour the browser thinks it is in.
-        //
-        // Posted, the default the DTO applies to a payload without one -- seeded too, so
-        // the picker shows what will be saved rather than a blank the server then fills.
+        // Seeded here, not in a watcher: useWatchTarget() overwrites it when editing.
+        // today() is Hong Kong's day, not the browser's.
         $formEmpty = TransactionData::empty([
             'date' => today()->toDateString(),
             'status' => TransactionStatus::Posted->value,
         ]);
 
-        // type and ccy ride along: the form needs both and has no other source.
-        // Not the paginated set -- a card on page two must stay selectable.
+        // Not the paginated set: a card on page two must stay selectable.
         $accounts = Account::query()
             ->with('meta')
             ->where('status', 'active')
@@ -85,21 +67,10 @@ class TransactionController extends Controller
             'value' => $category->id,
         ]);
 
-        // What each card still owes. One query per card, not one for all: due_date
-        // belongs to a single card's statements. Inactive cards included, unlike the
-        // account picker below -- closing a card does not unpaid it, and settle() has
-        // never checked status.
-        //
-        // Read once and split in PHP. The panel wants the periods still owing, and the
-        // delete button below wants the ones already settled, and a second read would
-        // be a second scan of the meta table -- see CardStatement on what that costs.
-        //
-        // Above the list, which reads it too: the unpaid filter is answered from these
-        // periods rather than from each row's own bag.
+        // Inactive cards included: closing a card does not pay it.
         $cards = Account::query()
             ->where('type', AccountType::Card->value)
             ->orderBy('name')
-            // with('meta') so settlementAccount() is not a second query per card.
             ->with('meta')
             ->get();
 
@@ -107,42 +78,20 @@ class TransactionController extends Controller
             ->mapWithKeys(fn (Account $card) => [$card->id => CardStatement::forAccount($card)])
             ->all();
 
-        // The due dates of every period still owing, keyed by the card they belong to:
-        // what the unpaid filter narrows to, and the same isSettled() the panel hides
-        // settled periods by -- so a charge the filter calls paid is a charge whose
-        // period the panel would not have offered to settle.
-        //
-        // Not the row's own settled_by, which records which payment closed a bill and is
-        // never the test of whether it is paid: a claim on one row cannot see the others
-        // in the period. See TransactionMetaData.
-        //
-        // Keyed by card because a due date is only unique within one card. Two cards
-        // closing on the same day file their charges under the same string, and a flat
-        // list of those dates would offer one card's settled charges as another's
-        // owing -- the list would look right and be wrong about the one card it is
-        // about.
+        // The periods decide what is paid, not a row's settled_by. Keyed by card, since a
+        // due date is only unique within one card.
         $unpaid = collect($cardPeriods)
             ->map(fn (Collection $periods) => $periods->reject->isSettled()->pluck('dueDate')->all())
             ->filter()
             ->all();
 
-        // By the day the money moved, newest first, rather than by when the row was typed
-        // in: a charge entered a week late belongs among that week's rows. Only the
-        // columns the table offers to sort, so a request cannot order by anything else.
+        // Whitelisted so a request cannot order by any other column.
         $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
         $dir = $r->input('dir') === 'asc' ? 'asc' : 'desc';
 
-        // Filters narrow the list and nothing else: the statement panel, the delete
-        // refusals and the edit locks are about whole cards and whole periods, so a
-        // filtered page still reports them in full. An unknown filter is a 400 from
-        // the package rather than being ignored, so a mistyped key cannot quietly
-        // show the unfiltered list as though it were the filtered one.
         $transactions = QueryBuilder::for(Transaction::class, $r)
             ->allowedFilters(
-                // Comma-separated for several at once: filter[type]=charge,payment.
                 AllowedFilter::exact('account_id'),
-                // By the owning account's type -- every card row, say -- which is the
-                // account's column, not the transaction's.
                 AllowedFilter::callback('account_type', fn (Builder $q, $value) => $q->whereHas(
                     'account',
                     fn (Builder $account) => $account->whereIn('type', (array) $value)
@@ -150,46 +99,17 @@ class TransactionController extends Controller
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('category_id'),
-                // The currency the row was made in, not its account's: a USD charge on an
-                // HKD card is found under USD.
                 AllowedFilter::exact('ccy'),
-                // One phrase, not a list: "coffee, tea" is a description, and splitting
-                // it on the comma would match either word.
+                // No delimiter: "coffee, tea" is one phrase.
                 AllowedFilter::partial('description')->delimiter(''),
-                // A trade's ticker, which is a key in the bag and a column on nothing --
-                // so a callback and a whereHas rather than a partial on 'symbol', which
-                // would ask the transactions table for a column it does not have.
-                // whereHas adds the morph, so a bag belonging to an account of the same
-                // id cannot answer for it.
-                //
-                // A search rather than an equality, so a fragment finds the ticker: the
-                // filter is for finding rows, and a person who half-remembers a ticker
-                // should not have to remember the rest of it to find what they traded.
-                // The description search above usually finds these rows too, since a
-                // trade's description is written with its symbol in it; this is the one
-                // to reach for when the description says something else.
-                //
-                // Several at once, like every other filter in the bar, and the comma is
-                // what carries them: the package splits a comma out into a list before
-                // the callback is called, so the default delimiter is what makes this a
-                // list. Or rather than and, or a person reconciling two tickers would
-                // get the rows carrying both, which is none.
-                //
-                // Unindexable, like every other read of the bag: see CardStatement on
-                // what that costs, and the same trade, at this data volume.
+                // A callback because symbol lives in the meta bag, not a column. Or'd, so two
+                // tickers find either.
                 AllowedFilter::callback('symbol', function (Builder $q, $value) {
-                    // A string when one ticker was sent and a list when several were, and
-                    // the filter is asked for either way. Trimmed, since a value picked
-                    // from a list and typed by hand are not the same thing.
                     $phrases = array_filter(
                         (array) $value,
                         fn ($phrase) => is_string($phrase) && trim($phrase) !== ''
                     );
 
-                    // Nothing usable in it, so nothing to narrow by: an empty field, or a
-                    // filter[symbol][]= with nothing in it. Said outright, because the
-                    // loop below would add no constraint at all and the filter would
-                    // quietly hand back the whole list.
                     if ($phrases === []) {
                         return $q;
                     }
@@ -207,88 +127,54 @@ class TransactionController extends Controller
                         }
                     });
                 }),
-                // Inclusive, on the calendar day. A value that is not one is ignored
-                // rather than compared as a string, where "2026-1-5" would sort after
-                // "2026-01-31" and quietly drop rows.
+                // A malformed day is ignored: as a string, "2026-1-5" sorts after "2026-01-31".
                 AllowedFilter::callback('date_from', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '>=', $value)
                     : $q),
                 AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '<=', $value)
                     : $q),
-                // The charges a card has not paid for: the one answer that is neither a
-                // column nor a row's own attribute, so it is built from the periods read
-                // above rather than from the bag. A charge only, since a charge is the
-                // only thing a statement is for.
                 AllowedFilter::callback('unpaid', function (Builder $q, $value) use ($unpaid) {
-                    // Off unless the value says on, the way a date that is not a calendar
-                    // day filters nothing rather than everything: a filter[unpaid]=0 left
-                    // in a shared link would otherwise list nothing at all, which reads
-                    // as a card that owes nothing.
+                    // Off unless explicitly on: a stale filter[unpaid]=0 must not empty the list.
                     if (! in_array((string) $value, ['1', 'true'], true)) {
                         return $q;
                     }
 
                     $q->where('type', TransactionType::Charge->value);
 
-                    // Nothing is owing anywhere, so no charge is. Said outright because
-                    // the loop below would add no constraint at all and the filter would
-                    // quietly hand back the whole list.
+                    // No constraint would return every charge rather than none.
                     if ($unpaid === []) {
                         return $q->whereRaw('0 = 1');
                     }
 
-                    // A branch per card, since the due date on its own does not say whose
-                    // period it is.
                     return $q->where(function (Builder $q) use ($unpaid) {
                         foreach ($unpaid as $cardId => $dates) {
                             $q->orWhere(fn (Builder $branch) => $branch
                                 ->where('account_id', $cardId)
-                                // The bag's own JSON path, as settle() reads it to mark
-                                // the charges it covers. whereHas adds the morph, so an
-                                // account's bag of the same id cannot answer for it.
+                                // whereHas adds the morph, so an account's bag of the same id cannot match.
                                 ->whereHas('meta', fn ($bag) => $bag->whereIn('meta->due_date', $dates)));
                         }
                     });
                 }),
             )
-            // For account_name, which the accessor reads -- otherwise a query per row.
             ->with(['meta', 'account'])
             ->orderBy($sort, $dir)
-            // Then by id, so rows sharing a date keep one order from page to page. MySQL
-            // returns a tie in whatever order it likes, and a row could then show on two
-            // pages or on none.
+            // Tiebreak by id, or a row could appear on two pages or none.
             ->orderBy('id', $dir)
             ->paginate($r->input('per_page', 5))
             ->withQueryString();
 
         $page = $transactions->getCollection();
 
-        // What each row on this page would take with it, keyed by the row that would
-        // take it along -- so the delete confirmation can name the other half of a card
-        // settlement before the user agrees to remove it.
-        //
-        // Built from $page rather than from the paginator: Data::collect() below maps
-        // it through and leaves DTOs where the models were, so a query returning it
-        // afterwards hands over TransactionData and nothing says so -- a 500 on a page
-        // with rows in it, an empty page otherwise.
+        // From $page, before Data::collect() swaps the models for DTOs.
         $linked = $this->linkedCounterparts($page);
 
-        // Why each row on this page cannot be deleted, keyed by its id. Sent so the
-        // button can say so rather than being offered and then refused.
         $refusals = $this->deleteRefusals($page, $cardPeriods);
 
-        // Which figures each row on this page cannot change, and why, so the edit form
-        // can say so and disable them rather than let the save be refused.
         $editLocks = $this->editLocks($page, $cardPeriods, $linked);
 
-        // The partner rows were for the locks; the page gets the fields it names.
         $linked = array_map(fn (array $pair) => Arr::except($pair, 'row'), $linked);
 
-        // Which way each row moves its account's balance, 1, -1 or 0, so the table can
-        // mark money in and out. From movesBalanceOn() rather than a list in the page,
-        // which would be a second copy of the rule, and per row because the answer
-        // needs the account's type as well as the row's.
         $directions = $page
             ->mapWithKeys(fn (Transaction $row) => [
                 $row->id => $row->account === null
@@ -301,27 +187,8 @@ class TransactionController extends Controller
 
         $options = compact('accounts', 'categories');
 
-        // Every ticker this app has traded, distinct, for the symbol filter to offer as
-        // it is typed into.
-        //
-        // All of them and no window, where the description hints two queries below take
-        // two years. A merchant name stops being the name somebody would use after a
-        // while, so a suggestion from four years ago is one nobody takes -- but a ticker
-        // is a name that does not go stale, and the row it finds is a trade somebody
-        // made and may still be asking about. Which is also why this is not a join to
-        // the transaction for its date: there is no date to bound it by.
-        //
-        // Read from the bag rather than from a column, because that is where a symbol
-        // lives -- a key grouped on would be a column, and see CardStatement on why the
-        // ones that are not grouped on stay in there.
-        //
-        // A scan of the meta table like every other read of it: one more on a page that
-        // already reads it once per card, and the trade CardStatement's own author
-        // decided not to make at this volume.
-        //
-        // 'null' rejected as well as nulls, because a key present and null unquotes to
-        // that string, and a list of suggestions with "null" on it is something the user
-        // would be shown and could pick.
+        // No window, unlike the hints: a ticker does not go stale. 'null' is what a present
+        // null key unquotes to.
         $symbols = DB::table('meta')
             ->where('model_type', Transaction::class)
             ->selectRaw('DISTINCT JSON_UNQUOTE(JSON_EXTRACT(meta.meta, \'$.symbol\')) AS symbol')
@@ -332,10 +199,7 @@ class TransactionController extends Controller
             ->values()
             ->all();
 
-        // What the filter bar offers. Every account rather than the active ones the form
-        // picks from, since a closed card's history is still worth finding; every type
-        // flat, since a filter is not narrowing by an account type, and in the enum's
-        // filter order rather than its declaration order, which is the form's.
+        // Every account, not just active ones: a closed card's history is still searchable.
         $filterOptions = [
             'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
@@ -344,8 +208,7 @@ class TransactionController extends Controller
             'symbols' => $symbols,
         ];
 
-        // The pairing is what makes a type legal, so a flat list would offer "buy" on
-        // a savings account only to refuse it. Derived from accountTypes().
+        // Per account type: a flat list would offer "buy" on savings only to refuse it.
         $typeOptions = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
                 $accountType->value => collect(TransactionType::cases())
@@ -356,51 +219,25 @@ class TransactionController extends Controller
             ])
             ->all();
 
-        // Which type to pre-fill per account type. Beside typeOptions rather than folded
-        // into it, so the list the picker reads keeps the shape it had.
         $typeDefaults = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
                 $accountType->value => $accountType->defaultTransactionType()?->value,
             ])
             ->all();
 
-        // Which types the server derives an amount for, and which write a row in a
-        // brokerage's settlement account. Both keyed by account type and both sent rather
-        // than restated in the browser: the form decides which fields to show, disable and
-        // clear from them, and a hand-written list is a second copy of the enum method
-        // behind them -- free to drift, and the drift is silent because a field that is
-        // shown for a type nothing derives is merely a field the save ignores.
-        //
-        // Two props rather than one because they are two different questions. The first
-        // does not depend on the account type at all, and is keyed by it only so the form
-        // can read both the same way.
         $derivesAmountTypes = collect(TransactionType::cases())
             ->filter(fn (TransactionType $type) => $type->derivesAmount())
             ->map(fn (TransactionType $type) => $type->value)
             ->values()
             ->all();
 
-        $cashSideTypes = collect(AccountType::cases())
-            ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => collect(TransactionType::cases())
-                    ->filter(fn (TransactionType $type) => $type->needsCashSide($accountType))
-                    ->map(fn (TransactionType $type) => $type->value)
-                    ->values()
-                    ->all(),
-            ])
+        $cashSideTypes = collect(TransactionType::cases())
+            ->filter(fn (TransactionType $type) => $type->needsCashSide())
+            ->map(fn (TransactionType $type) => $type->value)
+            ->values()
             ->all();
 
-        // What each brokerage holds, for the dividend's symbol picker: a dividend is money
-        // received on something already owned, so the answers are the open positions rather
-        // than every symbol the account has ever traded. Keyed by account id, since that is
-        // what the form has, and read for the active brokerages only -- the form's account
-        // picker offers nothing else, so a list for one would be a query and a payload
-        // nobody could reach.
-        //
-        // One query per brokerage, which is the cost of Positions::heldSymbols() and the
-        // price of the answer: the trades are what say what is held, so there is no smaller
-        // read to make it from. Two brokerages is two queries; a page of transactions that
-        // shows holdings is a brokerage's own.
+        // Open positions only: a dividend is paid on something held.
         $heldSymbols = Account::query()
             ->where('type', AccountType::Security->value)
             ->where('status', 'active')
@@ -408,7 +245,6 @@ class TransactionController extends Controller
             ->mapWithKeys(fn (Account $broker) => [$broker->id => Positions::heldSymbols($broker)])
             ->all();
 
-        // Plain values for status (no display name), pairs for currency.
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
 
         $currencyOptions = collect(Currency::cases())
@@ -418,10 +254,6 @@ class TransactionController extends Controller
             ])
             ->values();
 
-        // A period that is settled is a fact about the past and is left out, so a card
-        // with five years of paid statements does not push the ones needing attention
-        // off the page. The settled ones are not discarded: the refusal below is built
-        // from them, and the transactions that made them are all still in the list.
         $statements = $cards
             ->map(fn (Account $card) => [
                 'card' => [
@@ -429,21 +261,15 @@ class TransactionController extends Controller
                     'name' => $card->name,
                     'ccy' => $card->ccy,
                 ],
-                // values() because reject keeps the keys it did not reject, and a
-                // period list keyed 1, 3, 7 reaches Vue as an object rather than the
-                // list the v-for is written against.
+                // values(): gaps in the keys would reach Vue as an object, not a list.
                 'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
                     ->map(fn (CardStatement $statement) => $statement->toArray())
                     ->all(),
             ])
-            // A card with nothing outstanding is not worth a heading.
             ->filter(fn (array $group) => $group['periods'] !== [])
             ->values();
 
-        // The bank each card is paid from, keyed by card id. Both fields, because the
-        // dialog needs the id to preselect the picker and the name to print in the
-        // sentence about where the money leaves. A card that names none is absent,
-        // which is what tells the dialog to offer a choice.
+        // A card with no bank is absent, which tells the dialog to offer a choice.
         $cardBanks = $cards
             ->filter(fn (Account $card) => $card->settlementAccount() !== null)
             ->mapWithKeys(fn (Account $card) => [
@@ -454,48 +280,17 @@ class TransactionController extends Controller
             ])
             ->all();
 
-        // The picker behind that choice -- the same list the account form offers, from
-        // the model, so the two cannot disagree about what may be a target.
         $settlementOptions = Account::settlementOptions();
 
-        // The same list narrowed to each currency a card on this page holds, for the
-        // settle dialog, which knows which card it is settling and so can be told the
-        // answer rather than carrying the rule. Keyed by currency rather than by card so
-        // one query serves every card in the same currency -- at most three -- rather
-        // than one per card, which is the cost guardSettledFrom()'s caller avoids by
-        // reading the card's own link instead.
-        //
-        // A currency with no cash account is present with an empty list rather than
-        // absent, so the dialog can tell "no bank in this currency" from "no idea".
+        // A currency with no bank gets an empty list, so "none" differs from "unknown".
         $settlementOptionsByCcy = $cards
             ->pluck('ccy')
             ->unique()
             ->mapWithKeys(fn (string $ccy) => [$ccy => Account::settlementOptions($ccy)->all()])
             ->all();
 
-        // Hints for the description, which is the one field on this form a person types
-        // rather than picks: everything else is chosen from a list the enum builds, and a
-        // description is whatever the merchant was called that day.
-        //
-        // Two years, and the window is the point rather than a bound on the query. A
-        // personal finance app outlives the accounts, cards and merchants someone had
-        // four years ago, and a description from one of those is a suggestion nobody
-        // would take -- it costs a keystroke to ignore and it is in the way.
-        //
-        // Newest first, by the last day the description was used rather than by name.
-        // The thing about to be typed again is the thing last typed, and alphabetical
-        // order would bury it under every "Coffee" ever entered.
-        //
-        // Raw for the aggregate, and the only raw clause here: `date` is a MySQL keyword,
-        // so the grammar's own quoting never reaches inside MAX() and the statement fails
-        // with "Unknown column 'MAX(date)' in 'order clause'". The column the filter
-        // above uses goes through the grammar and needs nothing.
-        //
-        // Across every account, deliberately. A hint is "you have called this that
-        // before", and the same description on a card and on a bank is one thing the
-        // user thinks of rather than two. Narrowing it to the chosen account would also
-        // mean the list changed under the field as they picked an account, and before
-        // they picked one there would be nothing to offer at all.
+        // Raw because `date` is a MySQL keyword the grammar does not quote inside MAX().
+        // Across every account on purpose: a hint is not per account.
         $descriptionHints = Transaction::query()
             ->where('date', '>=', today()->subYears(self::HINT_YEARS)->toDateString())
             ->groupBy('description')
@@ -504,13 +299,6 @@ class TransactionController extends Controller
             ->pluck('description')
             ->values();
 
-        // The saved form states, for the transaction form's template menu. Read on every
-        // page load rather than on demand: it is a handful of rows, and a menu that had
-        // to be fetched is a menu that is not there when the dialog opens.
-        //
-        // Ordered by name, which is what makes the suffixed ones readable as a run:
-        // "Coffee", "Coffee 2", "Coffee 3" rather than three scattered names, and a name
-        // the server chose should be findable by eye.
         $templates = TransactionTemplate::query()
             ->with('account')
             ->orderBy('name')
@@ -527,8 +315,7 @@ class TransactionController extends Controller
 
         $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
 
-        // `sort` is the order AppTable leaves out of the URL, since the server applies it
-        // unasked.
+        // The order AppTable leaves out of the URL, since the server applies it unasked.
         $meta = [
             'form' => 'transaction-form',
             'path' => '/transactions',
@@ -562,7 +349,6 @@ class TransactionController extends Controller
         ));
     }
 
-    /** Whether a filter value is a calendar day, Y-m-d, and one that exists. */
     private static function isDay(mixed $value): bool
     {
         return is_string($value)
@@ -572,19 +358,16 @@ class TransactionController extends Controller
 
     public function store(TransactionData $data)
     {
-        // Outside the try, for the reason given in update().
+        // Outside the try, or a ValidationException is caught and reported as "error db...".
         $data->guardNewChargePeriod(Account::with('meta')->find($data->account_id));
         $data->guardHoldings();
 
-        // Two writes, so a failure between them must leave neither. As
-        // AccountController::store().
         DB::beginTransaction();
 
         try {
             $transaction = Transaction::create($data->except('meta_data')->toArray());
 
-            // Nulls dropped, falsy kept: plain filter() would drop a fee of '0', which
-            // would then read back as missing rather than zero.
+            // Nulls dropped, falsy kept: filter() would drop a fee of '0'.
             $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
 
             if ($meta->isNotEmpty()) {
@@ -593,55 +376,39 @@ class TransactionController extends Controller
                 ]);
             }
 
-            // A buy or sell's cash side, in the same write, so a trade never exists
-            // without the money it moved.
             TradeCash::sync($transaction);
 
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Roll back but do not discard. See AccountErrorReportingTest.
             report($e);
 
             return back()->with('message', 'error db...');
         }
 
-        // type, not type->value: Transaction declares no casts. See MassAssignmentTest.
+        // type, not type->value: Transaction declares no casts.
         return back()->with('message', "Transaction [{$transaction->type}] recorded");
     }
 
     public function update(Transaction $transaction, TransactionData $data)
     {
-        // Before the transaction is opened, and outside the try. A ValidationException
-        // is an Exception, so one raised inside would be caught, rolled back and
-        // reported as "error db..." -- telling the user the database failed when nothing
-        // had been attempted. The guards in the DTO's constructor sit before this method
-        // for the same reason, and by the same accident of when the DTO is built.
-        //
-        // with('meta') because the cycle is read off the card's bag.
+        // Outside the try, as in store().
         $data->placeChargeInItsPeriod(
             Account::with('meta')->find($data->account_id),
             $transaction
         );
 
-        // After the move guard, whose message is the better one when a charge changes
-        // card out of a paid statement.
+        // After the move guard, whose message is the better one for a charge leaving a paid
+        // statement.
         $data->guardFigures($transaction);
         $data->guardHoldings($transaction);
 
         $data->keepLinksOf($transaction);
 
-        // What it was, for TradeCash: a buy edited into a dividend still has a cash side
-        // but a buy edited into an expense has none, and a dividend moved off a brokerage
-        // must have the cash row it left behind taken off with it. Both halves, because
-        // neither the old type nor the old account says it alone -- a deposit wanted a
-        // cash side on a brokerage and not on a bank.
+        // For TradeCash: a buy edited into another type leaves a cash row to remove.
         $wasType = $transaction->type;
-        $wasAccountId = $transaction->account_id;
 
-        // The bag is replaced rather than added, or a corrected charge would sit
-        // beside the one it replaced.
         DB::beginTransaction();
 
         try {
@@ -650,21 +417,17 @@ class TransactionController extends Controller
             $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
 
             if ($meta->isNotEmpty()) {
-                // Keyed on the bag's own id, as AccountController does; keyed on the
-                // relation instead, it finds nothing and tries to insert.
+                // Keyed on the bag's id; keyed on the relation it finds nothing and inserts.
                 $transaction->meta()->updateOrCreate(
                     ['id' => $transaction->meta?->id],
                     ['meta' => $meta]
                 );
             } else {
-                // A bag left behind would keep the charge in its statement period,
-                // which the query groups on the bag's due_date.
+                // A leftover bag would keep the charge in its statement period.
                 $transaction->meta()->delete();
             }
 
-            // The cash side follows the corrected trade: its amount, date and status,
-            // and its bank if the trade moved brokerage.
-            TradeCash::sync($transaction, $wasType, $wasAccountId);
+            TradeCash::sync($transaction, $wasType);
 
             DB::commit();
         } catch (Exception $e) {
@@ -675,21 +438,10 @@ class TransactionController extends Controller
             return back()->with('message', 'error db...');
         }
 
-        // fresh(), not the instance: name what the row is now, not what was sent.
+        // fresh(): the type the row has now, not what was sent.
         return back()->with('message', "Transaction [{$transaction->fresh()->type}] updated");
     }
 
-    /**
-     * Save the form's current values as a reusable template.
-     *
-     * The payload arrives whole -- the browser sends the form as it stands -- and is
-     * narrowed to the keys a template keeps before it is stored, so nothing the form
-     * happens to hold can be written just because it was sent.
-     *
-     * No transaction write and no transaction lock around it: nothing here touches the
-     * accounts table's rows or any balance, so the two writes that matter are this one
-     * and the deletion a cascade may bring with it.
-     */
     public function storeTemplate(TransactionTemplateData $data)
     {
         $template = TransactionTemplate::create([
@@ -699,26 +451,15 @@ class TransactionController extends Controller
             'payload' => $data->keptPayload(),
         ]);
 
-        // The name as it ended up, not the one asked for: "Netflix 2" is the name this
-        // template now answers to and the toast is the only place the user is told.
+        // The name as it ended up: the toast is the only place a suffix is shown.
         return back()->with('message', "Template [{$template->name}] saved");
     }
 
-    /**
-     * Replace a template's values with the form's, which is how a template that has
-     * drifted is put right without deleting and retyping it.
-     *
-     * The whole payload is replaced rather than merged into, so a field the user has
-     * since cleared is cleared here too. Merging would keep the old value on a key the
-     * new form left null, and the template would go on filling in something the user
-     * deliberately removed.
-     */
+    /** Replaces the payload rather than merging, so a cleared field stays cleared. */
     public function updateTemplate(TransactionTemplate $transactionTemplate, TransactionTemplateData $data)
     {
         $transactionTemplate->update([
-            // Excluding the row being updated is what keeps a plain update from
-            // renaming "Netflix" to "Netflix 2" and the one after that to "Netflix 3":
-            // the name is taken by this very template.
+            // Excluding itself, or an unchanged name would gain a suffix.
             'name' => self::freeName($data->name, $transactionTemplate),
             'account_id' => $data->account_id,
             'category_id' => $data->category_id,
@@ -728,13 +469,6 @@ class TransactionController extends Controller
         return back()->with('message', "Template [{$transactionTemplate->name}] updated");
     }
 
-    /**
-     * Remove a template.
-     *
-     * One click away from a shortcut somebody was about to use, and nothing else here
-     * loses it, so -- as with a transaction or a category -- the button confirms and the
-     * confirmation names the thing rather than asking whether you are sure.
-     */
     public function destroyTemplate(TransactionTemplate $transactionTemplate)
     {
         $name = $transactionTemplate->name;
@@ -744,19 +478,7 @@ class TransactionController extends Controller
         return back()->with('message', "Template [$name] deleted");
     }
 
-    /**
-     * The name as given, or that name with a number on the end while it is taken.
-     *
-     * A loop of one-row lookups rather than a single query over the names in use,
-     * because it is the column's collation that decides "netflix" collides with
-     * "Netflix", and only the database knows that. Comparing in PHP instead would agree
-     * with the unique index about some pairs and not others, and a pair it disagreed
-     * about becomes a 500 on insert -- a name the app thought was free and the database
-     * did not.
-     *
-     * $except is the row being updated, so keeping a template's own name is not a
-     * collision.
-     */
+    /** One lookup per candidate: only the collation knows "netflix" collides with "Netflix". */
     private static function freeName(string $name, ?TransactionTemplate $except = null): string
     {
         $inUse = TransactionTemplate::query()
@@ -767,9 +489,7 @@ class TransactionController extends Controller
             return $name;
         }
 
-        // mb_substr because the column counts characters and a suffix must not push the
-        // name past it: a 255-character name would otherwise become a name too long for
-        // the column that holds it, which is a 500 rather than a template.
+        // mb_substr keeps the suffixed name within the 255-character column.
         for ($n = 2; ; $n++) {
             $suffix = " {$n}";
             $candidate = mb_substr($name, 0, 255 - strlen($suffix)).$suffix;
@@ -780,28 +500,16 @@ class TransactionController extends Controller
         }
     }
 
-    /**
-     * Pay off one statement period of a card, in two rows.
-     *
-     * The amount is computed here, never taken from the request. The figure the
-     * client does send is compared, not used: since both rows are written together, a
-     * payment against a stale figure would be internally consistent and invisible.
-     */
+    /** The amount is computed here; the client's figure is only compared, to catch a stale one. */
     public function settle(Account $account, Request $r)
     {
         $figures = $r->validate([
             'due_date' => ['required', 'date_format:Y-m-d'],
             'owed' => ['required', 'decimal:0,'.TransactionMetaData::AMOUNT_SCALE],
 
-            // The day the money moved, which is a choice rather than a fact about the
-            // period. Optional so a caller that sends nothing gets the period's own due
-            // date below, which is the answer in the ordinary case.
             'date' => ['nullable', 'date_format:Y-m-d'],
 
-            // The cash account the money leaves, which the dialog always sends and a
-            // caller may not. Optional because the card's own link is the answer when
-            // it has one, and a card that has none is a reachable state rather than
-            // broken data -- AccountMetaData permits a card to carry no link at all.
+            // Optional: the card's own link is used when it has one.
             'settlement_account_id' => ['nullable', 'integer', 'exists:accounts,id'],
         ]);
 
@@ -818,14 +526,11 @@ class TransactionController extends Controller
         $named = $account->settlementAccount();
         $bank = $named;
 
-        // ?? null because validate() omits an absent key entirely -- nullable permits a
-        // present null, not a missing one. The date field above is read the same way.
+        // ?? null: validate() omits an absent key.
         if (($figures['settlement_account_id'] ?? null) !== null) {
             $chosen = Account::find($figures['settlement_account_id']);
 
-            // exists:accounts,id has already run, so this only fires for an account
-            // deleted between the two, and a bank that is not there is the same answer
-            // as a bank that cannot be named.
+            // Only a race: exists:accounts,id has already run.
             if ($chosen === null) {
                 $refuse(sprintf(
                     'Card [%s] cannot be paid from account [%s], which no longer exists.',
@@ -834,8 +539,6 @@ class TransactionController extends Controller
                 ));
             }
 
-            // The account form's own rule, so the dialog cannot offer a target that form
-            // would refuse. Account::guardSettledFrom() is where it lives.
             Account::guardSettledFrom(
                 $chosen,
                 $account->type,
@@ -843,10 +546,7 @@ class TransactionController extends Controller
                 Account::settlementWording($account->type)
             );
 
-            // No check that the target is not the card itself: a settlement target is
-            // always a cash account, and a card is not one, so the type check above
-            // refuses that first. The form's `different:id` is reachable only because a
-            // rule runs before the guard, and only to blame the target in the message.
+            // No self-target check: a card is not a cash account, so the guard refuses it.
             $bank = $chosen;
         }
 
@@ -866,8 +566,7 @@ class TransactionController extends Controller
             $refuse(sprintf('Nothing is owed for the statement due %s.', $figures['due_date']));
         }
 
-        // Before the figure is compared: the total can be arithmetically right and
-        // still not payable, since the issuer has not billed the pending rows.
+        // Before the figure check: pending rows are not billed yet.
         if ($statement->hasPendingActivity()) {
             $refuse(sprintf(
                 'That statement has %d row%s not yet posted, so its total is not final. Post or remove %s first.',
@@ -886,24 +585,13 @@ class TransactionController extends Controller
             ));
         }
 
-        // The dialog pre-fills the due date and the server falls back to the same
-        // thing, so there is one rule rather than a form that says one thing and an
-        // endpoint another. Paid early, or long after it fell due, is what the field
-        // is for.
         $paidOn = $figures['date'] ?? $figures['due_date'];
 
         DB::beginTransaction();
 
         try {
-            // Remember where the card is paid from, when the dialog said somewhere else.
-            // Inside the write, so a settlement cannot be recorded with the choice only
-            // half applied -- and merged rather than written, because term_days and
-            // statement_day share this row and a blind write would drop them, leaving a
-            // card that produces no due dates at all.
-            //
-            // Only when it differs: the ordinary settle sends back the account the card
-            // already names, and rewriting the row to its own value would touch every
-            // card on every statement for nothing.
+            // Merged, not written: term_days and statement_day share this bag. Only when it
+            // changed, so an ordinary settle writes nothing.
             if ($named?->id !== $bank->id) {
                 $account->meta()->update([
                     'meta' => array_merge(
@@ -927,13 +615,7 @@ class TransactionController extends Controller
             $transfer = Transaction::create([
                 'account_id' => $bank->id,
                 'category_id' => null,
-                // The same day as the payment, as the same amount: a settlement is one
-                // act, and two rows describing it differently would be two facts about
-                // one event.
                 'date' => $paidOn,
-                // A withdrawal, like any other money leaving the bank. This row used to
-                // be a transfer of its own so that paying a card would not count as
-                // spending; that is not a distinction the types carry now.
                 'type' => TransactionType::Withdraw->value,
                 'description' => sprintf('Card payment [%s]', $account->name),
                 'amount' => $owed,
@@ -941,9 +623,8 @@ class TransactionController extends Controller
                 'status' => TransactionStatus::Posted->value,
             ]);
 
-            // Written here, not through the DTO, which drops the field: the ids do
-            // not exist until both rows do. The transfer's bag carries no due_date, or a
-            // bank would fall into a card's arithmetic.
+            // Written directly: the DTO drops these ids. No due_date on the bank's bag, or it
+            // would enter the card's arithmetic.
             $payment->meta()->create([
                 'meta' => ['due_date' => $figures['due_date'], 'paired_transaction_id' => $transfer->id],
             ]);
@@ -952,11 +633,7 @@ class TransactionController extends Controller
                 'meta' => ['paired_transaction_id' => $payment->id],
             ]);
 
-            // Which payment paid each charge, so a charge says so on its own row. Inside
-            // the write, so a settlement cannot exist with its charges unmarked. Merged,
-            // because the bag also holds the due_date the statement groups on and any
-            // card_amount it sums -- a blind write would drop the charge out of the very
-            // bill being paid.
+            // Merged: the bag also holds the due_date the statement groups on.
             $covered = Transaction::query()
                 ->with('meta')
                 ->where('account_id', $account->id)
@@ -974,8 +651,6 @@ class TransactionController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Both rows or neither: a lone payment is a card that says it was paid
-            // while the bank says the money is still there.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -989,18 +664,7 @@ class TransactionController extends Controller
         ));
     }
 
-    /**
-     * Replace one statement period's due date with the day the bank stated.
-     *
-     * The day a period carries is a prediction, counted from the card's statement day and
-     * term, and the bank's own day is not always that one. Every row in the period moves
-     * together, because the due date is the key they are grouped by rather than a field
-     * on any of them.
-     *
-     * Which periods may move is decided in CardStatement::moveDueDate(), beside the query
-     * that defines the key, rather than here: a controller-side check would be a second
-     * place to state what a period is.
-     */
+    /** Which periods may move is decided in CardStatement::moveDueDate(). */
     public function moveDueDate(Account $account, Request $r)
     {
         $figures = $r->validate([
@@ -1010,9 +674,7 @@ class TransactionController extends Controller
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['due_date' => $message]);
 
-        // Said as its own refusal rather than left to the one below it, which would
-        // report a savings account as having no statement due that day -- true, and no
-        // help to somebody who clicked the wrong row.
+        // Its own refusal, or a savings account would read as having no statement that day.
         if ($account->type !== AccountType::Card->value) {
             $refuse(sprintf(
                 'Account [%s] is a %s account. Only a card has a statement to correct.',
@@ -1038,31 +700,20 @@ class TransactionController extends Controller
             return back()->with('message', $refusal);
         }
 
-        // Read the pairing, and the settlement's period, before anything is deleted:
-        // both live in bags, and both bags are about to go. The account too, since
-        // describe() and hasCashSide() both need to know which kind of row this is.
+        // Read before the bags are deleted.
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
         $period = $this->settlementPeriod($transaction, $partner);
         $cashSide = TradeCash::hasCashSide($transaction) ? TradeCash::describe($transaction) : null;
 
-        // A settlement is two rows and must not come apart: deleting one half leaves a
-        // card that says it was paid and a bank that says the money is still there. Both
-        // go or neither does, and the browser has shown the user the other half first.
-        // A pairing naming a row that is already gone resolves to nothing, and then the
-        // single row is all there is to delete.
-        //
-        // Wrapped, because half a settlement is precisely the state the wrap exists to
-        // prevent.
+        // A settlement's two rows go together or not at all.
         $rows = $partner === null ? [$transaction] : [$transaction, $partner];
 
         DB::beginTransaction();
 
         try {
             foreach ($rows as $row) {
-                // A deleted payment reopens its statement, so the charges stop claiming
-                // it paid them. Left behind, the marker would name a row that no longer
-                // exists on charges that are owing again.
+                // A deleted payment reopens its statement, so clear the charges' settled_by.
                 if ($row->type === TransactionType::Payment->value) {
                     $this->forgetSettlement($row);
                 }
@@ -1095,12 +746,7 @@ class TransactionController extends Controller
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
     }
 
-    /**
-     * Remove a payment's settled_by from every charge that names it.
-     *
-     * Found by the marker rather than by the payment's period, so a charge carrying it
-     * is cleared wherever it has since been filed.
-     */
+    /** By the marker rather than the period, so a refiled charge is cleared too. */
     private function forgetSettlement(Transaction $payment): void
     {
         $bags = Meta::query()
@@ -1114,26 +760,9 @@ class TransactionController extends Controller
     }
 
     /**
-     * Why this row cannot be deleted, or null when it can.
+     * The message names the way out, or a mistake in a paid statement could never be fixed.
      *
-     * A charge in a settled statement. A settled period is the record of a bill that
-     * was paid, and deleting one of its charges leaves the payment that closed it
-     * explaining less than the money that left the bank -- or nothing at all: a period
-     * with no charges and a payment on it reads as a credit, and the panel then offers a
-     * settle button the server turns down.
-     *
-     * Derived rather than a column on the row. A period settles when its charges and
-     * payments cancel, which no single row can know, so a status here could only be a
-     * claim about the charge -- a user could mark it settled while its statement was
-     * still owed.
-     *
-     * The message carries the way out, because a guard without one makes a mistake in a
-     * paid statement uncorrectable for good: delete the payment that settled the period,
-     * which reopens it, and the charge deletes normally. That is the same delete the
-     * pairing below already takes as a pair.
-     *
-     * @param  Collection<int, CardStatement>|null  $cardPeriods  that card's periods,
-     *                                                            read once by the caller
+     * @param  Collection<int, CardStatement>|null  $cardPeriods
      */
     private function deleteRefusal(?Transaction $transaction, ?Collection $cardPeriods = null): ?string
     {
@@ -1141,9 +770,7 @@ class TransactionController extends Controller
             return $this->buyRefusal($transaction);
         }
 
-        // The cash side of a trade or a dividend goes with it and not on its own:
-        // deleting it here would take the other row too, past the holdings check a buy's
-        // delete gets.
+        // A cash side goes with its trade, never alone past the buy's holdings check.
         $pairedId = $transaction?->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
 
@@ -1164,7 +791,6 @@ class TransactionController extends Controller
             return null;
         }
 
-        // A row belongs to a statement only if the app filed it under one.
         $dueDate = $transaction->meta?->meta?->getArrayCopy()['due_date'] ?? null;
 
         if ($dueDate === null) {
@@ -1187,14 +813,7 @@ class TransactionController extends Controller
         );
     }
 
-    /**
-     * Why deleting this buy is refused: a later sell would be selling shares no longer
-     * held. Only a shortfall the delete causes, as in TransactionData::guardHoldings(),
-     * and with the way out -- a buy can go once the sells after it are gone or smaller.
-     *
-     * A brokerage's trades are read once per request, since the index asks this of
-     * every buy on the page.
-     */
+    /** Only a shortfall the delete causes, as in TransactionData::guardHoldings(). */
     private function buyRefusal(Transaction $buy): ?string
     {
         $trades = $this->tradesByBroker[$buy->account_id] ??= $buy->account === null
@@ -1218,14 +837,6 @@ class TransactionController extends Controller
     }
 
     /**
-     * The refusals for a page of rows, keyed by id, so the browser can disable a button
-     * rather than offer an action the server will turn down.
-     *
-     * The same answers destroy() gives, from the same method, so the sentence on the
-     * button and the sentence in the message cannot drift. A disabled button is not
-     * enforcement either way -- a stale page and a direct request both bypass it -- which
-     * is why destroy() asks the same question again.
-     *
      * @param  Collection<int, Transaction>  $rows
      * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
      * @return array<int, string>
@@ -1246,13 +857,6 @@ class TransactionController extends Controller
     }
 
     /**
-     * The figure locks for a page of rows, keyed by id, for the edit form.
-     *
-     * TransactionData::figureLock() decides, and update() asks it again, so the form
-     * and the refusal cannot disagree about which rows are fixed. The partner is the row
-     * linkedCounterparts() found, handed over whole because figureLock() locks a
-     * trade's cash differently from half a card settlement.
-     *
      * @param  Collection<int, Transaction>  $rows
      * @param  array<int, Collection<int, CardStatement>>  $cardPeriods
      * @param  array<int, array<string, mixed>>  $linked
@@ -1277,13 +881,6 @@ class TransactionController extends Controller
         return $locks;
     }
 
-    /**
-     * One card's statement periods, for a row whose card this request has not read.
-     *
-     * The index reads them for every card on the page and passes them in, because that
-     * query is the expensive one and re-running it per row is not free -- see
-     * CardStatement on what it costs. This is the one-off read for a delete.
-     */
     private function cardPeriodsFor(Transaction $transaction): ?Collection
     {
         $account = $transaction->account;
@@ -1296,17 +893,6 @@ class TransactionController extends Controller
     }
 
     /**
-     * The other half of each card settlement on a page of transactions, keyed by the
-     * row that would delete it.
-     *
-     * destroy() removes both rows together, so the confirmation has to say so before
-     * the user agrees. Keyed by id rather than carried on the row, because the
-     * counterpart is a transaction of its own, on the card or on the bank, and is as
-     * likely to be on another page of the list as on this one.
-     *
-     * Every field here is one the table already shows. A row named in a dialog has to
-     * be recognisable against the row it was clicked from.
-     *
      * @param  Collection<int, Transaction>  $rows
      * @return array<int, array<string, mixed>>
      */
@@ -1331,8 +917,6 @@ class TransactionController extends Controller
         $linked = [];
 
         foreach ($rows as $row) {
-            // Absent for an unpaired row, and for a pairing whose other half is gone:
-            // neither has anything extra to delete, so neither has anything to warn about.
             $other = $counterparts->get($row->meta?->meta['paired_transaction_id'] ?? null);
 
             if ($other === null) {
@@ -1346,22 +930,12 @@ class TransactionController extends Controller
                 'amount' => $other->amount,
                 'ccy' => $other->ccy,
                 'account_name' => $other->account?->name,
-                // What the pair is, so the delete confirmation names it: a trade and its
-                // cash, a dividend and its cash, or the two halves of a card settlement.
-                // A dividend named a trade would send the user to a picker holding only
-                // buys and sells.
-                //
-                // Either half, and through the enum rather than by comparing the type: a
-                // dividend's cash side is a deposit on a bank, the same type as the
-                // dividend itself, so what identifies the pair is a deposit on a
-                // *brokerage* -- which is also the only thing separating it from a card
-                // settlement, whose halves are a payment and a withdrawal.
                 'kind' => match (true) {
                     TradeCash::isDividend($other), TradeCash::isDividend($row) => 'dividend',
                     TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',
                     default => 'settlement',
                 },
-                // For figureLock(), which needs the other row itself; not sent.
+                // For figureLock(); stripped before the page gets it.
                 'row' => $other,
             ];
         }
@@ -1369,14 +943,7 @@ class TransactionController extends Controller
         return $linked;
     }
 
-    /**
-     * The due date naming the settlement these rows are, if either row carries one.
-     *
-     * The payment half does and the transfer's does not -- only the card side is filed
-     * under a period, since a bank is not in any card's arithmetic. Read from whichever
-     * row has it, or the same settlement would report itself differently depending on
-     * which half was clicked.
-     */
+    /** Only the payment half carries the due date, so read whichever row has it. */
     private function settlementPeriod(?Transaction ...$rows): ?string
     {
         foreach ($rows as $row) {

@@ -9,137 +9,67 @@ use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Data;
 
 /**
- * The fields only some transaction types have, in the meta bag so a new one needs
- * no migration. A DTO rather than an array because the rules are conditional on the
- * root `type` -- a trade has a symbol, a charge a due date. Every rule is
- * `nullable` (the validator counts null as present) while `required_if` survives.
- *
- * A charge's merchant is not among them: `description` says the same thing and is
- * required of every row, so the field was wired to nothing.
+ * The fields only some transaction types have, kept in the meta bag. Every rule is
+ * `nullable` first, since the validator counts null as present.
  */
 class TransactionMetaData extends Data
 {
-    /**
-     * The amount column's scale, decimal(12,4). Referenced rather than repeated, so a
-     * derived amount cannot drift from what the column can store.
-     */
+    /** The amount column's scale, decimal(12,4). */
     public const AMOUNT_SCALE = 4;
 
-    /** decimal(12,4) holds eight integer digits and four decimal places. */
     public const MAX_AMOUNT = '99999999.9999';
 
     public function __construct(
-        // Securities trades. Fractional shares need more places than money does,
-        // hence eight against the amount's four.
+        // Trades and dividends. A quantity takes eight places, for fractional shares.
         public ?string $symbol = null,
         public ?string $quantity = null,
         public ?string $unit_price = null,
         public ?string $fees = null,
 
-        // On a trade: that its money side is not in these accounts, so TradeCash writes
-        // no cash row for it. For a position back-dated from before the bank was
-        // tracked, or a trade settling through a bank this app does not hold.
-        //
-        // Null rather than false when the cash side *is* recorded, so the default is
-        // what a trade has always done and a bag written before this field existed
-        // needs no backfill.
+        // The money moved outside these accounts, so TradeCash writes no cash row.
+        // Null rather than false when it did, so absence is the only way to say no.
         public ?bool $no_cash = null,
 
-        // The statement period a charge rolls up into, and so the day it is payable.
-        // Derived for a charge, supplied by a payment naming the statement it
-        // settles, NULL otherwise. A column while MySQL could index it, a bag now
-        // that it cannot -- see create_transactions_table.
+        // The statement a charge rolls up into, or a payment settles.
         public ?string $due_date = null,
 
-        // A charge in a currency other than its card's, as that amount in the card's
-        // own currency. See guardCardAmount() in TransactionData for when it is
-        // required and why there is no rate anywhere in this.
+        // A foreign-currency charge in the card's own currency. See guardCardAmount().
         public ?string $card_amount = null,
 
-        // The other half of a card settlement, which is two rows and not one. Written
-        // by TransactionController::settle() and nothing else, since destroy() deletes
-        // whatever this points at: the link is the difference between deleting one row
-        // and deleting two. A payload's value never lands -- see keepLinksOf() in
-        // TransactionData.
+        // Server-owned links, restored by keepLinksOf(). destroy() deletes whatever
+        // paired_transaction_id points at; settled_by records which payment closed a
+        // charge's statement, and is never the test of whether it is paid.
         public ?int $paired_transaction_id = null,
-
-        // On a charge: the payment that settled the statement it is in. Written by
-        // settle() and removed by destroy() with that payment, so it is a record of
-        // which payment closed the bill -- never the test of whether it is paid, which
-        // CardStatement derives, because a claim on one row cannot see the others.
-        // Server-owned like the pairing, and kept through an edit the same way.
         public ?int $settled_by = null,
     ) {}
 
     public static function rules()
     {
+        $cashSide = self::typesWhere(fn (TransactionType $type) => $type->needsCashSide());
+        $noCashSide = self::typesWhere(fn (TransactionType $type) => ! $type->needsCashSide());
+        $notDerived = self::typesWhere(fn (TransactionType $type) => ! $type->derivesAmount());
+
         return [
-            'symbol' => [
-                'nullable',
-                'required_unless:type,'.self::typesExcept(TransactionType::Buy, TransactionType::Sell),
-                'max:32',
-            ],
-            'quantity' => [
-                'nullable',
-                'required_unless:type,'.self::typesExcept(TransactionType::Buy, TransactionType::Sell),
-                'decimal:0,8',
-                'gt:0',
-            ],
-            'unit_price' => [
-                'nullable',
-                'required_unless:type,'.self::typesExcept(TransactionType::Buy, TransactionType::Sell),
-                'decimal:0,4',
-                'gt:0',
-            ],
+            'symbol' => ['nullable', 'required_unless:type,'.$noCashSide, 'max:32'],
+            'quantity' => ['nullable', 'required_unless:type,'.$notDerived, 'decimal:0,8', 'gt:0'],
+            'unit_price' => ['nullable', 'required_unless:type,'.$notDerived, 'decimal:0,4', 'gt:0'],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
+            'no_cash' => ['nullable', 'prohibited_unless:type,'.$cashSide],
 
-            // no_cash has no rule here, and its absence is deliberate. The flag says a
-            // row's money side is not in these accounts, which is a question about the
-            // row's *account* and not its type: a deposit on a brokerage has one and a
-            // deposit on a bank does not, and both are the same type. A conditional rule
-            // can only see the type, so permitting the trades would also permit a bank
-            // deposit's flag, and refusing the rest would refuse a dividend's. Both
-            // halves are settled in TransactionData::guardCashSide(), which has the row's
-            // account to hand.
-
-            // `nullable` first, as on every other key here. Not required for a charge
-            // even though the constructor fills it in, because it is filled in after
-            // validation and a card with no statement day has none.
+            // Not required for a charge: it is derived after validation.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
 
-            // Not `required_if`: whether this is needed depends on the charge's currency
-            // against the *account row's*, which a rule cannot see. What this does is
-            // bound the figure, so a zero or an over-scaled one is refused here rather
-            // than summed into a statement and rounded by the database. Hence `gt:0` --
-            // a zero is a missing figure wearing a value.
-            'card_amount' => [
-                'nullable',
-                'decimal:0,'.self::AMOUNT_SCALE,
-                'gt:0',
-                'max:'.self::MAX_AMOUNT,
-            ],
+            // Whether it is needed depends on the account row, which a rule cannot see;
+            // this only bounds it, so a zero is refused rather than summed.
+            'card_amount' => ['nullable', 'decimal:0,'.self::AMOUNT_SCALE, 'gt:0', 'max:'.self::MAX_AMOUNT],
         ];
-    }
-
-    /**
-     * Every transaction type except the ones named, as a comma-separated list.
-     *
-     * There is no `required_if_in` in this Laravel: it is silently accepted and then
-     * skipped, so a trade could be recorded with no symbol and nothing would complain.
-     * Deriving the list also puts an unrecognised type outside it, and so inside the
-     * requirement -- the right way round, since the enum rejects the bad type anyway.
-     */
-    private static function typesExcept(TransactionType ...$permitted): string
-    {
-        return self::typesWhere(fn (TransactionType $type) => ! in_array($type, $permitted, true));
     }
 
     /**
      * The transaction types matching a predicate, as a comma-separated list.
      *
-     * For the rules that name what a field is *for*, where the complement is the wrong
-     * way round: `prohibited_unless` permits the types it lists, so listing everything
-     * but the trades would permit no_cash on a dividend and refuse it on a buy.
+     * Derived from the enum, because this Laravel has no `required_if_in`: it is
+     * accepted and silently never run.
      */
     private static function typesWhere(callable $predicate): string
     {
@@ -162,32 +92,17 @@ class TransactionMetaData extends Data
         ];
     }
 
-    /**
-     * What a refusal says, where the rule's own message does not.
-     *
-     * Laravel's message for prohibited_unless restates the condition -- "prohibited
-     * unless type is in buy, sell" -- which tells the user the rule rather than why
-     * their row was turned down. There is no `prohibited_if_in` to say it in one word,
-     * so the sentence is written here.
-     */
+    /** Laravel's own message would list the permitted types. */
     public static function messages()
     {
         return [
-            'no_cash.prohibited_unless' => 'Only a buy or a sell has a cash side to skip.',
+            'no_cash.prohibited_unless' => 'Only a buy, a sell or a dividend has a cash side to skip.',
         ];
     }
 
     /**
-     * The amount implied by a trade's quantity, price and fee.
-     *
-     * Null for every type that does not derive. The fee is folded in net rather than
-     * left as a transaction of its own, since it is part of this trade and never
-     * appears in a balance alone: a buy costs price x quantity + fees, a sell yields
-     * price x quantity - fees, and adding the fee to a sell would overstate the
-     * balance by exactly the brokerage.
-     *
-     * Decimal, not float: Float64 has no decimal semantics, so it survives these
-     * magnitudes by luck and a wider quantity would break it silently.
+     * A trade's amount: price x quantity, plus fees on a buy and minus them on a sell.
+     * Null for a type that does not derive.
      */
     public function derivedAmount(TransactionType $type): ?string
     {
@@ -204,9 +119,7 @@ class TransactionMetaData extends Data
 
         $scaled = $net->toScale(self::AMOUNT_SCALE, RoundingMode::HalfUp);
 
-        // Field errors rather than exceptions, keyed where TransactionData nests this
-        // bag: the constructor calls this on a request, and anything else there is a 500
-        // with the user's figures gone and nothing on the form to say which was wrong.
+        // Field errors rather than exceptions, or a request would 500.
         if ($scaled->isNegative()) {
             throw ValidationException::withMessages([
                 'meta_data.fees' => "A {$type->value} of {$this->quantity} at {$this->unit_price} with fees "
@@ -217,6 +130,7 @@ class TransactionMetaData extends Data
 
         $max = BigDecimal::of(self::MAX_AMOUNT);
 
+        // The database would round it down silently.
         if ($scaled->isGreaterThan($max)) {
             throw ValidationException::withMessages([
                 'meta_data.quantity' => "A {$type->value} of {$this->quantity} at {$this->unit_price} comes "

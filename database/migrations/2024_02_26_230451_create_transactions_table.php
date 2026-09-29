@@ -95,14 +95,14 @@ return new class extends Migration
             // A positive magnitude, not a signed one. See the class docblock.
             $table->decimal('amount', 12, 4);
 
-            // Six values, and what makes one legal here is the owning account's type
+            // What makes a value legal here is the owning account's type
             // rather than the value on its own: a payment only means anything on a card,
             // a sell only on a brokerage. See TransactionType::accountTypes(), which is
             // the single place that pairing is defined.
             //
             //   cash       withdraw, deposit
             //   card       charge, payment
-            //   securities buy, sell, deposit (a dividend)
+            //   securities buy, sell, dividend
             //
             // Plain strings rather than an enum column, so a value this app does not know
             // is stored rather than refused -- and read back through TransactionType::from()

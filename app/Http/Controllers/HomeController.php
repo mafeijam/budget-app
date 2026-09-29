@@ -9,18 +9,12 @@ use App\Support\CardStatement;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
 
-/**
- * Where the money is, and what is owed on the cards: the two questions the home page
- * answers before anyone opens a list.
- */
 class HomeController extends Controller
 {
     public function index()
     {
-        // Every cash account holding money, and every active one whether or not it
-        // does. A closed account with a balance still has money in it, and hiding it
-        // would make the total a figure the user cannot account for; a closed empty one
-        // is just history.
+        // A closed account still holding money stays, or the total could not be
+        // accounted for.
         $cashAccounts = Account::query()
             ->where('type', AccountType::Cash->value)
             ->orderBy('name')
@@ -40,8 +34,7 @@ class HomeController extends Controller
             ])
             ->values();
 
-        // Every period still owing, on every card, the soonest due first -- inactive
-        // cards included, as on the transactions panel: closing a card does not pay it.
+        // Inactive cards included: closing a card does not pay it.
         $statements = Account::query()
             ->where('type', AccountType::Card->value)
             ->with('meta')
@@ -56,10 +49,7 @@ class HomeController extends Controller
             ->sortBy('due_date')
             ->values();
 
-        // What each brokerage's holdings are worth, from the valuation the Positions page
-        // totals. Beside the cash rather than in it: shares at market value are not
-        // money in an account, and the figure moves with every price. Shown as the
-        // Positions page shows them -- a closed brokerage only while it holds shares.
+        // Beside the cash, not in it: shares at market value are not money.
         $brokerages = Account::query()
             ->where('type', AccountType::Security->value)
             ->orderBy('name')

@@ -53,7 +53,6 @@
                 <q-space />
                 <q-badge outline color="grey-7" :label="broker.ccy" />
               </div>
-              <!-- Market value, not a balance: what the holdings are worth at the latest price. -->
               <div class="text-caption text-grey-7 q-mt-md">Market value</div>
               <div class="text-h4 text-weight-bold text-grey-9 money">
                 {{ money(broker.market_value) }}
@@ -92,7 +91,6 @@
                 <q-space />
                 <q-badge outline color="grey-7" :label="statement.card.ccy" />
               </div>
-              <!-- The day and how far off it is, read together. -->
               <div class="row items-center text-caption text-grey-7 q-mt-xs">
                 Due {{ formatDate(statement.due_date) }}
                 <q-badge v-bind="dueBadge(statement)" class="q-ml-sm" />
@@ -100,17 +98,12 @@
               <div class="text-h4 text-weight-bold text-negative money q-mt-sm">
                 {{ money(statement.owed) }}
               </div>
-              <!--
-                The totals only once something is paid: before that, what was charged is the
-                figure above, and saying it twice says nothing.
-              -->
               <div class="text-caption text-grey-7">
                 {{ count(statement.charge_count, 'charge') }}
                 <template v-if="statement.payment_count">
                   · {{ money(statement.charged) }} charged · {{ money(statement.paid) }} paid
                 </template>
               </div>
-              <!-- A total with pending rows is not final, and cannot be settled yet. -->
               <q-badge
                 v-if="statement.pending_count"
                 class="q-mt-sm app-tint app-tint--warning"
@@ -138,16 +131,13 @@ const formatDate = useCalendarDay()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
-// A gain green and a loss red; nothing plain.
 const gainClass = value => {
   if (String(value).startsWith('-')) return 'text-negative'
 
   return /[1-9]/.test(String(value)) ? 'text-positive' : 'text-grey-7'
 }
 
-// With its sign, so a gain reads as one rather than as a bare figure.
 const signed = value => (String(value).startsWith('-') ? money(value) : `+${money(value)}`)
 
-// Red only when a cash balance has gone below zero, an overdraft.
 const amountClass = value => (String(value).startsWith('-') ? 'text-negative' : 'text-grey-9')
 </script>

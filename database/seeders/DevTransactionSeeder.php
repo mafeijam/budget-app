@@ -472,7 +472,7 @@ class DevTransactionSeeder extends Seeder
             [
                 'account' => 'Dev Brokerage',
                 'date' => '2026-01-15',
-                'type' => TransactionType::Deposit->value,
+                'type' => TransactionType::Dividend->value,
                 'description' => 'Dividend 0700.HK',
                 'amount' => '312.4400',
                 'ccy' => $hkd,

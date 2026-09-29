@@ -20,10 +20,6 @@
         </q-td>
       </template>
 
-      <!--
-        A brokerage has no cash balance, so its cell is the market value of what it
-        holds, captioned as such so the figure is not read as money in an account.
-      -->
       <template #body-cell-balance="cell">
         <q-td :props="cell" class="money" :class="cell.col.classes?.(cell.row)">
           {{ cell.value }}
@@ -50,7 +46,6 @@
 
       <template #body-cell-metaData="cell">
         <q-td :props="cell">
-          <!-- Badges, for the size reason given in the transaction table's meta column. -->
           <q-badge
             v-for="label in metaLabels(cell.row)"
             :key="label"
@@ -73,9 +68,6 @@
 const props = defineProps({
   ...hasTableProps,
 
-  // Account id => a decimal string, computed server-side. Declared rather than read
-  // off the page props because the column is built here, where only a declared prop is
-  // in scope.
   balances: {
     type: Object,
     default: () => ({}),
@@ -93,8 +85,6 @@ const formatDate = useHongKongTime()
 
 const formatMoney = useMoney()
 
-// A brokerage holding nothing shows nothing, as before; one holding shares shows their
-// worth, zero included when none of them has a price yet.
 const marketValue = row => {
   const valued = props.marketValues[row.id]
 
@@ -103,9 +93,7 @@ const marketValue = row => {
 
 const typeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
 
-// The cash account a card is paid from or a brokerage settles into, by name. From
-// settlementOptions, which lists every cash account, so a link to one on another page
-// of this table still resolves.
+// From settlementOptions, so an account on another page of this table still resolves.
 const accountLabel = id =>
   usePage().props.settlementOptions?.find(option => option.value === id)?.label ?? `#${id}`
 
@@ -117,10 +105,7 @@ const ordinal = day => {
   return `${day}${{ 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] ?? 'th'}`
 }
 
-// The bag in words, one chip per fact, rather than the JSON it is stored as. Nulls
-// dropped, because meta_data arrives as the DTO and a card would otherwise carry every
-// key the other types use. A key this does not know falls through as `key: value`, so
-// a field added to the bag shows up rough rather than not at all.
+// Nulls dropped: meta_data arrives as the DTO, carrying every account type's keys.
 const metaLabels = row => {
   const meta = row.meta_data ?? {}
   const labels = []
@@ -174,16 +159,9 @@ const columns = reactive([
     width: '150px',
     label: 'Balance',
     align: 'right',
-    // Not sortable: the list orders against the accounts table and a balance is a sum
-    // rather than a column on it. Blank for a securities account, which has none -- a
-    // brokerage holds positions, and '0.0000' there would read as money it does not hold.
+    // Not sortable: a balance is a sum, not a column on accounts.
     field: row => props.balances[row.id] ?? marketValue(row) ?? '',
-    // Two places, rounded here rather than in the query: decimal(12,4) sums exactly at
-    // four, so a tenth of a cent is a real figure the server holds and this column
-    // chooses not to show. Rounded as digits, never through Number() -- see money.js.
     format: formatMoney,
-    // Red when negative, which on a card is what it owes. A position rather than a
-    // direction of travel, so a card paid beyond its charges reads black.
     classes: row => (String(props.balances[row.id] ?? '').startsWith('-') ? 'text-negative' : ''),
     sortable: false,
   },
@@ -199,8 +177,6 @@ const columns = reactive([
     name: 'metaData',
     width: '380px',
     label: 'Details',
-    // Rendered by the body-cell-metaData slot above; the field is the same words
-    // joined, for the table to sort and filter on.
     field: row => metaLabels(row).join(', '),
     align: 'left',
     sortable: false,

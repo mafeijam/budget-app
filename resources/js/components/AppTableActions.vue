@@ -1,10 +1,5 @@
 <template>
-  <!--
-    Wrapped, and no-wrap, because two sibling q-btns are a fragment: they lay out in
-    normal flow, and two 32px buttons plus the margin between them do not fit the cell, so
-    they wrapped onto two lines and the second one picked up a different left edge from
-    the first. A row that cannot wrap makes that impossible at any column width.
-  -->
+  <!-- A no-wrap row: two bare sibling q-btns wrap onto two lines in a narrow cell. -->
   <div class="row items-center justify-end no-wrap">
     <q-btn icon="edit" flat color="grey-7" dense class="q-mr-sm" @click="setEdit(cell.row)">
       <q-tooltip :delay="500" :offset="[0, 6]">Edit</q-tooltip>
@@ -18,16 +13,7 @@
       :disable="!!refusal"
       @click="destroy(cell.row)"
     >
-      <!--
-        The server's reason for refusing, sent rather than composed here, so the two
-        cannot disagree. Disabled rather than hidden: the row is still there and the
-        button still says what stopped it, which a missing button does not.
-
-        Quasar's QBtn sets no native disabled attribute, only aria-disabled and a
-        click handler that stops the event, so the tooltip still opens over a
-        disabled button -- which is what makes this worth saying, because the obvious
-        way to do it is hide the button and leave the user no explanation at all.
-      -->
+      <!-- QBtn sets no native disabled attribute, so the tooltip still opens when disabled. -->
       <q-tooltip :delay="500" :offset="[0, 6]">{{ refusal || 'Delete' }}</q-tooltip>
     </q-btn>
   </div>
@@ -43,14 +29,6 @@ const props = defineProps({
 
 const pagination = inject('pagination')
 
-// Why the server would refuse this row, or null when it would not: a charge in a
-// settled card statement, an account that has transactions or is another account's
-// settlement account, or a category transactions are filed under. Each refusal carries its way out, so the tooltip is a next step
-// rather than only a no.
-//
-// The refusal is repeated in destroy(). A disabled button is a stale page and a
-// direct request away from being wrong, and it is the server's side that is the
-// actual rule.
 const refusal = computed(() => usePage().props.refusals?.[props.cell.row.id] ?? null)
 
 const { loading, destroy } = useDestroy(pagination)

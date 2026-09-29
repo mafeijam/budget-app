@@ -178,15 +178,14 @@ class TransactionControllerTest extends TestCase
             'account_id' => $this->broker->id,
             'category_id' => null,
             'date' => '2026-02-02',
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => '312.4400',
             'ccy' => 'HKD',
             'meta_data' => ['symbol' => 'NVDA'],
         ])->assertSessionHasNoErrors();
 
-        // The dividend itself, not the deposit its cash side writes into the bank.
-        $dividend = Transaction::where('type', 'deposit')->where('account_id', $this->broker->id)->firstOrFail();
+        $dividend = Transaction::where('type', 'dividend')->firstOrFail();
 
         $this->assertSame('312.4400', $dividend->amount);
     }
@@ -931,9 +930,7 @@ class TransactionControllerTest extends TestCase
 
         $this->assertSame(['0700.HK'], $held[$this->broker->id]);
 
-        // And nothing for a bank or a card: a deposit on a bank is money arriving and has
-        // no holding behind it, so a list keyed to one would only be somewhere for the two
-        // to be confused.
+        // And nothing for a bank or a card, which hold no shares.
         $this->assertArrayNotHasKey($this->bank->id, $held);
         $this->assertArrayNotHasKey($this->card->id, $held);
     }
@@ -962,7 +959,7 @@ class TransactionControllerTest extends TestCase
             'account_id' => $this->broker->id,
             'category_id' => null,
             'date' => '2026-03-02',
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend 0700.HK',
             'amount' => '312.4400',
             'ccy' => 'HKD',

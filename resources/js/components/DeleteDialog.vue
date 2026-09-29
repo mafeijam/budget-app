@@ -1,9 +1,5 @@
 <template>
-  <!--
-    Not persistent, so escape and a click outside both dismiss it -- each arrives at
-    onDialogCancel, the direction in which nothing is deleted. The message is text
-    interpolation, never v-html: it quotes a description the user typed.
-  -->
+  <!-- The message is interpolated, never v-html: it quotes a description the user typed. -->
   <q-dialog ref="dialogRef" @hide="onDialogHide">
     <q-card style="width: 460px; max-width: 90vw">
       <q-card-section class="row items-start no-wrap q-pb-sm">
@@ -21,11 +17,7 @@
       </q-card-section>
 
       <q-card-actions align="right" class="q-pa-md">
-        <!--
-          autofocus on cancel, because the dialog focuses the first autofocus element: a
-          user reaching for the keyboard who presses enter without reading must land on
-          the button that does nothing.
-        -->
+        <!-- autofocus on Cancel, so an Enter pressed without reading deletes nothing. -->
         <q-btn autofocus flat no-caps color="grey-8" label="Cancel" @click="onDialogCancel" />
         <q-btn
           unelevated
@@ -40,8 +32,7 @@
 </template>
 
 <script setup>
-// Imported, unlike almost everything here: vite.config.js auto-imports useQuasar and
-// not the Dialog plugin's own composable.
+// Imported: vite.config.js auto-imports useQuasar, not this.
 import { useDialogPluginComponent } from 'quasar'
 
 defineProps({

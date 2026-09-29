@@ -12,7 +12,6 @@
             : 'No prices fetched yet'
         }}
       </div>
-      <!-- The scheduled fetch runs once a morning; this is the same fetch, now. -->
       <q-btn
         unelevated
         no-caps
@@ -27,10 +26,6 @@
       No brokerage account yet. Add one on Accounts, then record buys and sells on Transactions.
     </div>
 
-    <!--
-      Read-only on purpose: a position is worked out from the trades, so it changes by
-      recording a trade on Transactions, never by editing a figure here.
-    -->
     <q-card v-for="broker in brokerages" :key="broker.id" flat bordered>
       <q-card-section class="row items-center q-gutter-sm">
         <q-icon name="show_chart" size="sm" color="grey-6" />
@@ -87,7 +82,6 @@
               {{ position.average_cost ? money(position.average_cost) : '' }}
             </td>
             <td class="text-right money">{{ position.open ? money(position.cost) : '' }}</td>
-            <!-- Click to set today's price by hand; see PositionController::store(). -->
             <td class="text-right money cursor-pointer">
               <template v-if="position.price">
                 {{ money(position.price) }}
@@ -153,8 +147,7 @@ const showClosed = ref(false)
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
 
-// Eight places is the scale a quantity is stored at, and a whole share should read as
-// one. Trimmed on the string -- a quantity is a decimal, not a float, the same as money.
+// Trimmed on the string: a quantity is a decimal, never a float.
 const quantity = value => {
   const trimmed = String(value).includes('.') ? String(value).replace(/\.?0+$/, '') : String(value)
 
@@ -165,15 +158,13 @@ const $q = useQuasar()
 
 const fetching = ref(false)
 
-// The result arrives as the page's flash message, a line per symbol.
 const fetchPrices = () => {
   router.post(
     '/prices/fetch',
     {},
     {
       preserveScroll: true,
-      // A few symbols and a few seconds, and the button says so for all of it -- see
-      // plugins/quasar.js.
+      // The button's own spinner -- see plugins/quasar.js.
       showProgress: false,
       onStart: () => (fetching.value = true),
       onSuccess: () => notifySuccess(),
@@ -182,8 +173,6 @@ const fetchPrices = () => {
   )
 }
 
-// Today's price, typed in. The server files it under its own today and marks it manual
-// so the next fetch leaves it alone.
 const savePrice = (broker, position, close) => {
   router.post(
     '/prices',
@@ -196,17 +185,12 @@ const savePrice = (broker, position, close) => {
   )
 }
 
-// Profit green, loss red, nothing plain.
 const signClass = value => {
   if (String(value).startsWith('-')) return 'text-negative'
 
   return /[1-9]/.test(String(value)) ? 'text-positive' : ''
 }
 
-// What the brokerage's header totals, each in its own currency: the cost of what is
-// still held, what it is worth at the latest price and what that is up or down, what
-// selling has realised, the fees paid dealing, and the dividends received. Fees stand
-// apart from cost and realised, so each reads as what it is.
 const figures = broker => [
   {
     label: broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value',

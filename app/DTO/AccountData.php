@@ -35,10 +35,7 @@ class AccountData extends Data
         return [
             'name' => ['required', 'string', $unique],
 
-            // No rule for ccy: typing it Currency makes spatie/laravel-data derive the
-            // membership check, and `size:3` never was one -- it accepted 'ZZZ' and
-            // 'hkd' as readily as 'HKD'. The settlement field is type-specific and
-            // lives in AccountMetaData.
+            // No rule for ccy: typing it Currency derives the membership check.
         ];
     }
 
@@ -50,14 +47,7 @@ class AccountData extends Data
         ];
     }
 
-    /**
-     * Reject a settlement target that is not a cash account in the same currency.
-     *
-     * A constructor check rather than a rule, because only the database knows what the
-     * target *is* -- so it holds whether or not the caller called validate(). The rule
-     * itself is Account::guardSettledFrom(), shared with the settle endpoint; the
-     * refusal is re-keyed here because the field this form submits is a nested one.
-     */
+    /** In the constructor, so it holds whether or not the caller called validate(). */
     private function guardSettlementAccount(): void
     {
         $id = $this->meta_data?->settlement_account_id;
