@@ -229,6 +229,80 @@ class HomeTest extends TestCase
         );
     }
 
+    /**
+     * The props a revisit does not have to compute: the forecast's three, and the line.
+     */
+    private const CACHED = ['month', 'upcoming', 'upcomingMore', 'attention'];
+
+    /** Read off a page so the next request can be sent as the same browser's would be. */
+    private ?string $assetVersion = null;
+
+    public function test_a_revisit_is_answered_from_what_the_browser_already_has(): void
+    {
+        $this->deposit('2026-01-01', '30000.0000');
+
+        $first = $this->page();
+        $keys = array_keys($first['onceProps'] ?? []);
+
+        // Every cached prop went out, under a key of its own to be remembered by. The line
+        // is the exception: it is deferred as well as cached, so its value arrives on its
+        // own request and all the first response carries is the key it will be known by.
+        foreach (self::CACHED as $prop) {
+            $this->assertArrayHasKey($prop, $first['props'], "{$prop} was not sent");
+        }
+
+        $this->assertArrayNotHasKey('trend', $first['props'], 'the deferred line came back in the first response');
+
+        $this->assertNotEmpty($keys);
+
+        // The second visit says what it already holds, and the server sends none of it back.
+        $revisit = $this->page($this->asBrowser($keys));
+
+        foreach (self::CACHED as $prop) {
+            $this->assertArrayNotHasKey($prop, $revisit['props'], "{$prop} was computed again");
+        }
+    }
+
+    public function test_a_write_moves_the_key_so_a_revisit_cannot_be_answered_from_before_it(): void
+    {
+        $this->deposit('2026-01-01', '30000.0000');
+
+        $keys = array_keys($this->page()['onceProps'] ?? []);
+
+        $this->deposit('2026-01-02', '1000.0000');
+
+        // The keys the browser holds name the mark before the write, so none of them matches
+        // the mark now -- which is the whole mechanism. A card settled and then revisited
+        // would otherwise still owe what it no longer owes.
+        $after = array_keys($this->page($this->asBrowser($keys))['onceProps'] ?? []);
+
+        $this->assertSame(
+            [],
+            array_intersect($keys, $after),
+            'a cached prop kept the key it had before the write, so the browser could be answered from before it'
+        );
+
+        $revisit = $this->page($this->asBrowser($keys));
+
+        foreach (self::CACHED as $prop) {
+            $this->assertArrayHasKey($prop, $revisit['props'], "{$prop} was not rebuilt after the write");
+        }
+    }
+
+    public function test_the_money_figures_are_never_cached(): void
+    {
+        $this->deposit('2026-01-01', '30000.0000');
+
+        $keys = array_keys($this->page()['onceProps'] ?? []);
+        $revisit = $this->page($this->asBrowser($keys));
+
+        // A fast page is not owed a stale balance, and a balance is the one figure a finance
+        // dashboard cannot be an hour out of date on.
+        foreach (['headline', 'cash', 'statements', 'brokerages'] as $prop) {
+            $this->assertArrayHasKey($prop, $revisit['props'], "{$prop} was cached");
+        }
+    }
+
     public function test_a_deferred_prop_asked_for_by_name_is_always_resolved(): void
     {
         $this->deposit('2026-01-01', '30000.0000');

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ForgetsTheHomeCache;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,7 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Last in the web group, after the session and bindings it reads.
-        $middleware->web(append: [HandleInertiaRequests::class]);
+        $middleware->web(append: [HandleInertiaRequests::class, ForgetsTheHomeCache::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // A request-forgery failure goes back to the page it came from, with the banner
