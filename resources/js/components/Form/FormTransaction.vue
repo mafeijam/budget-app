@@ -533,8 +533,11 @@ watch(
 // Not cleared by a Reset: Update is disabled on a clean form, so it cannot misfire.
 const loadedTemplate = ref(null)
 
-// Cleared on close, or the chip would name a template over a blank form next time.
+// Back to the blank defaults on close: a template becomes the form's defaults, so the next
+// Add would otherwise open filled from it, with no chip saying so.
 const closeForm = () => {
+  if (loadedTemplate.value && !target.value) form.defaults(useCloneForm(schema))
+
   loadedTemplate.value = null
   resetEdit()
 }
@@ -584,6 +587,9 @@ const applyTemplate = template => {
 
     account_id: template.account_id,
     category_id: template.category_id,
+
+    // A template holds no date, so the day already chosen is kept rather than reset to today.
+    date: form.date || schema.date,
 
     // Merged: a template stores only the keys it keeps, and the form binds the rest.
     meta_data: {
