@@ -121,15 +121,21 @@ class PositionControllerTest extends TestCase
         $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
         $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
 
-        Http::fake(['query1.finance.yahoo.com/*' => Http::response(['chart' => ['result' => [[
-            'meta' => ['currency' => 'USD', 'exchangeTimezoneName' => 'America/New_York'],
+        $chart = fn (string $ccy, float $close) => Http::response(['chart' => ['result' => [[
+            'meta' => ['currency' => $ccy, 'exchangeTimezoneName' => 'America/New_York'],
             'timestamp' => [Carbon::parse('2026-03-05 21:00', 'UTC')->timestamp],
-            'indicators' => ['quote' => [['close' => [130.5]]]],
-        ]], 'error' => null]])]);
+            'indicators' => ['quote' => [['close' => [$close]]]],
+        ]], 'error' => null]]);
+
+        // The USD brokerage's rate is fetched beside its symbol, quoted in HKD.
+        Http::fake([
+            'query1.finance.yahoo.com/v8/finance/chart/NVDA*' => $chart('USD', 130.5),
+            'query1.finance.yahoo.com/v8/finance/chart/USDHKD%3DX*' => $chart('HKD', 7.8),
+        ]);
 
         $this->get('/positions')->assertInertia(fn (Assert $page) => $page->where('pricesUpdatedAt', null));
 
-        $this->post('/prices/fetch')->assertSessionHas('message', 'Prices fetched: NVDA: 1 day');
+        $this->post('/prices/fetch')->assertSessionHas('message', 'Prices fetched: NVDA: 1 day; USDHKD=X: 1 day');
 
         $this->assertSame('130.5000', Price::where('symbol', 'NVDA')->sole()->close);
 

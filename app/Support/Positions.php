@@ -116,6 +116,18 @@ class Positions
     }
 
     /**
+     * The positions a list of trades adds up to, for a caller holding the trades already:
+     * the net worth history replays one brokerage's trades up to each of its days.
+     *
+     * @param  list<array<string, mixed>>  $trades  as tradesOf() returns them
+     * @return array<string, array<string, mixed>>
+     */
+    public static function fromTrades(array $trades): array
+    {
+        return self::replay($trades)['positions'];
+    }
+
+    /**
      * Plain rows, so a sell can be checked by adding it before replaying.
      *
      * @return list<array{id: int, date: string, type: string, symbol: string, quantity: string, unit_price: string, fees: string}>

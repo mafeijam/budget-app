@@ -7,6 +7,8 @@ use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Models\Account;
 use App\Models\Price;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Database\Seeders\Concerns\GuardsAgainstNonTestDatabase;
 use Database\Seeders\Concerns\WritesTrades;
 use Illuminate\Database\Seeder;
@@ -24,7 +26,7 @@ use RuntimeException;
  * DevHistorySeeder leaves the cash sides alone when it re-runs.
  *
  * A monthly tracker-fund buy, a stock bought twice and half sold at a gain, another held
- * for its dividends.
+ * for its dividends, and one bought near a top and held at a loss.
  */
 class DevTradingSeeder extends Seeder
 {
@@ -34,7 +36,10 @@ class DevTradingSeeder extends Seeder
     public const BROKER = 'Dev History Brokerage';
 
     /** Closes that look right for each symbol, for a Positions page with no fetch yet. */
-    private const PRICES = ['2800.HK' => '26.8000', '0700.HK' => '545.0000', '0005.HK' => '96.5000'];
+    private const PRICES = ['2800.HK' => '26.8000', '0700.HK' => '545.0000', '0005.HK' => '96.5000', '9988.HK' => '118.0000'];
+
+    /** Bought at this multiple of its latest close, so it shows a loss whatever Yahoo says. */
+    private const LOSS_MARKUP = '1.45';
 
     public function run(): void
     {
@@ -95,7 +100,16 @@ class DevTradingSeeder extends Seeder
         $rows[] = [4, 22, 'dividend', 'Dividend 2800.HK', ['symbol' => '2800.HK'], '410.00'];
         $rows[] = [3, 11, 'dividend', 'Dividend 0005.HK', ['symbol' => '0005.HK'], '360.00'];
         $rows[] = [2, 16, 'sell', 'Tencent, half', ['symbol' => '0700.HK', 'quantity' => '100', 'unit_price' => '521.60', 'fees' => '70']];
+        $rows[] = [8, 12, 'buy', 'Alibaba', ['symbol' => '9988.HK', 'quantity' => '500', 'unit_price' => $this->lossPrice('9988.HK'), 'fees' => '55']];
 
         return $this->inDateOrder($rows);
+    }
+
+    /** A buy price above the symbol's latest close, fetched or seeded. */
+    private function lossPrice(string $symbol): string
+    {
+        $close = Price::where('symbol', $symbol)->orderByDesc('date')->value('close') ?? self::PRICES[$symbol];
+
+        return (string) BigDecimal::of($close)->multipliedBy(self::LOSS_MARKUP)->toScale(2, RoundingMode::HalfUp);
     }
 }

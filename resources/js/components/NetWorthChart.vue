@@ -1,0 +1,391 @@
+<template>
+  <div>
+    <div class="row items-center q-gutter-md text-caption text-grey-8 q-mb-sm">
+      <div v-for="series in legend" :key="series.key" class="row items-center no-wrap">
+        <span
+          :class="series.area ? 'cash-flow-chart__swatch' : 'cash-flow-chart__line'"
+          :style="{ background: series.colour }"
+        />{{ series.label }}
+      </div>
+      <div v-for="band in bands" :key="band.label" class="row items-center no-wrap">
+        <span
+          class="cash-flow-chart__swatch"
+          :style="{ background: band.colour, opacity: 0.35 }"
+        />{{ band.label }}
+      </div>
+    </div>
+
+    <div class="relative-position">
+      <svg :viewBox="`0 0 ${width} ${height}`" class="full-width" role="img" :aria-label="label">
+        <g v-for="tick in ticks" :key="tick">
+          <line
+            :x1="left"
+            :x2="width - right"
+            :y1="y(tick)"
+            :y2="y(tick)"
+            :stroke="tick === 0 ? colours.baseline : colours.grid"
+            stroke-width="1"
+          />
+          <text
+            :x="left - 8"
+            :y="y(tick)"
+            text-anchor="end"
+            dominant-baseline="middle"
+            class="cash-flow-chart__tick"
+          >
+            {{ compact(tick) }}
+          </text>
+        </g>
+
+        <line
+          v-if="hovered !== null"
+          :x1="x(hovered)"
+          :x2="x(hovered)"
+          :y1="top"
+          :y2="bottom"
+          :stroke="colours.baseline"
+          stroke-dasharray="3 3"
+        />
+
+        <!-- Fills first, so the lines and dots sit on top of them. -->
+        <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
+        <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
+        <path
+          v-for="(piece, i) in losses"
+          :key="`loss-${i}`"
+          :d="piece"
+          :fill="colours.cost"
+          fill-opacity="0.22"
+        />
+
+        <polyline
+          v-for="series in lines"
+          :key="series.key"
+          :points="line(series.key)"
+          fill="none"
+          :stroke="series.colour"
+          :stroke-width="series.key === 'net_worth' ? 2.5 : 2"
+          :stroke-dasharray="series.dashed ? '5 4' : null"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+        />
+
+        <template v-for="(point, i) in points" :key="point.date">
+          <circle
+            :cx="x(i)"
+            :cy="y(point.net_worth)"
+            r="3"
+            :fill="colours.net_worth"
+            stroke="#ffffff"
+            stroke-width="1"
+          />
+          <text
+            v-if="labelled(i)"
+            :x="x(i)"
+            :y="height - 8"
+            text-anchor="middle"
+            class="cash-flow-chart__tick"
+          >
+            {{ point.short }}
+          </text>
+        </template>
+
+        <!-- Last, so a whole column is the hover target rather than the thin marks. -->
+        <rect
+          v-for="(point, i) in points"
+          :key="`hit-${point.date}`"
+          :x="x(i) - step / 2"
+          :y="top"
+          :width="step"
+          :height="bottom - top"
+          fill="transparent"
+          @mouseenter="hovered = i"
+          @mouseleave="hovered = null"
+        />
+      </svg>
+
+      <div v-if="hovered !== null" class="cash-flow-chart__tooltip" :style="tooltipStyle">
+        <div class="text-weight-bold q-mb-xs">{{ points[hovered].long }}</div>
+        <div v-for="row in tooltipRows" :key="row.label" class="row no-wrap items-center">
+          <span class="cash-flow-chart__swatch" :style="{ background: row.colour }" />
+          <span class="q-mr-md">{{ row.label }}</span>
+          <q-space />
+          <span class="money text-weight-medium">{{ row.value }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+const props = defineProps({
+  history: { type: Array, default: () => [] },
+  base: { type: String, default: '' },
+  months: { type: Number, default: 1 },
+})
+
+const money = useMoney()
+
+// Cash in the app's positive, stocks in its primary, cost as a dashed line in the negative
+// so the gap to the market value reads as the unrealised gain or loss.
+const colours = {
+  net_worth: '#0f172a',
+  cash: '#059669',
+  value: '#2563eb',
+  cost: '#e11d48',
+  grid: '#e2e8f0',
+  baseline: '#94a3b8',
+}
+
+const legend = [
+  { key: 'net_worth', label: 'Net worth', colour: colours.net_worth },
+  { key: 'cash', label: 'Cash', colour: colours.cash, area: true },
+  { key: 'value', label: 'Stock value', colour: colours.value, area: true },
+  { key: 'cost', label: 'Stock cost', colour: colours.cost },
+]
+
+const bands = [{ label: 'Below cost', colour: colours.cost }]
+
+const lines = [
+  { key: 'cost', colour: colours.cost, dashed: true },
+  { key: 'cash', colour: colours.cash },
+  { key: 'value', colour: colours.value },
+  { key: 'net_worth', colour: colours.net_worth },
+]
+
+const width = 960
+const height = 300
+const left = 64
+const right = 16
+const top = 12
+const bottom = height - 32
+
+const hovered = ref(null)
+
+const shortDate = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  year: '2-digit',
+  timeZone: 'UTC',
+})
+const yearDate = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'UTC' })
+const longDate = new Intl.DateTimeFormat('en', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+const asDate = day => {
+  const [year, month, date] = day.split('-').map(Number)
+
+  return new Date(Date.UTC(year, month - 1, date))
+}
+
+// Numbers only for geometry: every figure shown is formatted from the server's string.
+const points = computed(() =>
+  props.history.map(point => ({
+    ...point,
+    numbers: {
+      net_worth: Number(point.net_worth),
+      cash: Number(point.cash),
+      value: Number(point.value),
+      cost: Number(point.cost),
+    },
+    short: (props.months === 12 ? yearDate : shortDate).format(asDate(point.date)),
+    long: longDate.format(asDate(point.date)),
+  })),
+)
+
+const niceStep = raw => {
+  const magnitude = 10 ** Math.floor(Math.log10(raw))
+  const fraction = raw / magnitude
+
+  return (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * magnitude
+}
+
+const scale = computed(() => {
+  const values = points.value.flatMap(point => Object.values(point.numbers))
+  const peak = Math.max(1, ...values)
+  const tick = niceStep(peak / 4)
+
+  return {
+    tick,
+    high: Math.ceil(peak / tick) * tick,
+    low: Math.ceil(Math.max(0, -Math.min(0, ...values)) / tick) * tick,
+  }
+})
+
+const ticks = computed(() => {
+  const { tick, high, low } = scale.value
+  const list = []
+
+  // `|| 0`, or a scale with nothing below zero starts at -0 and labels it so.
+  for (let value = -low || 0; value <= high; value += tick) list.push(value)
+
+  return list
+})
+
+const y = value => {
+  const { high, low } = scale.value
+
+  return top + ((high - Number(value)) / (high + low || 1)) * (bottom - top)
+}
+
+const step = computed(() => (width - left - right) / Math.max(points.value.length - 1, 1))
+
+const x = i => (points.value.length === 1 ? (left + width - right) / 2 : left + i * step.value)
+
+// Samples per gap between two snapshots, enough for the curve to read as smooth.
+const SAMPLES = 16
+
+// A monotone cubic through every snapshot (Fritsch-Carlson): smooth like the sample, but
+// never overshooting between two points, so a line cannot bulge past a real figure.
+const curve = key => {
+  const values = points.value.map(point => point.numbers[key])
+  const n = values.length
+
+  if (n < 2) return values.map((value, i) => [x(i), value])
+
+  const slopes = values.slice(1).map((value, i) => value - values[i])
+  const tangents = values.map((_, i) => {
+    if (i === 0) return slopes[0]
+    if (i === n - 1) return slopes[n - 2]
+
+    return slopes[i - 1] * slopes[i] <= 0 ? 0 : (slopes[i - 1] + slopes[i]) / 2
+  })
+
+  for (let i = 0; i < n - 1; i++) {
+    if (slopes[i] === 0) {
+      tangents[i] = tangents[i + 1] = 0
+
+      continue
+    }
+
+    const a = tangents[i] / slopes[i]
+    const b = tangents[i + 1] / slopes[i]
+    const h = a * a + b * b
+
+    if (h > 9) {
+      tangents[i] = (3 * a * slopes[i]) / Math.sqrt(h)
+      tangents[i + 1] = (3 * b * slopes[i]) / Math.sqrt(h)
+    }
+  }
+
+  const sampled = [[x(0), values[0]]]
+
+  for (let i = 0; i < n - 1; i++) {
+    for (let k = 1; k <= SAMPLES; k++) {
+      const t = k / SAMPLES
+      const t2 = t * t
+      const t3 = t2 * t
+
+      const value =
+        (2 * t3 - 3 * t2 + 1) * values[i] +
+        (t3 - 2 * t2 + t) * tangents[i] +
+        (-2 * t3 + 3 * t2) * values[i + 1] +
+        (t3 - t2) * tangents[i + 1]
+
+      sampled.push([x(i) + t * step.value, value])
+    }
+  }
+
+  return sampled
+}
+
+const curves = computed(() =>
+  Object.fromEntries(['net_worth', 'cash', 'value', 'cost'].map(key => [key, curve(key)])),
+)
+
+const line = key => curves.value[key].map(([px, value]) => `${px},${y(value)}`).join(' ')
+
+const area = key => {
+  const sampled = curves.value[key]
+
+  if (!sampled.length) return ''
+
+  return `M${sampled[0][0]},${y(0)} L${line(key).replaceAll(' ', ' L')} L${sampled.at(-1)[0]},${y(0)} Z`
+}
+
+// Red between the market value and the cost wherever the stocks are worth less than they
+// cost; the value's own area already fills the rest blue. Built on the sampled curves, and
+// split where they cross, so the red stops exactly at the crossing.
+const losses = computed(() => {
+  const value = curves.value.value
+  const cost = curves.value.cost
+  const pieces = []
+  let run = []
+
+  const close = () => {
+    if (run.length > 1) {
+      const top = run.map(([px, v]) => `${px},${y(v)}`)
+      const bottom = [...run].reverse().map(([px, , c]) => `${px},${y(c)}`)
+
+      pieces.push(`M${[...top, ...bottom].join(' L')} Z`)
+    }
+
+    run = []
+  }
+
+  for (let i = 0; i < value.length; i++) {
+    const [px, v] = value[i]
+    const c = cost[i][1]
+
+    if (i > 0) {
+      const [qx, pv] = value[i - 1]
+      const pc = cost[i - 1][1]
+
+      // A crossing between two samples: end or start the run at the meeting point.
+      if ((pv - pc) * (v - c) < 0) {
+        const t = (pv - pc) / (pv - pc - (v - c))
+        const meet = [qx + (px - qx) * t, pv + (v - pv) * t]
+
+        run.push([meet[0], meet[1], meet[1]])
+
+        if (v >= c) close()
+      }
+    }
+
+    if (v < c) run.push([px, v, c])
+  }
+
+  close()
+
+  return pieces
+})
+
+// About twelve labels at most, so a monthly history of years stays legible.
+const labelled = i => {
+  const every = Math.max(1, Math.ceil(points.value.length / 12))
+
+  return (
+    i === points.value.length - 1 || (i % every === 0 && points.value.length - 1 - i >= every / 2)
+  )
+}
+
+const compact = value =>
+  new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+
+const label = computed(() => `Net worth, cash, stock value and stock cost, in ${props.base}`)
+
+const tooltipRows = computed(() => {
+  const point = points.value[hovered.value]
+
+  return legend.map(series => ({
+    label: series.label,
+    value: money(point[series.key]),
+    colour: series.colour,
+  }))
+})
+
+// Flipped to the left of the point past the middle, so it never runs off the card.
+const tooltipStyle = computed(() => {
+  const at = (x(hovered.value) / width) * 100
+  const flip = at > 60
+
+  return {
+    left: flip ? 'auto' : `calc(${at}% + 16px)`,
+    right: flip ? `calc(${100 - at}% + 16px)` : 'auto',
+    top: '8px',
+  }
+})
+</script>

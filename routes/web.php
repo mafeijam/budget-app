@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\NetWorthController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\RecurringTransactionController;
 use App\Http\Controllers\TransactionController;
@@ -26,6 +27,7 @@ Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveD
     ->name('accounts.due-date');
 
 Route::get('cash-flow', [CashFlowController::class, 'index'])->name('cash-flow');
+Route::get('net-worth', [NetWorthController::class, 'index'])->name('net-worth');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');

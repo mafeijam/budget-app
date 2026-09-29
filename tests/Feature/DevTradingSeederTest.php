@@ -90,6 +90,16 @@ class DevTradingSeederTest extends TestCase
         $this->assertStringStartsNotWith('-', AccountBalance::forAccounts(collect([$bank]))[$bank->id]);
     }
 
+    public function test_one_position_is_held_at_a_loss(): void
+    {
+        $this->seedBoth();
+
+        $alibaba = collect(Positions::valued($this->broker())['positions'])->firstWhere('symbol', '9988.HK');
+
+        $this->assertTrue($alibaba['open']);
+        $this->assertStringStartsWith('-', $alibaba['unrealised']);
+    }
+
     public function test_re_running_either_seeder_keeps_the_other_whole(): void
     {
         $this->seedBoth();

@@ -70,6 +70,12 @@ const menus = computed(() => {
       to: () => to('/recurring'),
     },
     {
+      label: 'Net worth',
+      active: active('net-worth'),
+      icon: 'account_balance_wallet',
+      to: () => to('/net-worth'),
+    },
+    {
       label: 'Cash flow',
       active: active('cash-flow'),
       icon: 'insights',

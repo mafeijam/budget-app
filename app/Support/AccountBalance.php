@@ -26,9 +26,10 @@ class AccountBalance
      * nothing held.
      *
      * @param  Collection<int, Account|AccountData>  $accounts
+     * @param  string|null  $onOrBefore  a day to read the balance as of, or every row
      * @return array<int, string> account id => a decimal at the amount column's scale
      */
-    public static function forAccounts(Collection $accounts): array
+    public static function forAccounts(Collection $accounts, ?string $onOrBefore = null): array
     {
         $zero = '0.0000';
 
@@ -65,9 +66,10 @@ class AccountBalance
               WHERE t.account_id IN ({$placeholders})
                 AND t.status IN ('{$counting}')
                 AND t.type IN ('".implode("', '", $types)."')
-           GROUP BY t.account_id",
+                ".($onOrBefore === null ? '' : 'AND t.date <= ?').'
+           GROUP BY t.account_id',
             // Transaction::class: the bag read is the transaction's, not the account's.
-            [Transaction::class, ...array_keys($balances)]
+            [Transaction::class, ...array_keys($balances), ...($onOrBefore === null ? [] : [$onOrBefore])]
         );
 
         foreach ($rows as $row) {

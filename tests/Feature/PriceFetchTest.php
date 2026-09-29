@@ -142,13 +142,46 @@ class PriceFetchTest extends TestCase
         $this->assertSame(0, Price::count());
     }
 
+    public function test_the_rate_of_every_other_currency_held_is_fetched_too(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->post('/transactions', [
+            'account_id' => $usd->id, 'date' => '2026-03-02', 'type' => 'deposit',
+            'description' => 'Salary', 'amount' => '100', 'ccy' => 'USD',
+        ])->assertSessionHasNoErrors();
+
+        $this->fakeChart('USDHKD=X', 'HKD', 'Europe/London', [['2026-03-06 12:00:00', 7.8123]]);
+
+        $this->artisan('prices:fetch')->assertSuccessful();
+
+        $this->assertSame('7.8123', Price::where('symbol', 'USDHKD=X')->sole()->close);
+        $this->assertSame('HKD', Price::where('symbol', 'USDHKD=X')->sole()->ccy);
+    }
+
+    public function test_history_reaches_back_to_a_sold_out_symbols_first_trade(): void
+    {
+        $this->trade('buy', '0005.HK', '10');
+        $this->trade('sell', '0005.HK', '10');
+
+        $this->fakeChart('0005.HK', 'HKD', 'Asia/Hong_Kong', [['2026-03-02 01:30:00', 60.0]]);
+
+        $this->artisan('prices:fetch --history')->assertSuccessful();
+
+        $this->assertSame('60.0000', Price::where('symbol', '0005.HK')->sole()->close);
+
+        // From the day before the first trade, rather than the last few days.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '0005.HK')
+            && (int) $request['period1'] === Carbon::parse('2026-03-01', 'Asia/Hong_Kong')->timestamp);
+    }
+
     // ---------------------------------------------------------------------
 
     /** @param  list<array{0: string, 1: float|null}>  $days  UTC time and close */
     private function fakeChart(string $symbol, string $ccy, string $timezone, array $days): void
     {
         Http::fake([
-            "query1.finance.yahoo.com/v8/finance/chart/{$symbol}*" => Http::response($this->chart($ccy, $timezone, $days)),
+            // Encoded as the service sends it, so USDHKD=X is USDHKD%3DX.
+            'query1.finance.yahoo.com/v8/finance/chart/'.rawurlencode($symbol).'*' => Http::response($this->chart($ccy, $timezone, $days)),
         ]);
     }
 
