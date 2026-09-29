@@ -158,11 +158,21 @@ const niceStep = raw => {
 
 const scale = computed(() => {
   const values = numbers.value.flatMap(n => (props.typical ? [n.known, n.typical] : [n.known]))
-  const high = Math.max(0, ...values)
-  const low = Math.min(0, ...values)
-  const tick = niceStep(Math.max(1, high - low) / 4)
+  const max = Math.max(...values)
+  const min = Math.min(...values)
 
-  return { tick, high: Math.ceil(high / tick) * tick || tick, low: Math.floor(low / tick) * tick }
+  // Fitted to the figures rather than from zero, so a balance moving within a narrow band
+  // fills the chart instead of a flat line over a block of colour. Zero joins the range only
+  // when a balance crosses it, and a flat line gets a band of its own size to sit in.
+  const pad = (max - min || Math.abs(max) || 1) * 0.15
+  const floor = min >= 0 ? Math.max(0, min - pad) : min - pad
+  const tick = niceStep(Math.max(1, max + pad - floor) / 4)
+
+  return {
+    tick,
+    high: Math.ceil((max + pad) / tick) * tick,
+    low: Math.floor(floor / tick) * tick,
+  }
 })
 
 const ticks = computed(() => {
@@ -200,11 +210,14 @@ const curves = computed(() => ({
 
 const line = key => curves.value[key].map(([px, value]) => `${px},${y(value)}`).join(' ')
 
-// Down to the zero line, so a stretch below it fills below zero.
+// Down to zero when the axis reaches it, so a stretch below zero fills below it.
 const area = computed(() => {
   if (!numbers.value.length) return ''
 
-  return `M${x(0)},${y(0)} L${line('known').replaceAll(' ', ' L')} L${x(numbers.value.length - 1)},${y(0)} Z`
+  // To zero when it is on the chart, otherwise to the axis's own floor.
+  const base = y(Math.max(scale.value.low, 0))
+
+  return `M${x(0)},${base} L${line('known').replaceAll(' ', ' L')} L${x(numbers.value.length - 1)},${base} Z`
 })
 
 const lowIndex = computed(() => {
