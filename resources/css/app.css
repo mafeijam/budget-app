@@ -359,3 +359,8 @@ body {
   min-width: 260px;
   background: var(--app-surface);
 }
+
+/* Narrower than a form: two fields and one figure do not need 800px. */
+.settle-dialog {
+  width: 600px;
+}

@@ -1,45 +1,30 @@
 <template>
   <q-dialog v-model="open" persistent>
-    <q-card flat class="card-form-dialog">
-      <q-card-section>
-        <div class="row justify-between items-center">
-          <div class="text-h6 text-grey-9 text-weight-bold">Settle statement</div>
-          <q-btn flat round color="grey-6" icon="close" @click="open = false" />
+    <q-card flat class="card-form-dialog settle-dialog">
+      <q-card-section class="row items-start no-wrap">
+        <q-icon name="credit_card" size="sm" color="grey-6" class="q-mr-sm q-mt-xs" />
+        <div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Settle {{ group.card?.name }}</div>
+          <div v-if="period" class="text-caption text-grey-7">
+            Statement due {{ formatDate(period.due_date) }} ·
+            {{ count(period.charge_count, 'charge') }}
+            <template v-if="period.payment_count">
+              · {{ count(period.payment_count, 'payment') }} already made
+            </template>
+          </div>
         </div>
+        <q-space />
+        <q-btn flat round dense color="grey-6" icon="close" @click="open = false" />
       </q-card-section>
 
-      <q-separator inset />
-
-      <q-card-section v-if="period" class="q-gutter-sm">
-        <div class="row items-center no-wrap">
-          <q-icon name="credit_card" size="md" color="grey-6" class="q-mr-md" />
-          <div>
-            <div class="text-subtitle1 text-weight-medium">{{ group.card.name }}</div>
-            <div class="text-caption text-grey-7">
-              Statement due {{ formatDate(period.due_date) }}
-            </div>
-          </div>
-          <q-space />
-          <div class="text-right">
-            <div class="text-caption text-grey-7">Owes</div>
-            <div class="text-h5 text-weight-bold text-negative">
-              {{ money(period.owed) }}
-              <span class="text-subtitle2 text-grey-7">{{ group.card.ccy }}</span>
-            </div>
-          </div>
+      <q-card-section v-if="period" class="q-pt-none">
+        <!-- The one figure: what leaves the bank. The sum behind it is one quiet line. -->
+        <div class="text-h4 text-weight-bold text-negative money">
+          {{ money(period.owed) }}
+          <span class="text-subtitle1 text-grey-7">{{ group.card.ccy }}</span>
         </div>
-
-        <div class="row q-col-gutter-sm q-mb-sm">
-          <div v-for="tile in tiles" :key="tile.label" class="col-6">
-            <div class="bg-grey-2 rounded-borders q-pa-sm">
-              <div class="text-caption text-grey-7">{{ tile.label }}</div>
-              <div class="text-body1 text-weight-medium">
-                {{ money(tile.amount) }}
-                <span class="text-caption text-grey-7">{{ group.card.ccy }}</span>
-              </div>
-              <div class="text-caption text-grey-6">{{ tile.count }}</div>
-            </div>
-          </div>
+        <div class="text-caption text-grey-7 money q-mb-lg">
+          Charges {{ money(period.charged) }} − already paid {{ money(period.paid) }}
         </div>
 
         <!-- Duplicated, not extracted: FormContractTest reads FormTransaction.vue's text. -->
@@ -48,11 +33,10 @@
             v-model="bankId"
             :options="options"
             class="col-12 col-sm-6"
-            label="Paid from"
+            label="Pay from"
             filled
             emit-value
             map-options
-            :hint="bankHint"
             :error="!!bankError"
             :error-message="bankError"
           >
@@ -66,7 +50,7 @@
           <q-input
             v-model="paidOn"
             class="col-12 col-sm-6"
-            label="Paid on"
+            label="On"
             filled
             bottom-slots
             :error="!!fieldError"
@@ -88,51 +72,60 @@
           </q-input>
         </div>
 
-        <div class="app-note row no-wrap">
-          <q-icon name="info" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
+        <div class="row no-wrap text-caption text-grey-7 q-mt-xs">
+          <q-icon name="subdirectory_arrow_right" size="xs" class="q-mr-xs" />
           <div>
-            This records a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}
             <template v-if="chosenName">
-              and a transfer of the same amount out of {{ chosenName }}.
-              <template v-if="changedBank">The card will be paid from there from now on.</template>
+              Writes a payment on {{ group.card.name }} and a withdrawal from {{ chosenName }}, both
+              dated {{ formatDate(paidOn) }}.
+              <template v-if="changedBank">The card is paid from there from now on.</template>
             </template>
-            <template v-else>, and no account has been chosen to pay it from.</template>
+            <template v-else>
+              Writes a payment on {{ group.card.name }} dated {{ formatDate(paidOn) }}. Choose the
+              account it is paid from.
+            </template>
           </div>
         </div>
 
-        <div v-if="error" class="app-note app-note--negative row no-wrap">
+        <!-- Tinted notes are for what stops or changes the settlement, not for describing it. -->
+        <div v-if="period.pending_count" class="app-note app-note--warning row no-wrap q-mt-md">
+          <q-icon name="schedule" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
+          <div>
+            {{ count(period.pending_count, 'row') }} in this statement
+            {{ period.pending_count === 1 ? 'is' : 'are' }} not yet posted, so the total is not
+            final. Post or remove {{ period.pending_count === 1 ? 'it' : 'them' }} first.
+          </div>
+        </div>
+
+        <div v-if="error" class="app-note app-note--negative row no-wrap q-mt-md">
           <q-icon name="error_outline" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
           <div>{{ error }}</div>
         </div>
       </q-card-section>
 
-      <q-separator v-if="period" inset />
+      <q-separator v-if="period" />
 
       <q-card-actions class="q-pa-md">
-        <div class="col-12">
-          <div class="row">
-            <q-space />
-            <q-btn
-              class="text-weight-bold q-mr-md"
-              color="grey-6"
-              padding="sm md"
-              flat
-              no-caps
-              label="Cancel"
-              @click="open = false"
-            />
-            <q-btn
-              class="text-weight-bold app-btn app-btn--positive"
-              padding="sm md"
-              unelevated
-              no-caps
-              :label="settling ? 'Settling' : `Settle ${money(period?.owed)}`"
-              :loading="settling"
-              :disable="!settleable"
-              @click="confirm"
-            />
-          </div>
-        </div>
+        <q-space />
+        <q-btn
+          class="text-weight-bold q-mr-sm"
+          color="grey-6"
+          padding="sm md"
+          flat
+          no-caps
+          label="Cancel"
+          @click="open = false"
+        />
+        <q-btn
+          class="text-weight-bold app-btn app-btn--positive"
+          padding="sm md"
+          unelevated
+          no-caps
+          :label="settling ? 'Settling' : `Settle ${money(period?.owed)}`"
+          :loading="settling"
+          :disable="!settleable"
+          @click="confirm"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -159,12 +152,6 @@ const chosenName = computed(() => options.value.find(o => o.value === bankId.val
 
 const changedBank = computed(() => bankId.value !== null && bankId.value !== props.bank?.id)
 
-const bankHint = computed(() =>
-  changedBank.value
-    ? 'The card will be paid from this account from now on'
-    : 'Where the money leaves when this card is paid',
-)
-
 const formatDate = useCalendarDay()
 
 const open = ref(false)
@@ -187,23 +174,6 @@ const pickDate = value => {
 const money = useMoney()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
-
-const tiles = computed(() =>
-  props.period
-    ? [
-        {
-          label: 'Charges',
-          amount: props.period.charged,
-          count: count(props.period.charge_count, 'charge'),
-        },
-        {
-          label: 'Already paid',
-          amount: props.period.paid,
-          count: count(props.period.payment_count, 'payment'),
-        },
-      ]
-    : [],
-)
 
 const settleable = computed(
   () => bankId.value !== null && !props.period?.pending_count && !settling.value,
