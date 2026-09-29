@@ -78,6 +78,7 @@ does not look like a test one:
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevCategorySeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevAccountSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTransactionSeeder
+DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevRecurringSeeder
 ```
 
 `DevTransactionSeeder` owns the transactions on the accounts it names: it deletes
