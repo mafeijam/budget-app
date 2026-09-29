@@ -293,3 +293,37 @@ body {
     opacity: 1;
   }
 }
+
+.cash-flow-chart__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+}
+
+.cash-flow-chart__line {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 6px;
+}
+
+.cash-flow-chart__tick {
+  font-size: 11px;
+  fill: var(--app-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wider than a Quasar tooltip, and positioned by the chart rather than by a target. */
+.cash-flow-chart__tooltip {
+  position: absolute;
+  min-width: 180px;
+  padding: 8px 12px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.08);
+  font-size: 12px;
+  pointer-events: none;
+}

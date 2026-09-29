@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PositionController;
@@ -24,6 +25,7 @@ Route::post('accounts/{account}/settle', [TransactionController::class, 'settle'
 Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveDueDate'])
     ->name('accounts.due-date');
 
+Route::get('cash-flow', [CashFlowController::class, 'index'])->name('cash-flow');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');

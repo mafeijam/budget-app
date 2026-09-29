@@ -70,6 +70,12 @@ const menus = computed(() => {
       to: () => to('/recurring'),
     },
     {
+      label: 'Cash flow',
+      active: active('cash-flow'),
+      icon: 'insights',
+      to: () => to('/cash-flow'),
+    },
+    {
       label: 'Positions',
       active: active('position'),
       icon: 'show_chart',
