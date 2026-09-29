@@ -77,10 +77,10 @@
           :key="`net-${month.month}`"
           :cx="centre(i)"
           :cy="y(month.net)"
-          r="4"
+          r="3"
           :fill="colours.net"
           stroke="#ffffff"
-          stroke-width="2"
+          stroke-width="1"
         />
 
         <!-- Last, so the whole band is the hover target rather than the thin marks. -->
@@ -199,10 +199,10 @@ const step = computed(() => (width - left - right) / Math.max(points.value.lengt
 const band = i => left + i * step.value
 const centre = i => band(i) + step.value / 2
 
-// Capped at 24px, square at the baseline and rounded 4px at the data end, with a 1px
+// Capped at 36px, square at the baseline and rounded 4px at the data end, with a 1px
 // surface gap either side of the zero line.
 const column = (i, value, direction) => {
-  const w = Math.min(24, step.value * 0.5)
+  const w = Math.min(36, step.value * 0.75)
   const x = centre(i) - w / 2
   const base = y(0) - direction
   const end = y(direction * value)
