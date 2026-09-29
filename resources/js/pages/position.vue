@@ -46,21 +46,23 @@
     </div>
 
     <q-card v-for="broker in brokerages" :key="broker.id" flat bordered>
-      <q-card-section class="row items-center q-gutter-sm">
+      <q-card-section class="row items-center q-gutter-sm q-pb-sm">
         <q-icon name="show_chart" size="sm" color="grey-6" />
         <div class="text-subtitle1 text-weight-medium">{{ broker.name }}</div>
         <q-badge outline color="grey-7" :label="broker.ccy" />
         <div v-if="broker.settles_into" class="text-caption text-grey-7">
           Settles into {{ broker.settles_into }}
         </div>
-        <q-space />
-        <div v-for="figure in figures(broker)" :key="figure.label" class="text-right q-ml-lg">
-          <div class="text-caption text-grey-7">{{ figure.label }}</div>
-          <div class="text-subtitle1 text-weight-bold money" :class="figure.class">
+      </q-card-section>
+
+      <div class="app-figures">
+        <div v-for="figure in figures(broker)" :key="figure.label">
+          <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
+          <div class="text-h6 text-weight-bold money" :class="figure.class">
             {{ figure.value }}
           </div>
         </div>
-      </q-card-section>
+      </div>
 
       <q-separator />
 
