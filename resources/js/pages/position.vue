@@ -249,8 +249,9 @@
             <td class="text-right money" :class="signClass(position.realised)">
               {{ money(position.realised) }}
             </td>
-            <!-- Received, on the symbol this row holds. Blank for a symbol that has not
-                 paid, and green like the other money earned: the caption keeps its grey. -->
+            <!-- Received, on the symbol this row holds. Zero rather than blank, like fees
+                 and realised beside it; the caption and the link are what a symbol that
+                 has paid has and one that has not does not. -->
             <td
               v-if="view.dividends"
               class="text-right money"
@@ -260,17 +261,15 @@
               ]"
               @click="openDividends(position)"
             >
-              <template v-if="position.dividend_count">
-                {{ money(position.dividends) }}
-                <div class="text-caption text-grey-6">
-                  {{ payments(position.dividend_count) }}
-                  <q-icon name="open_in_new" size="xs">
-                    <q-tooltip :delay="500" :offset="[0, 6]">
-                      This symbol's dividend transactions
-                    </q-tooltip>
-                  </q-icon>
-                </div>
-              </template>
+              {{ money(position.dividends) }}
+              <div v-if="position.dividend_count" class="text-caption text-grey-6">
+                {{ payments(position.dividend_count) }}
+                <q-icon name="open_in_new" size="xs">
+                  <q-tooltip :delay="500" :offset="[0, 6]">
+                    This symbol's dividend transactions
+                  </q-tooltip>
+                </q-icon>
+              </div>
             </td>
             <!-- What the line has made, over the cost still held. Blank where a holding has
                  no price: its cost is in none of the three legs, so there is no figure of
