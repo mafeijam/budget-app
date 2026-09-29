@@ -155,7 +155,7 @@
         label="Amount"
         filled
         type="number"
-        step="0.0001"
+        step="0.01"
         min="0"
         :disable="derivesAmount || locked('amount')"
         :hint="derivesAmount ? 'Derived from quantity and price' : ''"
@@ -236,7 +236,7 @@
         label="Amount in the card's currency"
         filled
         type="number"
-        step="0.0001"
+        step="0.01"
         :disable="locked('meta_data.card_amount')"
         :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
         :error="!!form.errors['meta_data.card_amount']"
@@ -358,7 +358,13 @@ const target = computed(() => {
 
   if (!editing) return null
 
-  return editing.meta_data ? editing : { ...editing, meta_data: useCloneForm(schema.meta_data) }
+  const meta = editing.meta_data ?? useCloneForm(schema.meta_data)
+
+  return {
+    ...editing,
+    amount: twoPlaces(editing.amount),
+    meta_data: { ...meta, card_amount: twoPlaces(meta.card_amount) },
+  }
 })
 
 const lock = computed(() =>
@@ -524,12 +530,17 @@ const applyTemplate = template => {
   form.defaults({
     ...schema,
     ...template.payload,
+    amount: twoPlaces(template.payload.amount),
 
     account_id: template.account_id,
     category_id: template.category_id,
 
     // Merged: a template stores only the keys it keeps, and the form binds the rest.
-    meta_data: { ...schema.meta_data, ...template.payload.meta_data },
+    meta_data: {
+      ...schema.meta_data,
+      ...template.payload.meta_data,
+      card_amount: twoPlaces(template.payload.meta_data?.card_amount ?? null),
+    },
   })
 
   form.reset()

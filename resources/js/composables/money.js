@@ -25,3 +25,13 @@ export function useMoney(places = 2) {
     return `${sign && rounded !== 0n ? '-' : ''}${grouped}.${digits.slice(-places)}`
   }
 }
+
+// For an amount input: the column's four places cut to two, but only when the two dropped
+// are zeros, so a figure that really has four (a derived trade) is never rounded away.
+export function twoPlaces(value) {
+  if (typeof value !== 'string') return value
+
+  const match = value.match(/^(-?\d+\.\d{2})(\d*)$/)
+
+  return match && /^0*$/.test(match[2]) ? match[1] : value
+}
