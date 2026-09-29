@@ -478,6 +478,26 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['due_date' => '2026-2-9']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
     }
 
+    public function test_a_filtered_list_totals_every_matching_row_not_just_the_page(): void
+    {
+        // Two charges of 120, a withdrawal of 9000 and a deposit of 30000, on pages of one.
+        $this->get('/transactions?per_page=5&filter[ccy]=HKD')->assertInertia(fn (Assert $page) => $page
+            ->where('totals', [[
+                'ccy' => 'HKD',
+                'count' => 4,
+                'in' => '30000.0000',
+                'out' => '9240.0000',
+                'net' => '20760.0000',
+                'trades' => '0.0000',
+            ]])
+        );
+    }
+
+    public function test_an_unfiltered_list_has_no_totals(): void
+    {
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page->where('totals', null));
+    }
+
     /** The descriptions listed for a query, newest day first. */
     private function assertListed(array $query, array $descriptions): void
     {

@@ -162,7 +162,12 @@ class TransactionController extends Controller
                     });
                 }),
             )
-            ->with(['meta', 'account'])
+            ->with(['meta', 'account']);
+
+        // Every filtered row, not the page: a total of ten rows would read as the filter's.
+        $totals = $r->has('filter') ? $this->totals(clone $transactions->getEloquentBuilder()) : null;
+
+        $transactions = $transactions
             ->orderBy($sort, $dir)
             // Tiebreak by id, or a row could appear on two pages or none.
             ->orderBy('id', $dir)
@@ -352,6 +357,7 @@ class TransactionController extends Controller
             'refusals',
             'editLocks',
             'directions',
+            'totals',
             'filterOptions',
             'typeOptions',
             'typeDefaults',
@@ -748,6 +754,46 @@ class TransactionController extends Controller
         return back()->with('message', $period === null
             ? 'Card settlement deleted in full: 2 transactions'
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * Money in and out per currency, signed as each row's Amount is. A brokerage row
+     * moves no balance, so trades are totalled apart rather than netted.
+     *
+     * @return list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string}>
+     */
+    private function totals(Builder $query): array
+    {
+        $rows = $query->setEagerLoads([])->with('account:id,type')->get(['id', 'account_id', 'type', 'amount', 'ccy']);
+
+        return $rows
+            ->groupBy('ccy')
+            ->sortKeys()
+            ->map(function (Collection $group, string $ccy) {
+                $in = $out = $trades = BigDecimal::zero();
+
+                foreach ($group as $row) {
+                    $sign = $row->account === null ? 0 : TransactionType::from($row->type)
+                        ->movesBalanceOn(AccountType::from($row->account->type));
+
+                    match ($sign) {
+                        1 => $in = $in->plus($row->amount),
+                        -1 => $out = $out->plus($row->amount),
+                        default => $trades = $trades->plus($row->amount),
+                    };
+                }
+
+                return [
+                    'ccy' => $ccy,
+                    'count' => $group->count(),
+                    'in' => (string) $in->toScale(4),
+                    'out' => (string) $out->toScale(4),
+                    'net' => (string) $in->minus($out)->toScale(4),
+                    'trades' => (string) $trades->toScale(4),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /** By the marker rather than the period, so a refiled charge is cleared too. */
