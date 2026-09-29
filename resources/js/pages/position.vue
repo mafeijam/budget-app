@@ -158,7 +158,7 @@
 
       <q-separator />
 
-      <q-markup-table v-if="view.rows.length" flat dense class="app-sticky-head">
+      <q-markup-table v-if="view.rows.length" flat dense>
         <thead>
           <tr class="text-grey-7">
             <th class="text-left">Symbol</th>

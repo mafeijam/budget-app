@@ -465,24 +465,6 @@ body {
   padding: 0 16px 16px;
 }
 
-/*
-  A table header pinned to the top of the window while the page scrolls under it. The
-  Positions table, which has no height limit of its own to scroll inside.
-
-  top: 0 and not the app bar's height, because the layout's `hHh` view scrolls the bar
-  away with the content, so there is never a bar sitting over the table for an offset to
-  clear. It needs a background of its own or the rows show through it, and a rule under it
-  or it does not read as pinned. z-index 2 clears the figures above it without reaching for
-  anything the app bar uses.
-*/
-.app-sticky-head thead tr th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--app-surface);
-  border-bottom: 1px solid var(--app-border);
-}
-
 /* The base-currency sum above the per-currency rows, ruled off so it reads as their total. */
 .app-figures--combined {
   margin: 0 16px 16px;
