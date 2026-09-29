@@ -49,6 +49,8 @@ Route::delete('transaction-templates/{transactionTemplate}', [TransactionControl
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');
+// Before the resource, or `run` is read as a rule's id.
+Route::post('recurring/run', [RecurringTransactionController::class, 'run'])->name('recurring.run');
 Route::resource('recurring', RecurringTransactionController::class)
     ->parameters(['recurring' => 'recurringTransaction'])
     ->except('show', 'edit');

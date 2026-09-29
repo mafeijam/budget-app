@@ -209,6 +209,16 @@ class RecurringTransactionTest extends TestCase
         $this->assertSame(1, Transaction::count());
     }
 
+    public function test_the_run_button_records_what_is_due_and_nothing_twice(): void
+    {
+        RecurringTransaction::create($this->body(['start_date' => '2026-02-15']));
+
+        $this->post('/recurring/run')->assertSessionHas('message', '2 pending transactions recorded');
+        $this->post('/recurring/run')->assertSessionHas('message', 'Nothing due to record');
+
+        $this->assertSame(2, Transaction::count());
+    }
+
     public function test_deleting_a_rule_keeps_what_it_wrote(): void
     {
         $this->post('/recurring', $this->body(['start_date' => '2026-03-01']))->assertSessionHasNoErrors();

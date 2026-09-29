@@ -12,7 +12,20 @@
             </div>
           </div>
           <q-space />
-          <div>
+          <div class="row items-center q-gutter-sm">
+            <q-btn
+              unelevated
+              no-caps
+              class="text-weight-bold app-btn"
+              icon="play_arrow"
+              label="Run now"
+              :loading="running"
+              @click="runNow"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                Record everything due through today, as the nightly run does
+              </q-tooltip>
+            </q-btn>
             <CreateBtn />
           </div>
         </div>
@@ -64,6 +77,22 @@ const props = defineProps({
 })
 
 const pagination = usePagination()
+
+const running = ref(false)
+
+const runNow = () =>
+  router.post(
+    '/recurring/run',
+    {},
+    {
+      preserveScroll: true,
+      // The button's own spinner -- see plugins/quasar.js.
+      showProgress: false,
+      onStart: () => (running.value = true),
+      onSuccess: () => notifySuccess(),
+      onFinish: () => (running.value = false),
+    },
+  )
 const formatDay = useCalendarDay()
 const formatMoney = useMoney()
 

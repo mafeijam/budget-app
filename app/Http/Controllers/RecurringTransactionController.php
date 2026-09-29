@@ -136,6 +136,18 @@ class RecurringTransactionController extends Controller
         return $this->recordAndReport($recurringTransaction, "Recurring [{$recurringTransaction->description}] updated");
     }
 
+    /** The scheduled recurring:record, now: every active rule due through today. */
+    public function run()
+    {
+        $result = RecurringPayments::recordDue(today());
+
+        $message = $result['recorded'] === 0
+            ? 'Nothing due to record'
+            : sprintf('%d pending transaction%s recorded', $result['recorded'], $result['recorded'] === 1 ? '' : 's');
+
+        return back()->with('message', implode('; ', [$message, ...$result['refusals']]));
+    }
+
     /** What it already wrote stays: those rows are history, and each is deleted on its own. */
     public function destroy(RecurringTransaction $recurringTransaction)
     {
