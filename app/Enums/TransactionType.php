@@ -20,9 +20,9 @@ enum TransactionType: string
     public function accountTypes(): array
     {
         return match ($this) {
-            self::Withdraw, self::Deposit => [AccountType::Cash],
+            self::Withdraw, self::Deposit, self::Dividend => [AccountType::Cash],
             self::Charge, self::Payment => [AccountType::Card],
-            self::Buy, self::Sell, self::Dividend => [AccountType::Security],
+            self::Buy, self::Sell => [AccountType::Security],
         };
     }
 
@@ -39,11 +39,11 @@ enum TransactionType: string
     {
         return match ($accountType) {
             AccountType::Cash => match ($this) {
-                self::Deposit => 1,
+                self::Deposit, self::Dividend => 1,
                 self::Withdraw => -1,
 
                 // Unreachable, but named rather than defaulted so a new case fails loudly.
-                self::Charge, self::Payment, self::Buy, self::Sell, self::Dividend => 0,
+                self::Charge, self::Payment, self::Buy, self::Sell => 0,
             },
 
             AccountType::Card => match ($this) {
@@ -70,19 +70,16 @@ enum TransactionType: string
         return [self::Deposit, ...array_filter(self::cases(), fn (self $type) => $type !== self::Deposit)];
     }
 
-    /** Whether recording one writes a paired row in the settlement account. */
-    public function needsCashSide(): bool
+    /** A trade, or a dividend naming the holding that paid it. */
+    public function carriesSymbol(): bool
     {
         return $this->derivesAmount() || $this === self::Dividend;
     }
 
-    /**
-     * A trade's amount is decided by the day's price, and a dividend's cash side by what
-     * is held, so neither can be written ahead from a fixed figure.
-     */
+    /** Not a trade, whose amount is the day's price, nor a dividend, which varies. */
     public function canRecur(): bool
     {
-        return ! $this->needsCashSide();
+        return ! $this->carriesSymbol();
     }
 
     /** Not a withdrawal: TradeCash and settle() write withdrawals with no category. */

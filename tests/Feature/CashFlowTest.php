@@ -91,7 +91,15 @@ class CashFlowTest extends TestCase
 
         $this->brokerRow($broker, 'buy', '2026-09-01', ['symbol' => '0700.HK', 'quantity' => '10', 'unit_price' => '400']);
         $this->brokerRow($broker, 'sell', '2026-09-02', ['symbol' => '0700.HK', 'quantity' => '4', 'unit_price' => '450']);
-        $this->brokerRow($broker, 'dividend', '2026-09-03', ['symbol' => '0700.HK'], '120');
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id,
+            'date' => '2026-09-03',
+            'type' => 'dividend',
+            'description' => 'Dividend',
+            'amount' => '120',
+            'ccy' => 'HKD',
+            'meta_data' => ['symbol' => '0700.HK', 'brokerage_account_id' => $broker->id],
+        ])->assertSessionHasNoErrors();
 
         $month = $this->month('HKD', '2026-09');
 

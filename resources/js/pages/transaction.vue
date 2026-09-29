@@ -137,6 +137,11 @@ const metaChips = row => {
       label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
       class: 'app-tint app-tint--info',
     })
+
+    // The bank's half: which statement it paid, from the card's half.
+    if (!meta.due_date && other?.kind === 'settlement' && other.due_date) {
+      plain(`Pays statement ${other.due_date}`)
+    }
   }
 
   if (meta.symbol) {
@@ -145,7 +150,11 @@ const metaChips = row => {
 
       plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
     } else {
-      plain(meta.symbol)
+      const brokerage = usePage().props.filterOptions?.accounts?.find(
+        account => account.value === meta.brokerage_account_id,
+      )
+
+      plain(brokerage ? `${meta.symbol} from ${brokerage.label}` : meta.symbol)
     }
   }
 
@@ -159,6 +168,7 @@ const metaChips = row => {
     'unit_price',
     'fees',
     'no_cash',
+    'brokerage_account_id',
   ]
 
   Object.entries(meta)

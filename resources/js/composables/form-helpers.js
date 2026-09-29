@@ -115,9 +115,7 @@ export function useDestroy(pagination) {
         title: other
           ? other.kind === 'trade'
             ? 'delete trade'
-            : other.kind === 'dividend'
-              ? 'delete dividend'
-              : 'delete card settlement'
+            : 'delete card settlement'
           : `delete ${things[meta.path] ?? 'row'}`,
         message: other
           ? other.kind === 'trade'

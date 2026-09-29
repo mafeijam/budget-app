@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Price;
+use App\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -153,19 +154,7 @@ class PositionControllerTest extends TestCase
     public function test_only_received_dividends_are_totalled(): void
     {
         foreach (['posted' => '12.5000', 'pending' => '99.0000'] as $status => $amount) {
-            $this->post('/transactions', [
-                'account_id' => $this->broker->id,
-                'date' => '2026-03-01',
-                'type' => 'dividend',
-                'description' => 'Dividend',
-                'amount' => $amount,
-                'ccy' => 'USD',
-                'status' => $status,
-                // A dividend names the holding that paid it, and writes its cash side
-                // into the settlement account -- which is why a pending one is not
-                // counted here but also has not reached the bank yet.
-                'meta_data' => ['symbol' => 'NVDA'],
-            ])->assertSessionHasNoErrors();
+            $this->dividend($this->broker, $amount, $status);
         }
 
         $this->get('/positions')->assertInertia(fn (Assert $page) => $page
@@ -173,24 +162,36 @@ class PositionControllerTest extends TestCase
         );
     }
 
-    public function test_a_dividend_reaches_the_settlement_account(): void
+    public function test_a_dividend_counts_for_the_brokerage_it_names_on_a_shared_bank(): void
+    {
+        $other = Account::create(['name' => 'Another Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $other->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->dividend($this->broker, '12.5000');
+        $this->dividend($other, '3.0000');
+
+        // One row on the bank each, and none on either brokerage.
+        $this->assertSame(2, Transaction::where('account_id', $this->bank->id)->count());
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.name', 'Another Broker')
+            ->where('brokerages.0.dividends', '3.0000')
+            ->where('brokerages.1.dividends', '12.5000')
+        );
+    }
+
+    private function dividend(Account $broker, string $amount, string $status = 'posted'): void
     {
         $this->post('/transactions', [
-            'account_id' => $this->broker->id,
+            'account_id' => $this->bank->id,
             'date' => '2026-03-01',
             'type' => 'dividend',
             'description' => 'Dividend',
-            'amount' => '12.5000',
+            'amount' => $amount,
             'ccy' => 'USD',
-            'meta_data' => ['symbol' => 'NVDA'],
+            'status' => $status,
+            'meta_data' => ['symbol' => 'NVDA', 'brokerage_account_id' => $broker->id],
         ])->assertSessionHasNoErrors();
-
-        $this->assertDatabaseHas('transactions', [
-            'account_id' => $this->bank->id,
-            'type' => 'deposit',
-            'amount' => '12.5000',
-            'description' => 'Dividend NVDA [Broker USD]',
-        ]);
     }
 
     public function test_a_closed_brokerage_shows_only_while_it_holds_shares(): void

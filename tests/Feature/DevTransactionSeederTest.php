@@ -121,9 +121,9 @@ class DevTransactionSeederTest extends TestCase
 
         $broker = Account::where('name', 'Dev Brokerage')->firstOrFail();
 
-        $dividend = Transaction::where('type', TransactionType::Dividend->value)
-            ->where('account_id', $broker->id)
-            ->firstOrFail();
+        $dividend = Transaction::where('type', TransactionType::Dividend->value)->firstOrFail();
+
+        $this->assertSame($broker->id, $dividend->meta->meta['brokerage_account_id']);
 
         $this->assertContains(
             $dividend->meta->meta['symbol'],
@@ -147,18 +147,14 @@ class DevTransactionSeederTest extends TestCase
         $this->assertSame(0, Transaction::where('account_id', $alt->id)->count());
     }
 
-    public function test_a_seeded_dividend_writes_its_cash_side_into_the_bank(): void
+    public function test_the_seeded_dividend_is_one_row_on_the_brokerages_bank(): void
     {
         $this->seed(DevTransactionSeeder::class);
 
-        $dividend = Transaction::where('type', TransactionType::Dividend->value)->firstOrFail();
+        $dividend = Transaction::with(['meta', 'account'])->where('type', TransactionType::Dividend->value)->sole();
 
-        $cash = Transaction::with('meta')->findOrFail($dividend->meta->meta['paired_transaction_id']);
-
-        // The money is in the bank, which is the whole reason a brokerage row writes one.
-        $this->assertSame('deposit', $cash->type);
-        $this->assertSame($dividend->amount, $cash->amount);
-        $this->assertSame('Dividend 0700.HK [Dev Brokerage]', $cash->description);
+        $this->assertSame('Dev Cash', $dividend->account->name);
+        $this->assertArrayNotHasKey('paired_transaction_id', $dividend->meta->meta->getArrayCopy());
     }
 
     public function test_every_type_it_writes_is_legal_on_the_account_it_sits_on(): void
@@ -315,11 +311,8 @@ class DevTransactionSeederTest extends TestCase
         // reads owed 45.2500, and both are right -- see
         // test_a_card_left_settled_reads_zero_and_one_left_owing_reads_its_charge.
         //
-        // Dev Cash carries the brokerage twice over, in both directions: the buy takes
-        // 4000.0000 out of it and the dividend pays 312.44 back in, so the -4000 and the
-        // +312.44 are the cash sides TradeCash wrote rather than rows of their own. The
-        // brokerage itself is not listed, because a securities account has no balance --
-        // that row moves nothing.
+        // Dev Cash carries the brokerage: the buy's cash side takes 4000.0000 out, and the
+        // dividend pays 312.44 in. The brokerage is not listed; it has no balance.
         $this->seed(DevTransactionSeeder::class);
 
         $expected = [
