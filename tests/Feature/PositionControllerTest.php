@@ -197,6 +197,9 @@ class PositionControllerTest extends TestCase
             ->where('brokerages.0.positions.0.quantity', '10.00000000')
             ->where('brokerages.0.positions.0.price_date', '2026-01-30')
             ->where('brokerages.0.market_value', '1050.0000')
+            // The breakdown is cut at the day looked back on, as the total already is.
+            ->where('brokerages.0.positions.0.dividends', '0.0000')
+            ->where('brokerages.0.positions.0.dividend_count', 0)
             ->where('brokerages.0.dividends', '0.0000')
         );
 
@@ -205,6 +208,8 @@ class PositionControllerTest extends TestCase
             $this->get("/positions?at={$day}")->assertInertia(fn (Assert $page) => $page
                 ->where('at', null)
                 ->where('brokerages.0.market_value', '2500.0000')
+                ->where('brokerages.0.positions.0.dividends', '12.5000')
+                ->where('brokerages.0.positions.0.dividend_count', 1)
                 ->where('brokerages.0.dividends', '12.5000')
             );
         }
@@ -239,7 +244,7 @@ class PositionControllerTest extends TestCase
         );
     }
 
-    private function dividend(Account $broker, string $amount, string $status = 'posted'): void
+    private function dividend(Account $broker, string $amount, string $status = 'posted', string $symbol = 'NVDA'): void
     {
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
@@ -249,8 +254,82 @@ class PositionControllerTest extends TestCase
             'amount' => $amount,
             'ccy' => 'USD',
             'status' => $status,
-            'meta_data' => ['symbol' => 'NVDA', 'brokerage_account_id' => $broker->id],
+            'meta_data' => ['symbol' => $symbol, 'brokerage_account_id' => $broker->id],
         ])->assertSessionHasNoErrors();
+    }
+
+    public function test_dividends_are_broken_down_by_symbol(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-06', 'AAPL', '2', '200');
+
+        $this->dividend($this->broker, '12.5000');
+        $this->dividend($this->broker, '7.5000');
+        $this->dividend($this->broker, '3.0000', 'posted', 'AAPL');
+        // A pending one has not paid, so it is in neither the row nor its total.
+        $this->dividend($this->broker, '99.0000', 'pending');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.0.symbol', 'AAPL')
+            ->where('brokerages.0.positions.0.dividends', '3.0000')
+            ->where('brokerages.0.positions.0.dividend_count', 1)
+            ->where('brokerages.0.positions.1.symbol', 'NVDA')
+            ->where('brokerages.0.positions.1.dividends', '20.0000')
+            ->where('brokerages.0.positions.1.dividend_count', 2)
+            ->where('brokerages.0.dividends', '23.0000')
+        );
+    }
+
+    public function test_a_dividend_typed_in_another_case_lands_on_its_position(): void
+    {
+        // The symbol picker takes typing, so the bag holds whatever case was used, and the
+        // table matches a row by that string. Unnormalised, this figure is in a bucket no
+        // row has and the column reads blank for a dividend the figure is counting.
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->dividend($this->broker, '12.5000', 'posted', ' nvda ');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.0.symbol', 'NVDA')
+            ->where('brokerages.0.positions.0.dividends', '12.5000')
+            ->where('brokerages.0.dividends', '12.5000')
+        );
+    }
+
+    public function test_one_symbol_at_two_brokerages_keeps_its_own_dividends(): void
+    {
+        $other = Account::create(['name' => 'Another Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $other->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', 'NVDA', '5', '120', $other);
+
+        $this->dividend($this->broker, '12.5000');
+        $this->dividend($other, '3.0000');
+
+        // Both settle into one bank, and the All view shows the symbol twice: a dividend
+        // counts for the holding that paid it, not for the ticker.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.name', 'Another Broker')
+            ->where('brokerages.0.positions.0.dividends', '3.0000')
+            ->where('brokerages.1.name', 'Broker USD')
+            ->where('brokerages.1.positions.0.dividends', '12.5000')
+        );
+    }
+
+    public function test_a_dividend_on_a_symbol_never_traded_is_in_the_total_and_in_no_row(): void
+    {
+        // A symbol typed into the picker with no buy behind it, or a buy since deleted. It
+        // is money received, so the figure carries it; inventing a position for it would
+        // put a holding on the page that was never traded.
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->dividend($this->broker, '12.5000', 'posted', '0700.HK');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions', fn ($positions) => $positions->pluck('symbol')->all() === ['NVDA'])
+            ->where('brokerages.0.positions.0.dividends', '0.0000')
+            ->where('brokerages.0.positions.0.dividend_count', 0)
+            ->where('brokerages.0.dividends', '12.5000')
+        );
     }
 
     public function test_a_closed_brokerage_shows_only_while_it_holds_shares(): void

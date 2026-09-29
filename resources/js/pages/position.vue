@@ -168,6 +168,7 @@
             <th class="text-right">Unrealised</th>
             <th class="text-right">Fees</th>
             <th class="text-right">Realised</th>
+            <th v-if="view.dividends" class="text-right">Dividends</th>
             <th class="text-right">Trades</th>
             <th class="text-right">Last trade</th>
           </tr>
@@ -243,6 +244,29 @@
             <td class="text-right text-grey-7 money">{{ money(position.fees) }}</td>
             <td class="text-right money" :class="signClass(position.realised)">
               {{ money(position.realised) }}
+            </td>
+            <!-- Received, on the symbol this row holds. Blank for a symbol that has not
+                 paid, and green like the other money earned: the caption keeps its grey. -->
+            <td
+              v-if="view.dividends"
+              class="text-right money"
+              :class="[
+                signClass(position.dividends),
+                { 'cursor-pointer': position.dividend_count },
+              ]"
+              @click="openDividends(position)"
+            >
+              <template v-if="position.dividend_count">
+                {{ money(position.dividends) }}
+                <div class="text-caption text-grey-6">
+                  {{ payments(position.dividend_count) }}
+                  <q-icon name="open_in_new" size="xs">
+                    <q-tooltip :delay="500" :offset="[0, 6]">
+                      This symbol's dividend transactions
+                    </q-tooltip>
+                  </q-icon>
+                </div>
+              </template>
             </td>
             <td class="text-right">{{ position.trades }}</td>
             <td class="text-right">{{ formatDate(position.last_trade_date) }}</td>
@@ -376,6 +400,9 @@ const view = computed(() => {
         },
       ],
       fold: false,
+      // Keyed on the total, not on the rows on screen: the column must not come and go
+      // with the sold-out toggle.
+      dividends: received(broker.value.dividends),
       rows: rowsOf(broker.value),
       traded: broker.value.positions.length > 0,
     }
@@ -419,9 +446,18 @@ const view = computed(() => {
           a.position.symbol.localeCompare(b.position.symbol) ||
           a.owner.name.localeCompare(b.owner.name),
       ),
+    dividends: props.totals.some(total => received(total.dividends)),
     traded: props.brokerages.some(b => b.positions.length > 0),
   }
 })
+
+// A figure is only worth drawing if something landed in it, and four places are always
+// carried: an amount of nothing is "0.0000".
+const received = value => /[1-9]/.test(String(value))
+
+// Quasar's $q has no pluralize(), and a cell that throws while rendering takes the row
+// with it, so the count is worded here as it is on Home.
+const payments = count => `${count} payment${count === 1 ? '' : 's'}`
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
 
@@ -463,6 +499,17 @@ const signClass = value => {
   if (String(value).startsWith('-')) return 'text-negative'
 
   return /[1-9]/.test(String(value)) ? 'text-positive' : ''
+}
+
+// The symbol filter is a substring match, so a sibling ticker can come along; the
+// transactions page shows what it found, rather than this column quietly counting it.
+const openDividends = position => {
+  // A blank cell has no pointer and no transactions behind it to open.
+  if (!position.dividend_count) return
+
+  router.visit('/transactions', {
+    data: { filter: { type: 'dividend', symbol: position.symbol } },
+  })
 }
 
 const figures = (broker, prefix = '') => [

@@ -153,10 +153,19 @@ class Positions
             ->all();
     }
 
-    /** Null without a symbol or quantity. Normalised so "nvda" and "NVDA " are one position. */
+    /**
+     * One symbol however it was typed: "nvda" and "NVDA " are the same position, and the
+     * same dividend bucket -- the Positions page matches the two by string.
+     */
+    public static function symbol(mixed $raw): string
+    {
+        return strtoupper(trim((string) $raw));
+    }
+
+    /** Null without a symbol or quantity. */
     public static function trade(int $id, string $date, string $type, array $meta): ?array
     {
-        $symbol = strtoupper(trim((string) ($meta['symbol'] ?? '')));
+        $symbol = self::symbol($meta['symbol'] ?? '');
 
         if ($symbol === '' || ($meta['quantity'] ?? null) === null) {
             return null;

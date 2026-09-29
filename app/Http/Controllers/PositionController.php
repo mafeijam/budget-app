@@ -35,19 +35,25 @@ class PositionController extends Controller
             ->get();
 
         // A pending dividend has not paid.
-        // Paid into the bank, and tagged with the brokerage whose holding paid it.
+        // Paid into the bank, and tagged with the brokerage whose holding paid it. By
+        // symbol as well, for the table to break the brokerage's total down: it matches a
+        // row by that string, so the symbol is normalised the way a trade's is.
         $dividends = Transaction::query()
             ->where('type', TransactionType::Dividend->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
             ->where('date', '<=', $at)
             ->with('meta')
             ->get(['id', 'amount'])
-            ->groupBy(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0));
+            ->groupBy(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0))
+            ->map(fn ($rows) => $rows->groupBy(
+                fn (Transaction $row) => Positions::symbol($row->meta?->meta['symbol'] ?? '')
+            ));
 
         $brokerages = $brokers
             ->map(function (Account $broker) use ($dividends, $at) {
                 $valued = Positions::valued($broker, $at);
-                $positions = $valued['positions'];
+                $received = $dividends[$broker->id] ?? collect();
+                $paying = fn (string $symbol) => $received->get($symbol, collect());
 
                 $sum = fn (iterable $values) => (string) collect($values)
                     ->reduce(fn (BigDecimal $total, $value) => $total->plus($value), BigDecimal::zero())
@@ -59,9 +65,17 @@ class PositionController extends Controller
                     'ccy' => $broker->ccy,
                     'status' => $broker->status,
                     'settles_into' => $broker->settlementAccount()?->name,
-                    'positions' => $positions,
+                    // A symbol the brokerage never traded is in this total and in no row, so
+                    // the column can read low. It is money received either way.
+                    'positions' => array_map(
+                        fn (array $position) => $position + [
+                            'dividends' => $sum($paying($position['symbol'])->pluck('amount')),
+                            'dividend_count' => $paying($position['symbol'])->count(),
+                        ],
+                        $valued['positions']
+                    ),
                     ...$valued['totals'],
-                    'dividends' => $sum(($dividends[$broker->id] ?? collect())->pluck('amount')),
+                    'dividends' => $sum($received->collapse()->pluck('amount')),
                 ];
             })
             ->filter(fn (array $b) => $b['status'] === 'active' || collect($b['positions'])->contains('open', true))
