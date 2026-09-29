@@ -283,7 +283,15 @@
                 </div>
               </template>
             </td>
-            <td class="text-right">{{ position.trades }}</td>
+            <!-- Every position here was opened by a trade, so there is always a list to open. -->
+            <td class="text-right cursor-pointer" @click="openTrades(owner, position)">
+              {{ position.trades }}
+              <q-icon name="open_in_new" size="xs" color="grey-6">
+                <q-tooltip :delay="500" :offset="[0, 6]">
+                  This symbol's buy and sell transactions
+                </q-tooltip>
+              </q-icon>
+            </td>
             <td class="text-right">{{ formatDate(position.last_trade_date) }}</td>
           </tr>
         </tbody>
@@ -526,6 +534,15 @@ const openDividends = position => {
     data: { filter: { type: 'dividend', symbol: position.symbol } },
   })
 }
+
+// The trades page's own query shape, so the filter row and its chips open already set:
+// a value it writes as one string, not a bracketed array. The brokerage is named because
+// the same ticker at two brokerages is two rows, and a symbol on its own would open the
+// other one's trades beside these.
+const openTrades = (owner, position) =>
+  router.visit('/transactions', {
+    data: { filter: { account_id: owner.id, type: 'buy,sell', symbol: position.symbol } },
+  })
 
 // A return needs the capital behind it, and there are two ways there is none: a holding
 // with no price, which has no P&L to be a return on, and a position sold out, which has
