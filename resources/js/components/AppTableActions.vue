@@ -1,6 +1,6 @@
 <template>
   <!-- A no-wrap row: two bare sibling q-btns wrap onto two lines in a narrow cell. -->
-  <div class="row items-center justify-end no-wrap">
+  <div class="row items-center justify-end no-wrap app-table-actions">
     <q-btn icon="edit" flat color="grey-7" dense class="q-mr-sm" @click="setEdit(cell.row)">
       <q-tooltip :delay="500" :offset="[0, 6]">Edit</q-tooltip>
     </q-btn>

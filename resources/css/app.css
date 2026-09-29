@@ -220,6 +220,24 @@ body {
 }
 
 /*
+  Baseline rather than middle, so a figure with a caption under it and one without read on
+  the same line. Top is not enough: Owes is set larger than the figures beside it.
+*/
+.q-table tbody td {
+  vertical-align: baseline;
+}
+
+/*
+  An icon-only button has no text, so the row took its baseline from the icon glyph and
+  set every figure beside it 7px low. A centred empty first item gives the row a text
+  baseline in the middle of the buttons instead.
+*/
+.app-table-actions::before {
+  content: '\200b';
+  align-self: center;
+}
+
+/*
   Buttons: a pale fill with the hue at full strength for the label, which is the shape
   they had before the palette was named -- indigo-1 on blue-9, green-1 on green-9 -- and
   reads lighter on a page of white cards than a solid block does. Classes rather than
