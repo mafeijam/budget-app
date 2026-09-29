@@ -9,4 +9,7 @@ use Illuminate\Routing\Controller as BaseController;
 class Controller extends BaseController
 {
     use AuthorizesRequests, ValidatesRequests;
+
+    /** AppTable.vue leaves this out of the URL, so the two must change together. */
+    protected const PER_PAGE = 10;
 }

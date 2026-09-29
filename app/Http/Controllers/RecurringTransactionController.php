@@ -35,7 +35,7 @@ class RecurringTransactionController extends Controller
         $rules = RecurringTransaction::query()
             ->orderBy($sort, $dir)
             ->orderBy('id')
-            ->paginate($r->input('per_page', 10));
+            ->paginate($r->input('per_page', self::PER_PAGE));
 
         // Before Data::collect(), which replaces the paginator's models with DTOs.
         $nextDates = $rules->getCollection()

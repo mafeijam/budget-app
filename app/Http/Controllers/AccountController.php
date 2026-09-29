@@ -28,7 +28,7 @@ class AccountController extends Controller
         $accounts = Account::query()
             ->with('meta')
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
-            ->paginate($r->input('per_page', 5));
+            ->paginate($r->input('per_page', self::PER_PAGE));
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
 

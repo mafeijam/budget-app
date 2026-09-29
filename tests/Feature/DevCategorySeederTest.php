@@ -79,8 +79,8 @@ class DevCategorySeederTest extends TestCase
     {
         $this->seed(DevCategorySeeder::class);
 
-        // per_page above the fixture count: the index pages at 5 by default and
-        // there are ten rows, so without it this measures the paginator.
+        // per_page above the fixture count: the index pages at 10 by default and
+        // there are ten rows, so one more would have this measure the paginator.
         $response = $this->get('/categories?per_page=50');
 
         $response->assertStatus(200);

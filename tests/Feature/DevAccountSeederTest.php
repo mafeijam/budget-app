@@ -180,8 +180,8 @@ class DevAccountSeederTest extends TestCase
     {
         $this->seed(DevAccountSeeder::class);
 
-        // per_page above the fixture count, because the index pages at 5 by
-        // default and there are more rows than that. Without it this asserts
+        // per_page above the fixture count, because the index pages at 10 by
+        // default and the fixtures may grow past that. Without it this asserts
         // something about the paginator rather than about the fixtures.
         $response = $this->get('/accounts?per_page=50');
 

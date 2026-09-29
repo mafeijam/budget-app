@@ -69,7 +69,8 @@ function getQuery(pagination) {
     query.dir = descending ? 'desc' : 'asc'
   }
 
-  if (rowsPerPage !== 5) {
+  // Controller::PER_PAGE, which the server applies unasked.
+  if (rowsPerPage !== 10) {
     query.per_page = rowsPerPage
   }
 

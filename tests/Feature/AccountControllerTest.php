@@ -190,17 +190,17 @@ class AccountControllerTest extends TestCase
     public function test_the_option_list_is_not_the_paginated_page_of_accounts(): void
     {
         // The picker must reach every cash account, not the handful on the
-        // current page. The account table paginates at 5 by default, so reusing
+        // current page. The account table paginates at 10 by default, so reusing
         // that result set would quietly make most banks unselectable.
-        foreach (range(1, 8) as $n) {
+        foreach (range(1, 12) as $n) {
             Account::create(['name' => "Bank $n", 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
         }
 
         $response = $this->get('/accounts');
 
-        $response->assertInertia(fn (Assert $page) => $page->has('settlementOptions', 8));
+        $response->assertInertia(fn (Assert $page) => $page->has('settlementOptions', 12));
         // ...while the table itself stays paginated.
-        $response->assertInertia(fn (Assert $page) => $page->has('data.data', 5));
+        $response->assertInertia(fn (Assert $page) => $page->has('data.data', 10));
     }
 
     public function test_index_exposes_the_picker_even_with_no_accounts(): void
