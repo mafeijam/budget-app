@@ -2,13 +2,6 @@
 
 namespace App\Enums;
 
-/**
- * The account types the UI offers in FormAccount.vue.
- *
- * This is the single source of truth for the allowed set. Typing the property
- * as AccountType makes spatie/laravel-data reject anything else automatically,
- * so the hardcoded list in the browser can no longer drift ahead of the server.
- */
 enum AccountType: string
 {
     case Cash = 'cash';
@@ -16,41 +9,22 @@ enum AccountType: string
     case Security = 'security';
 
     /**
-     * Whether a balance is a meaningful figure for this type.
-     *
-     * Cash and card are money, and this app holds every row that moves it. A
-     * securities account holds positions rather than money: what the brokerage is
-     * worth needs a price this app does not carry, and the cash side of a trade
-     * is recorded against the bank it settles through, not here. So a brokerage
-     * reports no balance rather than a total of trades, which would read as a
-     * position and be one.
+     * A brokerage holds positions, not money, and its trades' cash is recorded
+     * against the bank, so a total of its rows would be a meaningless balance.
      */
     public function hasBalance(): bool
     {
         return match ($this) {
             self::Cash, self::Card => true,
 
-            // Named rather than defaulted to, so a case added to the enum without a
-            // decision here fails loudly rather than silently reporting a balance.
+            // Named rather than defaulted, so a new case fails loudly.
             self::Security => false,
         };
     }
 
     /**
-     * The transaction type to offer first on this account type.
-     *
-     * A convenience for the form, not a rule: the server accepts anything
-     * accountTypes() permits. Cash and card each have an obvious common case, and
-     * pre-filling it saves a pick on nearly every transaction.
-     *
-     * Every account type has one, so the form has a type to show the moment an account
-     * is picked. A brokerage's is a buy: a sell and a dividend are both ordinary on one
-     * too, and a default they have to change is a field they were going to open anyway,
-     * where no type at all means opening a picker first for every trade.
-     *
-     * Here rather than in the template because the pairing of an account type with a
-     * transaction type is already this enum's business. A second copy in the browser
-     * would be free to drift from accountTypes() without anything noticing.
+     * The form's pre-filled type, not a rule: the server accepts anything
+     * accountTypes() permits.
      */
     public function defaultTransactionType(): TransactionType
     {

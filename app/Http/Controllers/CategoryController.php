@@ -49,10 +49,6 @@ class CategoryController extends Controller
     }
 
     /**
-     * Why each category in a set cannot be deleted, keyed by id, for the ones that
-     * cannot: one query for the page, and the same sentence destroy() refuses with, so
-     * the disabled button's tooltip and the refusal cannot drift.
-     *
      * @param  Collection<int, Category>  $categories
      * @return array<int, string>
      */
@@ -86,11 +82,7 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
-        // Checked here rather than left to the foreign key, which refuses this by
-        // throwing: category_id is restrictOnDelete, so deleting a category anything is
-        // filed under came back as a 500 with the row still there and nothing said
-        // about why. As in AccountController::destroy, the constraint belongs to the
-        // schema and the answer belongs in a message.
+        // Checked before the restrictOnDelete foreign key, which would throw a 500.
         $refusal = $this->deleteRefusals(collect([$category]))[$category->id] ?? null;
 
         if ($refusal !== null) {

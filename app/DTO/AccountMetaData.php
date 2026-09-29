@@ -18,35 +18,13 @@ class AccountMetaData extends Data
     public static function rules()
     {
         return [
-            // `nullable` first, and the only reason any of these work: the validator
-            // counts null as present, so without it `integer` and `between` fire on the
-            // null a blank field produces. `required_if` is implicit and runs.
-            //
-            // Both required for a card: a term is an interval and says nothing about
-            // the day the statement closes, so neither alone can place a charge. The
-            // shared 1-31 range means different things -- a day of the month, and a
-            // count of days -- and CardStatementCycle rejects a value outside it
-            // rather than clamping.
+            // `nullable` first: the validator counts null as present, so a blank field
+            // would otherwise fail `integer`. A card needs both to place a charge.
             'term_days' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
             'statement_day' => ['nullable', 'required_if:type,card', 'integer', 'between:1,31'],
 
-            // `type` and `id` are read from the root payload even though this rule sits
-            // on a nested key -- Laravel resolves a non-dotted parameter against the
-            // whole request, not the parent array. That is what lets a type-specific
-            // attribute be declared here without repeating what it depends on.
-            //
-            // required_if plus prohibited_unless say the field is present exactly when
-            // the account may have one: required for a securities account, whose trades
-            // mean nothing without a bank to settle into; merely permitted for a card,
-            // usable before the user has said where they pay it from. A cash account is
-            // prohibited, and that is the point -- the account settled *into* may not
-            // name a target.
-            //
-            // `different` is the only rule that stops a card naming itself, and
-            // Account::guardSettledFrom() cannot: it is static and takes the settler's
-            // type and currency rather than its row, because AccountData validates a
-            // payload for an account that may not exist yet. It is here rather than
-            // only in the guard because the message blames the target.
+            // `type` and `id` resolve against the root payload, not this nested array.
+            // `different` is the only check that stops a card settling from itself.
             'settlement_account_id' => [
                 'nullable',
                 'required_if:type,security',
@@ -61,9 +39,6 @@ class AccountMetaData extends Data
     public static function attributes()
     {
         return [
-            // Needed: the rules message is the only thing a user sees, and Laravel's
-            // snake->sentence casing would render these as "term days", "statement
-            // day", "settlement account id".
             'term_days' => 'payment term',
             'statement_day' => 'statement day',
             'settlement_account_id' => 'settlement account',

@@ -32,14 +32,11 @@ class AccountController extends Controller
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
 
-        // One query for the page rather than one per row. A securities account is
-        // absent from the map, which is how the column knows to leave it blank.
+        // A securities account is absent from the map, so its column stays blank.
         $balances = AccountBalance::forAccounts($accounts->getCollection());
 
-        // A brokerage has no balance -- AccountType::hasBalance() -- so its Balance cell
-        // shows what its holdings are worth instead, from the valuation the Positions
-        // page totals, with how many holdings had no price. Read by id from the models:
-        // the collection holds AccountData by now, and valued() reads an Account.
+        // Re-read as models: the collection holds AccountData by now, and valued()
+        // needs an Account.
         $marketValues = Account::query()
             ->whereIn('id', $accounts->getCollection()->pluck('id'))
             ->where('type', AccountType::Security->value)
@@ -49,17 +46,10 @@ class AccountController extends Controller
             ])
             ->all();
 
-        // Why each account on this page cannot be deleted, so the button says so rather
-        // than asking for a confirmation the server then turns down.
         $refusals = $this->deleteRefusals($accounts->getCollection());
 
-        // Cash accounts only, and not the paginated set above, which would strand
-        // banks off page one. On the model rather than here, because the settle dialog
-        // offers the same list and two copies would drift.
         $settlementOptions = Account::settlementOptions();
 
-        // Derived, not hardcoded in FormAccount.vue, which would drift *behind* the
-        // enum. Enum order, so the likeliest currencies lead.
         $currencyOptions = collect(Currency::cases())
             ->map(fn (Currency $currency) => [
                 'label' => $currency->label(),
@@ -67,7 +57,6 @@ class AccountController extends Controller
             ])
             ->values();
 
-        // Plain values, not {label, value} pairs: neither enum has a display name.
         $typeOptions = array_column(AccountType::cases(), 'value');
 
         $statusOptions = array_column(AccountStatus::cases(), 'value');
@@ -113,8 +102,7 @@ class AccountController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // Roll back but do not discard: every failure would otherwise look alike
-            // from the outside. See AccountErrorReportingTest.
+            // Otherwise every failure looks alike behind the flash.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -145,7 +133,6 @@ class AccountController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
 
-            // See store() above: report() logs the cause, the flash is unchanged.
             report($e);
 
             return back()->with('message', 'error db...');
@@ -155,19 +142,8 @@ class AccountController extends Controller
     }
 
     /**
-     * Why each account in a set cannot be deleted, keyed by id, for the ones that cannot.
-     *
-     * One method for destroy() and for the index, which sends these so the delete
-     * button can be disabled and say why before the user is asked to confirm -- the
-     * same sentence in both places, so the tooltip and the refusal cannot drift. Each
-     * refusal names the way out, since a refusal without one is a dead end.
-     *
-     * Two queries for any number of accounts, not two per row: the index asks this
-     * for a whole page.
-     *
-     * Models or DTOs alike, and so no type on the rows below: the index passes the
-     * paginator's collection after Data::collect() has replaced its models with
-     * AccountData, and only id and name are read.
+     * Shared with destroy() so the button's tooltip and the refusal cannot drift.
+     * Rows may be DTOs: the index calls this after Data::collect().
      *
      * @param  Collection<int, Account|AccountData>  $accounts
      * @return array<int, string>
@@ -176,17 +152,14 @@ class AccountController extends Controller
     {
         $ids = $accounts->pluck('id')->all();
 
-        // The foreign key would refuse this, but only now the table has rows. Checked
-        // first: an account with two faults should not report only one.
         $transactions = Transaction::query()
             ->whereIn('account_id', $ids)
             ->selectRaw('account_id, COUNT(*) AS n')
             ->groupBy('account_id')
             ->pluck('n', 'account_id');
 
-        // The foreign key's referential check, done here because a JSON value carries
-        // no constraint. Keyed by the target as a string, because the stored value may
-        // be a number or the string a select emits, and the two must match alike.
+        // A JSON value has no foreign key. Compared as strings: the stored id may be a
+        // number or the string a select emits.
         $settlers = Account::query()
             ->with('meta')
             ->get()

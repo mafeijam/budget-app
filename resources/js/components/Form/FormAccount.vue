@@ -67,11 +67,6 @@
         />
       </template>
 
-      <!--
-        Card as well as securities, because the rule allows it on both: a brokerage
-        settles trades into a bank, a card is paid from one. Offering it for securities
-        alone would leave a card with no way to record where it is paid from.
-      -->
       <template v-if="['security', 'card'].includes(form.type)">
         <q-select
           v-model="form.meta_data.settlement_account_id"
@@ -103,13 +98,7 @@ const { schema, form } = useFormEmpty()
 const { target, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
-// Every list from the page props, never hardcoded here: the controller derives each from
-// the enum that decides it, so a dropdown cannot offer a value AccountData would reject
-// nor fall short of one it accepts. `?? []` rather than a literal fallback, so a missing
-// prop shows an empty dropdown rather than a stale hardcoded set.
-//
-// settlementOptions is read from the props rather than the table's rows because the
-// table paginates -- a securities account could not settle into a bank off page one.
+// settlementOptions comes from props because the table paginates.
 const settlementOptions = computed(() => usePage().props.settlementOptions ?? [])
 
 const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
@@ -122,15 +111,9 @@ const title = computed(() => {
   return target.value ? 'Edit account' : 'Create new account'
 })
 
-// Named for what the link means to each type. A computed rather than an inline
-// ternary on form.type, which FormContractTest parses with a fixed set of syntaxes --
-// and a template it cannot read is one whose visibility conditions it then cannot
-// check, so anything conditional belongs here.
+// A computed, not an inline ternary, which FormContractTest cannot parse.
 const settlementLabel = computed(() => (form.type === 'card' ? 'Paid from' : 'Settles into'))
 
-// Why this picker exists, which differs by account type: a brokerage has to have a
-// bank or its trades mean nothing, while a card works without one and simply cannot
-// be settled until it names a bank.
 const settlementHint = computed(() => {
   if (form.type === 'card') {
     return form.meta_data.settlement_account_id
@@ -143,14 +126,7 @@ const settlementHint = computed(() => {
 
 useWatchTarget(target, schema, form)
 
-// The two account types that may carry a settlement link, mirroring AccountMetaData's
-// `prohibited_unless:type,security,card`. The form cannot read a validation rule, so
-// this is a copy that can go stale -- visibly, since a field shown for a cash account
-// is one the save then refuses.
-//
-// Not cleared on the way in: an account that may not have held a link has nothing stale
-// to drop, and clearing unconditionally would wipe it off an account toggled away and
-// back.
+// Mirrors AccountMetaData's `prohibited_unless:type,security,card`.
 const maySettle = type => ['security', 'card'].includes(type)
 
 watch(

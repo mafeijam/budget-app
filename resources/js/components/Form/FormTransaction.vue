@@ -1,10 +1,7 @@
 <template>
   <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
     <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
-      <!--
-        Wrapped, because the gutter pads the column and a banner coloured to its edges
-        would sit offset from every field below it.
-      -->
+      <!-- Wrapped, or the gutter offsets the tinted banner from the fields. -->
       <div v-if="lock" class="col-12">
         <q-banner rounded dense class="app-tint app-tint--warning">
           <template #avatar>
@@ -14,38 +11,6 @@
         </q-banner>
       </div>
 
-      <!--
-        Fill the form from a template, or save what it holds as one. The two are the
-        same shortcut read in two directions, and both are here rather than on a page of
-        their own because a template is only ever made by filling this form in and only
-        ever used by filling it in again.
-
-        A picker rather than a menu of templates, because a person reaching for one
-        knows roughly what it is called and typing three letters beats scrolling to it.
-
-        One row per template with the account captioned, rather than a heading per
-        account. QSelect filters option by option, and a heading is an option, so the two
-        cannot both work: searching would either keep a heading whose templates were all
-        filtered out, or drop the heading and leave its templates under nothing. The
-        caption is what the heading was saying, and it survives a search.
-
-        Update replaces the values of the template the form was filled from, so a
-        template that has drifted is corrected rather than deleted and retyped. It is
-        offered only once the form has moved off what it was filled with, since
-        overwriting a template with the values it already holds is a way of losing one
-        for nothing.
-
-        Tinted buttons rather than flat grey ones, which is the Add button's treatment
-        and the reason for it: grey text is the colour a disabled control is painted in,
-        so a grey label reads as unavailable however available it is, and these were
-        grey at two shades before that was tried. The fill is a 13% wash of the brand
-        colour, so they are quieter than the Submit button without borrowing its
-        disabled grey to say so.
-
-        app-btn and not app-btn--positive, though Update writes: Submit is the dialog's
-        action and these are not, and a second button in the positive tint beside it
-        would leave the eye with two answers to "what does this dialog commit".
-      -->
       <q-select
         v-model="templateChoice"
         :options="shownTemplates"
@@ -127,21 +92,6 @@
         :error="!!form.errors.account_id"
         :error-message="form.errors.account_id"
       >
-        <!--
-          Accounts under a heading per kind, and the kind beside each name in the
-          transactions table's tint. The type decides what the picker then offers -- a
-          brokerage has buy, sell and dividend where a bank has withdraw, deposit -- so a
-          list of names alone makes the user pick an account and find out after.
-
-          The currency captioned under the name, since it is the other half of what the
-          account is and the form fixes it for everything but a charge on a card. The
-          closed field keeps the bare name -- see below.
-
-          Only in the list: the closed field keeps the bare name, since a badge in the
-          value would read as a filter and there is nothing to filter. `?? {}` as the
-          column uses, so an account type the map does not know shows plainly instead of
-          failing the render.
-        -->
         <template #option="scope">
           <q-item
             v-if="scope.opt.heading"
@@ -174,20 +124,7 @@
         :error-message="form.errors.type"
       />
 
-      <!--
-        A Quasar calendar rather than a native control, which renders in the browser's
-        locale whatever the app's is -- the visible notation would not be the stored
-        one.
-
-        The mask belongs to the q-date and to nothing else: q-input masks through a
-        parser whose only token is #, so the same string there is nine literals and the
-        field renders "YYYY-MM-DD" and accepts no keystroke. FormContractTest pins this.
-
-        A button in the append slot holding a q-menu, not a q-popup-proxy on the input,
-        which anchors the calendar to the field's own box and leaves it open after a day
-        is chosen, so the next click lands on the calendar instead of on what was under
-        it.
-      -->
+      <!-- The mask goes on q-date only; on q-input it breaks. FormContractTest pins this. -->
       <q-input
         v-model="form.date"
         class="col-4"
@@ -244,28 +181,7 @@
         :error-message="form.errors.ccy"
       />
 
-      <!--
-        The one field here a person types rather than picks, so it is the one that offers
-        what they have typed before: every description used in the last two years, newest
-        first, filtered as they type. Everything else on this form is chosen from a list
-        the enum builds, which is why this is the only field with hints.
-
-        A select rather than an input with an autocomplete attribute, because the browser's
-        own list cannot be ordered, cannot be filtered against what the server holds, and
-        cannot be styled to match the rest of this form -- and because the value must stay
-        free text. add-unique is what makes that true: it lets a description never seen
-        before through, which is the common case, and does not constrain the field to what
-        is in the list. Without it this would be a picker that could only record the past.
-
-        The filter is the handler below rather than anything QSelect does on its own:
-        filter() returns immediately unless a @filter listener is attached, so without
-        one the list does not narrow at all and the field looks like it is filtering
-        while showing every description there is.
-
-        The clear button is off because a person correcting a description wants to type
-        over it, and because emptying the field is not a state this form can save -- the
-        server requires a description.
-      -->
+      <!-- Without @filter, QSelect never narrows the list. -->
       <q-select
         v-model="form.description"
         :options="shownDescriptions"
@@ -313,13 +229,6 @@
         :error-message="form.errors.status"
       />
 
-      <!--
-        Shown only when it applies rather than always, because it is refused when it
-        does not: CardStatement prefers it over `amount`, so a stale figure left from a
-        currency the user has since changed back would replace the real amount in what
-        the card owes. Clearing it below is the same rule, kept on this side so the
-        field disappears rather than sitting there refusing the save.
-      -->
       <q-input
         v-if="needsCardAmount"
         v-model="form.meta_data.card_amount"
@@ -334,28 +243,8 @@
         :error-message="form.errors['meta_data.card_amount']"
       />
 
-      <!--
-        A symbol for anything that writes a cash side: a buy, a sell and a dividend.
-
-        The two conditions are separate rather than one nested template because the symbol
-        and the flag follow the wider rule while quantity, price and fees follow the
-        narrower one -- a dividend is not a quantity of anything.
-      -->
       <template v-if="writesCashSide">
-        <!--
-          A picker for a dividend and a plain field for a trade, which is one question
-          answered two ways: a dividend is money received on something already held, so
-          the holdings are the answers, while a buy is for something not held yet and
-          there is no list to choose from.
-
-          Still a field and not a closed list, so a symbol the brokerage does not hold can
-          be typed -- a position sold after the ex-date still pays out, and the server
-          refuses no symbol it does not recognise. The list is a head start, not a gate.
-
-          No fill-input, which a use-input field looks like it wants: QSelect draws the
-          selected value in a span of its own beside the input, so fill-input puts a
-          second copy of the label in the input next to the first.
-        -->
+        <!-- No fill-input: QSelect already draws the value, so it would show twice. -->
         <q-select
           v-if="isDividend"
           v-model="form.meta_data.symbol"
@@ -391,18 +280,7 @@
           :error-message="form.errors['meta_data.symbol']"
         />
 
-        <!--
-          The money side is skipped rather than the row, so a dividend or a position
-          back-dated from before the settlement account was tracked can be recorded
-          without inventing a bank row for money that moved outside these accounts. The
-          shares still count.
-
-          false-value, because Quasar's off value is false and ticking then unticking
-          would store one -- a second spelling of "not skipped" beside an absent key, and
-          the one value TradeCash's own check has to be careful of, since Laravel reads
-          filled(false) as true. Naming null as the off value leaves absence the only way
-          to say no.
-        -->
+        <!-- false-value null, or unticking stores false. -->
         <q-toggle
           v-model="form.meta_data.no_cash"
           :false-value="null"
@@ -452,8 +330,7 @@
 </template>
 
 <script setup>
-// Imported, not auto-registered: both are handed to Dialog.create() as objects rather
-// than used as tags in this template, which is the case the resolver cannot see.
+// Imported: handed to Dialog.create(), which auto-registration cannot see.
 import { Dialog } from 'quasar'
 import DeleteDialog from '../DeleteDialog.vue'
 
@@ -463,10 +340,8 @@ const props = defineProps({
 
 const pagination = inject('pagination')
 
-// The transactions table's tints, repeated here rather than shared. Sharing them wants a
-// composable, and an auto-imported const of this shape has twice come through the build
-// as a name with no value behind it -- the option list and the table's column then both
-// read undefined, silently, which is a worse way to lose a colour than repeating it.
+// Repeated rather than shared: an auto-imported const of this shape has come through the
+// build undefined, silently dropping the colours.
 const accountTypeBadges = {
   cash: { color: 'teal-1', textColor: 'teal-9' },
   card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
@@ -477,13 +352,7 @@ const { schema, form } = useFormEmpty()
 const { target: row, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
-// A row with no bag hydrates meta_data to null, and the template binds
-// form.meta_data.card_amount, so a null bag throws during render and takes the whole
-// form with it -- no fields at all, not just that one. Which rows those are: every
-// cash expense, income, dividend and payment, so most of what anyone would edit.
-//
-// Derived rather than mutated, so useWatchTarget, which watches this, is handed
-// something it can bind.
+// A row with no bag hydrates meta_data to null, which throws on render and blanks the form.
 const target = computed(() => {
   const editing = row.value
 
@@ -492,19 +361,11 @@ const target = computed(() => {
   return editing.meta_data ? editing : { ...editing, meta_data: useCloneForm(schema.meta_data) }
 })
 
-// Why this row's figures are fixed, from the same TransactionData::figureLock() the
-// save is refused by, so the form says it before the user tries rather than after.
-// The fields are disabled as well as named; the refusal still stands behind them for a
-// stale page.
 const lock = computed(() =>
   target.value ? (usePage().props.editLocks?.[target.value.id] ?? null) : null,
 )
 const locked = field => lock.value?.fields.includes(field) ?? false
 
-// Every option list arrives from the controller, derived from the enum that decides
-// it, so the pickers cannot offer a value TransactionData would reject nor fall
-// short of one it accepts. `?? []` rather than a literal fallback, so a missing prop
-// shows an empty dropdown instead of a stale hardcoded set.
 const typeOptionsByAccountType = computed(() => usePage().props.typeOptions ?? {})
 const typeDefaults = computed(() => usePage().props.typeDefaults ?? {})
 const statusOptions = computed(() => usePage().props.statusOptions ?? [])
@@ -512,21 +373,11 @@ const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
 
 const accountOptions = computed(() => props.options?.accounts ?? [])
 
-// Descriptions used recently, to suggest as the field is typed into. `?? []` as on every
-// other list here, so a page that has not sent them shows an empty suggestion list
-// rather than a stale hardcoded one.
 const descriptionHints = computed(() => usePage().props.descriptionHints ?? [])
 
-// The account types in the order the enum declares them, which is the order the groups
-// are read in -- cash, card, security. Taken from the keys rather than sorted by name or
-// by how many accounts each holds, so adding an account cannot move a heading.
 const accountTypeOrder = computed(() => Object.keys(typeOptionsByAccountType.value))
 
-// One flat list with the headings in it, because QSelect has no grouped options: it
-// draws one item per entry in the array it is given, so a heading has to be an entry.
-// Disabled, since that is what stops QSelect handing a value back for it, and carrying a
-// value of its own so a heading can never be read as the account that is selected. A type
-// with no accounts contributes no heading at all rather than an empty one.
+// QSelect has no grouped options, so each heading is a disabled entry.
 const accountOptionList = computed(() =>
   accountTypeOrder.value.flatMap(type => {
     const accounts = accountOptions.value.filter(account => account.type === type)
@@ -539,32 +390,14 @@ const accountOptionList = computed(() =>
 
 const categoryOptions = computed(() => props.options?.categories ?? [])
 
-// The types the server derives an amount for: a trade, and only a trade. A client's
-// amount for one of those is prohibited, so the field is disabled and cleared rather than
-// hidden -- the shape of the form should not jump between types.
-//
-// From the prop rather than `['buy', 'sell']` written here, which was a fourth copy of
-// TransactionType::derivesAmount() and the one most likely to drift from it.
 const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).includes(form.type))
 
-// Whether this row writes a row in a brokerage's settlement account: a trade, or a
-// dividend. Symbol and the cash-side flag are offered for those and nothing else.
 const writesCashSide = computed(() => (usePage().props.cashSideTypes ?? []).includes(form.type))
 
-// The one row with a cash side and no quantity. Its symbol is picked from the holdings.
 const isDividend = computed(() => writesCashSide.value && !derivesAmount.value)
 
-// Only what the chosen account accepts, because the pairing is what makes a type legal
-// at all. Empty until an account is picked, since there is nothing to narrow by.
 const chosenAccount = computed(() => accountOptions.value.find(a => a.value === form.account_id))
 
-// What the chosen brokerage holds, as picker options. Keyed by account id on the wire
-// because that is what the form has, and narrowed here so switching accounts offers that
-// account's own holdings rather than every symbol the app has seen.
-//
-// `?? []` as on every other list, so a page that has not sent the prop shows an empty
-// picker rather than one of some other brokerage's holdings -- and an empty list is still
-// a field a symbol can be typed into.
 const heldSymbols = computed(() => usePage().props.heldSymbols ?? {})
 
 const symbolOptions = computed(() =>
@@ -574,16 +407,8 @@ const symbolOptions = computed(() =>
   })),
 )
 
-// The calendar's menu, so a chosen day can close it. A template ref rather than
-// $refs, which does not exist under <script setup>.
 const dateMenu = ref(null)
 
-// Writing the value and closing the menu together, so they cannot come apart: a
-// v-model on the calendar plus a separate listener leaves the menu open whenever only
-// one of the two runs.
-//
-// update:model-value, not input -- Quasar 2's q-date emits only that, and a listener
-// for an event that is never emitted is not an error, it is a menu that never closes.
 const pickDate = value => {
   form.date = typeof value === 'string' ? value : ''
   dateMenu.value?.hide()
@@ -595,11 +420,6 @@ const typeOptions = computed(() => {
   return type ? (typeOptionsByAccountType.value[type] ?? []) : []
 })
 
-// A charge in a currency the card is not needs what it came to in the card's own --
-// the figure the statement will total and the settlement will pay. The account's ccy
-// rides along on its option, which is why the options carry more than a label: without
-// it the browser could not know whether the field applies and would have to show it
-// always.
 const needsCardAmount = computed(
   () =>
     form.type === 'charge' &&
@@ -611,25 +431,12 @@ const title = computed(() => {
   return target.value ? 'Edit transaction' : 'Create new transaction'
 })
 
-// ---------------------------------------------------------------------
-// Templates
-// ---------------------------------------------------------------------
-
 const templates = computed(() => usePage().props.templates ?? [])
 
-// One entry per template, with the name as the label. The label is also what the picker
-// filters on, which is why the account is a caption on the row rather than a heading
-// above it: a heading would be an option too, and would then be filtered as one.
 const templateOptions = computed(() =>
   templates.value.map(template => ({ ...template, label: template.name })),
 )
 
-/**
- * What the three @filter handlers narrow: descriptions used recently, saved templates,
- * and what the chosen brokerage holds. The narrowing itself is filterInto's, and
- * `matches` is the only thing the three disagree about -- a description is a string, a
- * template and a symbol an option object carrying its label.
- */
 const shownDescriptions = ref([])
 
 const shownTemplates = ref([])
@@ -648,20 +455,13 @@ const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =
   option.label.toLowerCase().includes(needle),
 )
 
-// What the description says because a symbol was picked, and nothing else.
-//
-// The claim is the whole of it: a second pick may rewrite the first, but a description
-// the user typed is never overwritten. An auto-filled field that clobbers what someone
-// typed is worse than no fill at all -- the typed text is the one they meant, and they
-// would only find it gone after saving.
+// Only the description a symbol pick wrote; one the user typed is never overwritten.
 const claimedDescription = ref(null)
 
 const describeDividend = symbol => {
   const text = `Dividend ${symbol}`
 
   if (form.description && form.description !== claimedDescription.value) {
-    // Theirs, so it stands and the claim goes: a later pick starts again from empty
-    // rather than recognising a sentence it never wrote.
     claimedDescription.value = null
 
     return
@@ -674,37 +474,20 @@ const describeDividend = symbol => {
 watch(
   () => form.meta_data.symbol,
   symbol => {
-    // A dividend only. A trade's description is its own -- "Buy 100 NVDA" -- and the
-    // quantity and price that make it are about to be typed beside it.
     if (isDividend.value && symbol) describeDividend(symbol)
   },
 )
 
-// What the picker currently holds, emptied the moment a template is applied. It is a
-// choice rather than a selection on purpose: a picker left showing "Rent" would still
-// say "Rent" the next time this form is opened for a different transaction, having
-// filled nothing.
 const templateChoice = ref(null)
 
-// Which template the form was filled from, so Update knows what it is overwriting.
-//
-// Not cleared by a Reset, which does not go through anything this component owns, and
-// deliberately so: the button that depends on it is disabled while the form is clean,
-// which is exactly what a Reset leaves it, so a stale name here can never overwrite a
-// template with an emptied form.
+// Not cleared by a Reset: Update is disabled on a clean form, so it cannot misfire.
 const loadedTemplate = ref(null)
 
-// The two things a template cannot be without, and both of which the server requires:
-// an account to file the transaction against, and a type, which is what decides what
-// the form can then offer. Checked here because the dialog this opens settles the moment
-// OK is pressed -- the request runs after it is gone -- so a refusal would land in an
-// error bag belonging to a dialog that is no longer there, on a field this form has no
-// control for. Better that the button is not offered than that the answer is invisible.
+// Checked here because the prompt closes before the request runs, so a server refusal
+// would land nowhere visible.
 const canTemplate = computed(() => Boolean(form.account_id && form.type))
 
-// The form as a template body. The whole form, not the keys a template keeps: that list
-// belongs to the server, which is the only place a server-owned key can be left out by
-// name, and restating it here would be a second copy free to drift from the first.
+// The whole form: which keys a template keeps is the server's list, not a copy here.
 const templateBody = name => ({
   name,
   account_id: form.account_id,
@@ -712,9 +495,6 @@ const templateBody = name => ({
   payload: { ...form },
 })
 
-// preserveState and preserveScroll together, and both matter: without the first Inertia
-// re-renders the page and closes the dialog the user is still filling in, and without
-// the second the list scrolls out from under them.
 const saveTemplate = () => {
   Dialog.create({
     title: 'Save as template',
@@ -724,9 +504,6 @@ const saveTemplate = () => {
       type: 'text',
       label: 'Name',
       outlined: true,
-      // The column is 255 and the server appends a number to a name in use, trimming to
-      // fit -- so the cap is what stops the dialog offering a name the request will
-      // refuse, on a prompt that has already closed by then.
       maxlength: 255,
       isValid: value => value.trim() !== '',
     },
@@ -741,27 +518,17 @@ const saveTemplate = () => {
   })
 }
 
-// Replace the loaded template with what the form holds now.
-//
-// defaults() and reset() rather than assigning field by field, which is how useWatchTarget
-// fills the form from a row: one call, and the form's idea of its clean state moves with
-// the values rather than leaving the button enabled for values that were never touched.
 const applyTemplate = template => {
-  // The picker also emits this when it is emptied, and a null has no template in it.
   if (!template) return
 
   form.defaults({
     ...schema,
     ...template.payload,
 
-    // From the columns rather than the payload, which does not carry them -- one copy of
-    // each, and no way for the two to disagree about which account a template is for.
     account_id: template.account_id,
     category_id: template.category_id,
 
-    // Merged, not replaced. A template stores only the bag keys it keeps, so replacing
-    // would leave due_date, paired_transaction_id and settled_by undefined rather than
-    // null, and the form binds all three.
+    // Merged: a template stores only the keys it keeps, and the form binds the rest.
     meta_data: { ...schema.meta_data, ...template.payload.meta_data },
   })
 
@@ -791,8 +558,6 @@ const destroyTemplate = template => {
       message: `[${template.name}] will be deleted permanently.`,
     },
   }).onOk(() => {
-    // Cleared first: the button it hides names a template that is about to stop existing,
-    // and the picker still holds it until the request comes back with it gone.
     if (loadedTemplate.value?.id === template.id) loadedTemplate.value = null
 
     router.delete(`/transaction-templates/${template.id}`, {
@@ -803,93 +568,30 @@ const destroyTemplate = template => {
   })
 }
 
-// One currency per account, bar a charge on a card.
-//
-// A lock and nothing else: the value is not forced. Forcing it would rewrite the
-// currency of a row that already disagrees -- opening a USD expense on an HKD bank to
-// fix its description would silently save it as HKD, which is a worse thing to do than
-// leave the row as the user recorded it. So a stored row keeps its own currency and is
-// simply not editable here, and only a row being created has its currency set from the
-// account, in the watcher below.
-//
-// A charge on a card is the one row that may differ, because it carries what it came to
-// in the card's own currency: card_amount, which needsCardAmount asks for further down
-// and CardStatement sums in place of the amount.
-//
-// The server still accepts any currency on any row, and deliberately -- see
-// test_a_transaction_may_differ_from_its_account_currency. So this narrows what the form
-// offers and nothing more. The rule that is enforced is guardTradeCurrency's, which
-// refuses a trade in another currency because a brokerage settles into one bank.
+// Locked, not forced, so editing a stored row never silently rewrites its currency.
 const currencyLocked = computed(
   () => !(chosenAccount.value?.type === 'card' && form.type === 'charge'),
 )
 
-// Picking an account is the form filling in what that account implies -- its currency and
-// the type it most likely wants -- and only while creating, where there is nothing to
-// lose. Two resets are needed because the rules prohibit rather than ignore: changing the
-// account invalidates the type, since the new account may not accept it, and changing the
-// type invalidates the bag keys the new type prohibits.
 watch(
   () => form.account_id,
   accountId => {
-    // Guarded on isDirty, not on the previous value. useWatchTarget seeds the form
-    // from a whole table row when editing, and form.reset() moves account_id off
-    // null the same way a user's pick does -- so a guard on `previousId` cannot tell
-    // the two apart, and both plausible versions of one get something wrong:
-    //
-    //   `if (!previousId) return`  skips the first account a user picks, which is
-    //                             every first pick, leaving the currency unset
-    //   no guard at all            fires while seeding, clearing the type the row
-    //                             came with and failing the save over a field the
-    //                             user never touched
-    //
-    // Dirty separates them exactly: a form that has just been reset is clean, and
-    // anything the user changes makes it dirty before the watcher runs.
+    // isDirty, not previousId: seeding an edit also moves account_id off null.
     if (!form.isDirty || !accountId) return
 
-    // Creating only, and the distinction is the whole of it. A new transaction has no
-    // values to lose, and picking the type and the currency here saves two choices the
-    // user did not mean to make. An edit is the opposite: the row's type, its trade
-    // figures and its currency are all real, and correcting a transaction filed against
-    // the wrong account would silently cost the symbol, the quantity and the price.
-    //
-    // What the new account will not take is the server's to say, by name, on a field
-    // that is on screen: "A charge cannot be recorded on a cash account" leaves the user
-    // choosing, where a substituted 'expense' and an empty bag leaves them with a
-    // transaction they never wrote.
+    // Creating only: on an edit, resetting would silently cost the row's type and figures.
     if (target.value) return
 
     const account = chosenAccount.value
 
-    // The type the new account most likely wants, from the enum that decides it, which
-    // names one for every account type. The `?? null` is for a page that has not sent
-    // the prop, as on every other list this form reads.
     form.type = account?.type ? (typeDefaults.value[account.type] ?? null) : null
 
-    // The account's own currency, as a default and not a lock: right almost every time,
-    // and where it is not -- a charge on a card in another currency -- the field stays
-    // editable, and needsCardAmount asks what it came to in the card's own currency.
-    //
-    // Not conditioned on currencyLocked, which is false for a charge on a card and a
-    // card's default type is a charge. Editable is not the same as right to start empty,
-    // and a card is the account whose currency the form would leave unset, on a field
-    // the server requires.
+    // Not gated on currencyLocked, or a card's default charge starts with no currency.
     if (account?.ccy) form.ccy = account.ccy
   },
 )
 
-// Only the bag keys the new type actually refuses, rather than the whole bag.
-//
-// A trade's amount is derived from the figures in the bag, so a client-supplied one is
-// prohibited -- that is a refusal. And no_cash is a claim about a trade's cash side,
-// which nothing else has, so it is refused off a trade -- and refused on a *hidden*
-// field, since the toggle only renders for a buy and a sell.
-//
-// Everything else in the bag is stale rather than refused: symbol, quantity, unit price
-// and fees on a non-trade are all nullable and not prohibited, and a due date or a
-// card-currency figure left behind is read by nothing. Wiping the lot is how a symbol
-// typed for a buy is lost by changing the type, and it is why changing the account did
-// too -- which the watcher above now declines to do while editing.
+// Clears only what the new type refuses, so a typed symbol survives a type change.
 watch(
   () => form.type,
   (type, previousType) => {
@@ -897,18 +599,11 @@ watch(
 
     if (derivesAmount.value) form.amount = null
 
-    // Off anything with no cash side, which a dividend has too.
     if (!writesCashSide.value) form.meta_data.no_cash = null
   },
 )
 
-// The figure is only meaningful while the two currencies differ, and the DTO refuses
-// it otherwise rather than ignoring it -- so a leftover value from before the user
-// changed the currency would fail the save over a field that is no longer on screen.
-//
-// Two watchers rather than one: needsCardAmount depends on both the account and the
-// currency, so changing the currency back to the card's own fires it only once both
-// have settled, and the field may already be hidden by then.
+// The DTO refuses a card_amount it does not need, even once the field is hidden.
 watch(needsCardAmount, applies => {
   if (!applies) form.meta_data.card_amount = null
 })
