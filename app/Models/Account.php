@@ -15,21 +15,8 @@ class Account extends Model
     use HasMeta;
 
     /**
-     * The attributes a client may set: the table's columns less `id` and the two
-     * timestamps, which are the database's to assign.
-     *
-     * `id` is here by omission rather than by accident. AccountData carries one,
-     * because the edit form round-trips the whole table row, and the controller
-     * hands that DTO straight to create() and update() -- so the id in the payload
-     * is a number the client chose. Listing the rest and not this is what stops a
-     * row being renumbered onto a free id, which would move it with nothing
-     * recording that it had. Timestamps are set by Eloquent on save, which assigns
-     * them through setAttribute rather than through fill(), so leaving them out
-     * costs nothing and keeps a client from backdating created_at.
-     *
-     * MassAssignmentTest asserts this list against the accounts table, so a column
-     * added to the migration and forgotten here fails rather than silently
-     * ceasing to be written.
+     * Not `id`: AccountData round-trips it and the controller passes the DTO straight to
+     * create(), so a client could renumber a row. MassAssignmentTest pins this to the table.
      *
      * @var array<int, string>
      */
@@ -41,15 +28,8 @@ class Account extends Model
     ];
 
     /**
-     * The cash account a securities account settles through.
-     *
-     * A method rather than a belongsTo, because the link lives in the meta bag
-     * and Eloquent cannot join on a JSON path. That is the cost of keeping it
-     * there: one query per call, no eager loading, and any "which brokerages
-     * settle into this bank" question has to reach into the JSON. What it buys
-     * is that a new account type needing a pointer to another account needs no
-     * migration. Null for a cash or card account, which AccountMetaData prohibits
-     * the field for rather than merely leaving it unset.
+     * The bank a brokerage settles into or a card is paid from. A method, not a
+     * belongsTo, since the link is in the meta bag: one query per call, no eager loading.
      */
     public function settlementAccount(): ?self
     {
@@ -59,20 +39,8 @@ class Account extends Model
     }
 
     /**
-     * Reject a settlement target that is not a cash account in the settler's currency.
-     *
-     * Shared with TransactionController::settle(), which now lets the user name the
-     * account a card is paid from, and with AccountData. A second copy of the rule
-     * would let the settle dialog offer a target the account form refuses, or the other
-     * way round, and neither would say so.
-     *
-     * Static and taking the settler's type and currency rather than the account itself,
-     * because AccountData is a DTO and has no row: it validates a payload for an account
-     * that may not exist yet. What a row adds -- refusing a target that is the account
-     * itself -- is checked by `different:id` in the form's rules and by settle()'s own
-     * refusal, which each have the id to hand.
-     *
-     * A method rather than a rule because only the database knows what the target is.
+     * One rule for AccountData and settle(), so the dialog and the form cannot disagree.
+     * Takes the type and currency rather than an account, which AccountData may not have yet.
      *
      * @param  array{0: string, 1: string}  $wording  the subject and the verb, which
      *                                                differ per account type
@@ -94,14 +62,8 @@ class Account extends Model
             ]);
         }
 
-        // Checked after the type: a wrong-type target is the more fundamental mismatch,
-        // and naming its currency would imply converting could fix it.
-        //
-        // Refuse rather than convert. A *charge* in another currency is fine because
-        // the user states it in the card's own currency (card_amount, which
-        // CardStatement sums). A *bank* in another currency has no such figure and
-        // nothing here converts between them, so the pairing is left unusable rather
-        // than quietly miscounted.
+        // Refused rather than converted: unlike a charge, a bank has no stated figure
+        // in the other currency, so the pairing would be miscounted.
         if ($target->ccy !== $ccy) {
             throw ValidationException::withMessages([
                 'settlement_account_id' => sprintf(
@@ -116,11 +78,7 @@ class Account extends Model
     }
 
     /**
-     * How this account is named, and the verb, in a refusal about its settlement
-     * target. Spelled out because a brokerage settles into a bank while a card is paid
-     * from one, and each message puts the verb in a different slot. A cash account is
-     * named rather than defaulted to, so a new case fails loudly rather than quietly
-     * refusing every target.
+     * A brokerage settles into a bank; a card is paid from one.
      *
      * @return array{0: string, 1: string}
      */
@@ -134,22 +92,9 @@ class Account extends Model
     }
 
     /**
-     * Every account that may be a settlement target, for a picker.
-     *
-     * Cash only, and including inactive: a closed bank still holds history, and leaving
-     * it out would give a card with no other option nowhere to be paid from.
-     *
-     * $ccy narrows to one currency, for a picker that already knows whose target it is
-     * choosing: the settle dialog knows which card it is settling, and
-     * guardSettledFrom() refuses a bank in another currency, so offering one there is a
-     * choice the user makes and is then told was never available.
-     *
-     * Optional rather than required because the account form is the other caller and
-     * cannot narrow: it offers targets for whichever account is open, and the currency
-     * of that one changes while the form is being filled in, so a list narrowed on the
-     * way out would be narrowed to whatever the account held when the page loaded. That
-     * picker keeps the whole list and the currency in each label, so an incompatible
-     * bank is recognisable there rather than silently missing.
+     * Inactive banks included: a card with no other bank would have nowhere to be paid
+     * from. $ccy narrows the settle dialog's list; the account form cannot narrow, as its
+     * currency changes while it is filled in, so its labels carry the currency instead.
      *
      * @return Collection<int, array{label: string, value: int}>
      */

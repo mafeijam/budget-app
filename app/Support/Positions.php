@@ -10,28 +10,13 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 
 /**
- * What a brokerage holds, worked out from its trades rather than stored.
+ * A brokerage's holdings, replayed from its trades rather than stored.
  *
- * A position typed in beside the trades would be a second record of the same facts,
- * and the two would disagree the first time a trade was corrected -- the reason card
- * statements are derived too. So there is nothing to keep in step: the trades are the
- * record and this reads them.
+ * In date order, then id: a sell dated before the buy it sells from is a shortfall even
+ * though the totals balance.
  *
- * Replayed in date order, then id, because a position is a running figure: a sell
- * is checked against what was held on its own day, and a sell dated before the buy it
- * sells from is an error even though the totals would balance.
- *
- * Average cost, on price alone: a buy adds its quantity and quantity x price; a sell
- * removes its quantity and that share of the cost, and the difference between its
- * value and the cost it removes is realised. Fees are kept apart, as their own
- * running total across buys and sells, so the cost and the average read as the price
- * paid and the fees as what dealing cost -- the cash side of a trade still carries
- * them, since that is the money that moved. Every figure is a BigDecimal --
- * quantity has eight places and money four, and a float has no decimal places at all.
- *
- * Every status counts, pending included. A pending trade is one that has not settled
- * in cash, but the shares were bought or sold on the trade date; holding them is not
- * the balance question TransactionStatus::countsTowardBalance() answers.
+ * Average cost on price alone, with fees as their own total; the cash side still carries
+ * them. Pending trades count: the shares moved on the trade date, whatever the cash did.
  */
 class Positions
 {
@@ -39,8 +24,7 @@ class Positions
     private const WORKING_SCALE = 12;
 
     /**
-     * Every symbol a brokerage has traded, keyed by symbol, including ones since sold
-     * out -- a closed position still carries what it realised.
+     * Sold-out symbols included: a closed position still carries what it realised.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -50,17 +34,9 @@ class Positions
     }
 
     /**
-     * A brokerage's positions valued at the latest price, with its totals.
-     *
-     * One valuation for the Positions page and the accounts list, so the market value
-     * a brokerage shows as its balance is the figure its page adds up to.
-     *
-     * The price is today's close or the latest before it, and only one in the
-     * brokerage's own currency: a price in another would value the holding as though
-     * the two were the same money. Totals are over the positions that have a price;
-     * `unpriced` counts the open ones that do not, so a total missing a holding does not
-     * read as the whole. Each is in the brokerage's currency, which is every trade's in
-     * it, so nothing is summed across two.
+     * One valuation for the Positions page and the accounts list. A price in another
+     * currency is ignored rather than summed as though it were the same money, and
+     * `unpriced` counts the open positions missing from the totals.
      *
      * @return array{positions: list<array<string, mixed>>, totals: array<string, mixed>}
      */
@@ -113,16 +89,8 @@ class Positions
     }
 
     /**
-     * The symbols a brokerage holds right now, for the dividend picker.
-     *
-     * Open positions only, which is the question rather than a filter: a dividend is money
-     * received on a holding already owned, so a symbol sold out is not one of the answers.
-     * A closed one is not refused either -- a position sold after the ex-date still pays
-     * out, and the server does not check this list -- so the field stays a free choice with
-     * a list under it, rather than a picker that cannot record what happened.
-     *
-     * In replay()'s order, which is alphabetical: ksort() puts the book in that order
-     * before it becomes positions, and a list of ticker symbols is read by shape.
+     * Open positions, for the dividend picker. A suggestion, not a rule: a position sold
+     * after the ex-date still pays out.
      *
      * @return list<string>
      */
@@ -148,10 +116,7 @@ class Positions
     }
 
     /**
-     * A brokerage's buys and sells as plain rows, in the order they are replayed.
-     *
-     * Plain rows rather than models, so a caller asking "what if" can add, drop or
-     * replace one before replaying -- which is how a sell is checked before it is saved.
+     * Plain rows, so a sell can be checked by adding it before replaying.
      *
      * @return list<array{id: int, date: string, type: string, symbol: string, quantity: string, unit_price: string, fees: string}>
      */
@@ -173,11 +138,7 @@ class Positions
             ->all();
     }
 
-    /**
-     * One trade as a row, or null for one with no symbol or quantity to count.
-     *
-     * The symbol trimmed and upper-cased, so "nvda" and "NVDA " are one position.
-     */
+    /** Null without a symbol or quantity. Normalised so "nvda" and "NVDA " are one position. */
     public static function trade(int $id, string $date, string $type, array $meta): ?array
     {
         $symbol = strtoupper(trim((string) ($meta['symbol'] ?? '')));
@@ -239,8 +200,7 @@ class Positions
                         'selling' => self::quantity($quantity),
                     ];
 
-                    // Nothing held to take a cost from: the replay goes on, so the
-                    // positions still read, but the refusal is what the caller acts on.
+                    // Replayed on, so the positions still read; the caller acts on the shortfall.
                     $removed = $position['cost'];
                 } else {
                     $removed = $position['cost']

@@ -6,12 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Price extends Model
 {
-    /**
-     * The table's columns less `id` and the timestamps, as on every model here -- see
-     * Account::$fillable, and MassAssignmentTest for what keeps the two in step.
-     *
-     * @var array<int, string>
-     */
+    /** @var array<int, string> */
     protected $fillable = ['symbol', 'date', 'close', 'ccy', 'source'];
 
     /**
