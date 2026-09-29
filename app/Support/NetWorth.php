@@ -50,14 +50,78 @@ class NetWorth
      */
     public function on(string $day): array
     {
+        return $this->onMany([$day])[0];
+    }
+
+    /**
+     * The same figures for a run of days, in a fixed number of queries rather than one per
+     * day.
+     *
+     * Two things made this worth batching. The balance aggregate reads every transaction,
+     * and a monthly chart against a ten-year ledger is 123 period ends, so 123 aggregates
+     * were most of a five-second page. And the closes for the holdings were fetched once
+     * per period end, which is the same rows read over and over.
+     *
+     * Both are now read once -- balances grouped by month and accumulated up to each day,
+     * closes keyed by symbol and date -- and everything after that is arithmetic in PHP.
+     * The per-day shape is unchanged, because this is the one implementation: on() is
+     * onMany() for a single day, so the two cannot drift.
+     *
+     * @param  list<string>  $days
+     * @return list<array<string, mixed>> one snapshot per day, in the order asked
+     */
+    public function onMany(array $days): array
+    {
+        if ($days === []) {
+            return [];
+        }
+
         $zero = BigDecimal::zero();
+
+        $accounts = $this->accounts->whereIn('type', [
+            AccountType::Cash->value, AccountType::Card->value,
+        ]);
+
+        // The readers behind this walk days in order, so they are given them in order.
+        // A caller asking for today, last month and the first month together is asking
+        // out of order, and gets its answers back in the order it asked.
+        $inOrder = array_values(array_unique($days));
+        sort($inOrder);
+
+        $balanceSeries = AccountBalance::seriesFor($accounts, $inOrder);
+
+        // Every holding any day might be holding, so the closes are read once for the lot.
+        $symbols = [];
+
+        foreach ($this->accounts->where('type', AccountType::Security->value) as $broker) {
+            foreach (array_keys(Positions::fromTrades($this->trades[$broker->id])) as $symbol) {
+                $symbols[$symbol] = true;
+            }
+        }
+
+        $closeSeries = Price::seriesFor(array_keys($symbols), (string) max($inOrder));
+
+        $snapshots = [];
+
+        foreach ($inOrder as $day) {
+            $snapshots[$day] = $this->snapshot($day, $balanceSeries[$day] ?? [], $closeSeries, $zero);
+        }
+
+        return array_map(fn (string $day) => $snapshots[$day], $days);
+    }
+
+    /**
+     * One day's figures, from balances and closes already read.
+     *
+     * @param  array<int, string>  $balances
+     * @param  array<string, array<string, array{close: string, ccy: string}>>  $closeSeries
+     * @return array<string, mixed>
+     */
+    private function snapshot(string $day, array $balances, array $closeSeries, BigDecimal $zero): array
+    {
         $totals = ['cash' => $zero, 'cards' => $zero, 'value' => $zero, 'cost' => $zero];
         $unpriced = 0;
         $unconverted = [];
-
-        $balances = AccountBalance::forAccounts($this->accounts->whereIn('type', [
-            AccountType::Cash->value, AccountType::Card->value,
-        ]), $day);
 
         $cash = [];
 
@@ -102,21 +166,20 @@ class NetWorth
                 continue;
             }
 
-            $prices = Price::latestFor(array_keys($held), $day);
             $value = $cost = $zero;
 
             foreach ($held as $symbol => $position) {
-                $price = $prices[$symbol] ?? null;
+                $price = $this->closeOn($symbol, $day, $closeSeries);
                 $cost = $cost->plus($position['cost']);
 
-                if ($price === null || $price->ccy !== $broker->ccy) {
+                if ($price === null || $price['ccy'] !== $broker->ccy) {
                     $unpriced++;
                     $value = $value->plus($position['cost']);
 
                     continue;
                 }
 
-                $value = $value->plus(BigDecimal::of($position['quantity'])->multipliedBy($price->close));
+                $value = $value->plus(BigDecimal::of($position['quantity'])->multipliedBy($price['close']));
             }
 
             $value = $value->toScale(4, RoundingMode::HalfUp);
@@ -161,6 +224,31 @@ class NetWorth
             'unpriced' => $unpriced,
             'unconverted' => array_keys($unconverted),
         ];
+    }
+
+    /**
+     * A symbol's last close on or before a day, or null when it has none yet.
+     *
+     * Ascending by date, so the last row that is not after the day is the one wanted --
+     * which is what a weekend or a holiday needs, and what latestFor() was doing a
+     * query at a time.
+     *
+     * @param  array<string, array<string, array{close: string, ccy: string}>>  $closeSeries
+     * @return array{close: string, ccy: string}|null
+     */
+    private function closeOn(string $symbol, string $day, array $closeSeries): ?array
+    {
+        $found = null;
+
+        foreach ($closeSeries[$symbol] ?? [] as $date => $close) {
+            if ($date > $day) {
+                break;
+            }
+
+            $found = $close;
+        }
+
+        return $found;
     }
 
     /**
@@ -211,10 +299,12 @@ class NetWorth
 
         $points[] = $todayString;
 
-        return array_map(function (string $day) {
-            $snapshot = $this->on($day);
-
-            return array_intersect_key($snapshot, array_flip(['date', 'net_worth', 'cash', 'cards', 'value', 'cost']));
-        }, $points);
+        return array_map(
+            fn (array $snapshot) => array_intersect_key(
+                $snapshot,
+                array_flip(['date', 'net_worth', 'cash', 'cards', 'value', 'cost'])
+            ),
+            $this->onMany($points)
+        );
     }
 }

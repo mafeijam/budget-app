@@ -27,13 +27,26 @@ class NetWorthController extends Controller
         ) && $at < $today->toDateString() ? Carbon::parse($at) : $today;
 
         $first = Transaction::query()->min('date');
-        $current = $worth->on($at->toDateString());
+
+        // The three snapshots this page shows, asked for together. One at a time each
+        // meant three full balance aggregates over every transaction, and the page already
+        // knew it wanted all three.
+        $days = [$at->toDateString(), $at->copy()->startOfMonth()->subDay()->toDateString()];
+
+        if ($first !== null) {
+            $days[] = Carbon::parse($first)->endOfMonth()->toDateString();
+        }
+
+        $days = array_values(array_unique($days));
+        $shown = array_combine($days, $worth->onMany($days));
+
+        $current = $shown[$at->toDateString()];
 
         // The comparisons the net worth card makes: last month's end, and the first month's.
         $against = fn (string $day) => [
             'date' => $day,
-            'net_worth' => $then = $worth->on($day)['net_worth'],
-            'change' => (string) BigDecimal::of($current['net_worth'])->minus($then),
+            'net_worth' => $shown[$day]['net_worth'],
+            'change' => (string) BigDecimal::of($current['net_worth'])->minus($shown[$day]['net_worth']),
         ];
 
         return inertia('net-worth', [

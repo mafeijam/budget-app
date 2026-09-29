@@ -47,17 +47,20 @@ class HomeController extends Controller
             ->values();
 
         // Inactive cards included: closing a card does not pay it.
-        $statements = Account::query()
+        $cards = Account::query()
             ->where('type', AccountType::Card->value)
             ->with('meta')
             ->orderBy('name')
-            ->get()
-            ->flatMap(fn (Account $card) => CardStatement::forAccount($card)
-                ->reject->isSettled()
-                ->map(fn (CardStatement $statement) => [
-                    'card' => ['id' => $card->id, 'name' => $card->name, 'ccy' => $card->ccy],
-                    ...$statement->toArray(),
-                ]))
+            ->get();
+
+        $periods = CardStatement::forAccounts($cards);
+
+        $statements = $cards->flatMap(fn (Account $card) => ($periods[$card->id] ?? collect())
+            ->reject->isSettled()
+            ->map(fn (CardStatement $statement) => [
+                'card' => ['id' => $card->id, 'name' => $card->name, 'ccy' => $card->ccy],
+                ...$statement->toArray(),
+            ]))
             ->sortBy('due_date')
             ->values();
 
@@ -80,9 +83,11 @@ class HomeController extends Controller
         $day = $today->toDateString();
 
         // The net worth page's figures for today, and its change since last month's end.
+        // Asked for together, since the page wants both and each was a full aggregate.
         $worth = new NetWorth;
-        $now = $worth->on($day);
-        $then = $worth->on($today->copy()->startOfMonth()->subDay()->toDateString());
+        $lastMonthEnd = $today->copy()->startOfMonth()->subDay()->toDateString();
+
+        [$now, $then] = $worth->onMany([$day, $lastMonthEnd]);
 
         $forecast = Forecast::for($today, 3);
         $until = $today->copy()->addDays(self::UPCOMING_DAYS)->toDateString();
@@ -106,8 +111,7 @@ class HomeController extends Controller
                 'change' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth']),
                 'owed' => (string) $owed->toScale(4),
             ],
-            // Month ends and today's, for each headline card's line. Bounded here rather
-            // than sliced afterwards, since every point is a full recomputation.
+            // Month ends and today's, for each headline card's line.
             'trend' => $worth->history(1, $today, self::TREND_MONTHS),
             'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
             'month' => $forecast->monthOutlook()[0] ?? null,

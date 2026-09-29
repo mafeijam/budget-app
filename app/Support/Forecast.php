@@ -484,11 +484,12 @@ class Forecast
     private function statements(): void
     {
         $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->orderBy('name')->get();
+        $periods = CardStatement::forAccounts($cards);
 
         foreach ($cards as $card) {
             $bank = $card->settlementAccount();
 
-            foreach (CardStatement::forAccount($card) as $statement) {
+            foreach ($periods[$card->id] ?? collect() as $statement) {
                 if ($statement->dueDate > $this->end->toDateString()) {
                     continue;
                 }

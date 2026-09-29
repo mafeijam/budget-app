@@ -31,15 +31,7 @@ class AccountBalance
      */
     public static function forAccounts(Collection $accounts, ?string $onOrBefore = null): array
     {
-        $zero = '0.0000';
-
-        $balances = [];
-
-        foreach ($accounts as $account) {
-            if (self::typeOf($account)->hasBalance()) {
-                $balances[$account->id] = $zero;
-            }
-        }
+        $balances = self::balanceable($accounts);
 
         if ($balances === []) {
             return [];
@@ -77,6 +69,124 @@ class AccountBalance
         }
 
         return $balances;
+    }
+
+    /**
+     * The accounts that hold a balance, each at zero, which is the shape both readers here
+     * fill in: an account with no rows is 0.0000 rather than absent, and a brokerage is
+     * left out entirely.
+     *
+     * @param  Collection<int, Account|AccountData>  $accounts
+     * @return array<int, string>
+     */
+    private static function balanceable(Collection $accounts): array
+    {
+        $balances = [];
+
+        foreach ($accounts as $account) {
+            if (self::typeOf($account)->hasBalance()) {
+                $balances[$account->id] = '0.0000';
+            }
+        }
+
+        return $balances;
+    }
+
+    /**
+     * Every account's balance on each of a run of days, in one query for all of them.
+     *
+     * $days must be in ascending order: the accumulation walks one cursor per account
+     * forward through the months rather than re-reading them for every day.
+     *
+     * @param  Collection<int, Account|AccountData>  $accounts
+     * @param  list<string>  $days
+     * @return array<string, array<int, string>> day => account id => balance
+     */
+    public static function seriesFor(Collection $accounts, array $days): array
+    {
+        if ($days === []) {
+            return [];
+        }
+
+        $balances = self::balanceable($accounts);
+
+        if ($balances === []) {
+            return [];
+        }
+
+        $signs = self::signCases();
+        $types = array_keys($signs);
+
+        if ($types === []) {
+            return [];
+        }
+
+        $cases = implode(' ', $signs);
+        $counting = implode("', '", TransactionStatus::countingTowardBalance());
+        $placeholders = implode(', ', array_fill(0, count($balances), '?'));
+
+        $latest = (string) max($days);
+
+        // Grouped by month rather than filtered per day, because every period end this is
+        // asked about is a month end and the run of days ends at today, so a month's
+        // movements accumulated up to here answer for every day asked of it. That is one
+        // query instead of one per day: a monthly chart against a ten-year ledger is 123
+        // days, and asking the same aggregate 123 times was most of a five-second page.
+        $rows = DB::select(
+            "SELECT t.account_id,
+                    DATE_FORMAT(t.date, '%Y-%m') AS ym,
+                    SUM(CASE {$cases} ELSE 0 END) AS movement
+               FROM transactions t
+               LEFT JOIN meta m ON m.model_id = t.id AND m.model_type = ?
+              WHERE t.account_id IN ({$placeholders})
+                AND t.status IN ('{$counting}')
+                AND t.type IN ('".implode("', '", $types)."')
+                AND t.date <= ?
+           GROUP BY t.account_id, ym",
+            [Transaction::class, ...array_keys($balances), $latest]
+        );
+
+        /** @var array<string, array<string, string>> $byAccount  account id => month => movement */
+        $byAccount = [];
+
+        foreach ($rows as $row) {
+            $byAccount[(int) $row->account_id][(string) $row->ym] = (string) $row->movement;
+        }
+
+        // Walked once per account rather than once per day per account. Asking "everything
+        // up to this month" for each day in turn is a quadratic read of the same buckets --
+        // 117 days against 120 months is a hundred thousand additions -- and since the days
+        // come in order, one cursor per account answers all of them.
+        $sorted = [];
+
+        foreach ($balances as $id => $opening) {
+            $months = $byAccount[$id] ?? [];
+            ksort($months);
+
+            $sorted[$id] = ['months' => array_keys($months), 'movements' => array_values($months), 'at' => 0, 'total' => BigDecimal::of($opening)];
+        }
+
+        $series = [];
+
+        foreach ($days as $day) {
+            $month = substr($day, 0, 7);
+            $line = [];
+
+            foreach ($sorted as $id => &$account) {
+                while ($account['at'] < count($account['months']) && $account['months'][$account['at']] <= $month) {
+                    $account['total'] = $account['total']->plus($account['movements'][$account['at']]);
+                    $account['at']++;
+                }
+
+                $line[$id] = self::decimal($account['total']->toScale(4)->toString());
+            }
+
+            unset($account);
+
+            $series[$day] = $line;
+        }
+
+        return $series;
     }
 
     /**

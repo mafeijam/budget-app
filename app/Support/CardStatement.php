@@ -69,12 +69,34 @@ class CardStatement
      */
     public static function forAccount(Account $card): Collection
     {
+        return self::forAccounts(collect([$card]))[$card->id] ?? collect();
+    }
+
+    /**
+     * Every card's periods, in one query, keyed by card id.
+     *
+     * The grouping scans the meta bag rather than using an index -- MySQL cannot index a
+     * JSON path -- so it is a full pass over the table, and a page wanting seven cards
+     * was paying for it seven times over. Home reads them and so does the forecast, which
+     * is fourteen passes to answer one question twice.
+     *
+     * @param  Collection<int, Account>  $cards
+     * @return array<int, Collection<int, self>> card id => its periods, earliest first
+     */
+    public static function forAccounts(Collection $cards): array
+    {
+        if ($cards->isEmpty()) {
+            return [];
+        }
+
         // Interpolated from the enum: MySQL takes no placeholder inside a CASE.
         $counting = implode("', '", TransactionStatus::countingTowardBalance());
 
         $inCardCurrency = self::cardCurrencySql();
 
         $path = self::DUE_DATE_PATH;
+
+        $placeholders = implode(', ', array_fill(0, $cards->count(), '?'));
 
         $rows = DB::select(
             // Status inside each CASE, not in the WHERE: a hidden pending row cannot be
@@ -83,7 +105,8 @@ class CardStatement
             //
             // JSON_EXTRACT in the filter, so a present-and-null key drops out rather
             // than becoming a period with no date.
-            "SELECT JSON_UNQUOTE(JSON_EXTRACT(m.meta, {$path}))                   AS due_date,
+            "SELECT t.account_id,
+                    JSON_UNQUOTE(JSON_EXTRACT(m.meta, {$path}))                   AS due_date,
                     MIN(CASE WHEN t.type = 'charge' THEN t.date END)                 AS first_charge_date,
                     MAX(CASE WHEN t.type = 'charge' THEN t.date END)                 AS last_charge_date,
                     COUNT(CASE WHEN t.type = 'charge'  AND t.status IN ('{$counting}') THEN 1 END) AS charge_count,
@@ -93,26 +116,38 @@ class CardStatement
                     COALESCE(SUM(CASE WHEN t.type = 'payment' AND t.status IN ('{$counting}') THEN t.amount END), 0) AS paid
                FROM transactions t
                JOIN meta m ON m.model_id = t.id AND m.model_type = ?
-              WHERE t.account_id = ?
+              WHERE t.account_id IN ({$placeholders})
                 AND JSON_EXTRACT(m.meta, {$path}) IS NOT NULL
-              GROUP BY due_date
-              ORDER BY due_date",
+           GROUP BY t.account_id, due_date
+           ORDER BY due_date",
             // Transaction::class: Account::class joins nothing and returns empty, not an error.
-            [Transaction::class, $card->id]
+            [Transaction::class, ...$cards->pluck('id')->all()]
         );
+
+        // A plain array, not a Collection: these are appended to by key as the rows come
+        // back, and a Collection silently drops that.
+        $series = [];
+
+        foreach ($cards as $card) {
+            $series[$card->id] = [];
+        }
 
         // The charge dates ignore payments, which cannot widen the span, and ignore
         // status, since a pending charge is still in the period.
-        return collect($rows)->map(fn (object $row) => new self(
-            dueDate: (string) $row->due_date,
-            firstChargeDate: $row->first_charge_date,
-            lastChargeDate: $row->last_charge_date,
-            chargeCount: (int) $row->charge_count,
-            paymentCount: (int) $row->payment_count,
-            pendingCount: (int) $row->pending_count,
-            charged: self::decimal($row->charged),
-            paid: self::decimal($row->paid),
-        ));
+        foreach ($rows as $row) {
+            $series[(int) $row->account_id][] = new self(
+                dueDate: (string) $row->due_date,
+                firstChargeDate: $row->first_charge_date,
+                lastChargeDate: $row->last_charge_date,
+                chargeCount: (int) $row->charge_count,
+                paymentCount: (int) $row->payment_count,
+                pendingCount: (int) $row->pending_count,
+                charged: self::decimal($row->charged),
+                paid: self::decimal($row->paid),
+            );
+        }
+
+        return array_map(fn (array $periods) => collect($periods), $series);
     }
 
     /** Signed: clamping an overpayment at zero would report it as a clean settlement. */
