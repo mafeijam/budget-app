@@ -75,16 +75,6 @@
           stroke-linejoin="round"
           stroke-linecap="round"
         />
-        <circle
-          v-for="(month, i) in points"
-          :key="`net-${month.month}`"
-          :cx="centre(i)"
-          :cy="y(month.net)"
-          r="3"
-          :fill="colours.net"
-          stroke="#ffffff"
-          stroke-width="1"
-        />
 
         <!-- Last, so the whole band is the hover target rather than the thin marks. -->
         <rect
