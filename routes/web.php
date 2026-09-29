@@ -51,6 +51,10 @@ Route::resource('categories', CategoryController::class)->except('show', 'edit')
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');
 // Before the resource, or `run` is read as a rule's id.
 Route::post('recurring/run', [RecurringTransactionController::class, 'run'])->name('recurring.run');
+// Before the resource for the same reason: `find` would be read as a rule's id.
+Route::post('recurring/find', [RecurringTransactionController::class, 'find'])->name('recurring.find');
+Route::post('recurring/find/apply', [RecurringTransactionController::class, 'applyFindings'])
+    ->name('recurring.find.apply');
 Route::resource('recurring', RecurringTransactionController::class)
     ->parameters(['recurring' => 'recurringTransaction'])
     ->except('show', 'edit');

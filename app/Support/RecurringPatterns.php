@@ -301,9 +301,15 @@ class RecurringPatterns
     }
 
     /**
-     * Every gap between consecutive dates has to be in the same band, so one skipped month
-     * rejects the pattern rather than being skipped over. A thirteenth month's spike is a
-     * figure and not a gap, and leaves the cadence intact.
+     * The band that most of the gaps between consecutive payments fall in.
+     *
+     * A majority, not all of them. One missed month does not make a subscription something
+     * else: HMVOD has nineteen gaps, eighteen of them a month and one of sixty-two days, and
+     * reading that single gap as the end of the pattern left a rule that fires on the 1st
+     * sitting beside a subscription that pays on the 13th -- with nothing to act on and
+     * nothing to say about it. A pattern has to be mostly regular to be one, and two thirds
+     * of its gaps in one band is that. A gap in neither band is not counted either way, so
+     * something paid every two months is not a rule and never becomes one.
      *
      * @param  list<string>  $dates  oldest first
      */
@@ -315,20 +321,27 @@ class RecurringPatterns
             return null;
         }
 
+        $gaps = [];
+
         foreach (array_slice($dates, 1) as $i => $date) {
             // Absolute, and asked for: Carbon 3's diffInDays is signed, so a gap read the
             // other way round is negative and every pattern looks like no pattern at all --
             // which reads as a verdict on the rules rather than as no answer.
-            $gap = Carbon::parse($date)->diffInDays(Carbon::parse($dates[$i]), true);
-
-            if (self::within($gap, self::MONTHLY_GAP)) {
-                continue;
-            }
-
-            return self::within($gap, self::YEARLY_GAP) ? 'yearly' : null;
+            $gaps[] = Carbon::parse($date)->diffInDays(Carbon::parse($dates[$i]), true);
         }
 
-        return 'monthly';
+        $count = function (array $band) use ($gaps): int {
+            return count(array_filter($gaps, fn (int|float $gap) => self::within($gap, $band)));
+        };
+
+        $monthly = $count(self::MONTHLY_GAP);
+        $yearly = $count(self::YEARLY_GAP);
+
+        if ($monthly >= $yearly && $monthly * 3 >= count($gaps) * 2) {
+            return 'monthly';
+        }
+
+        return $yearly * 3 >= count($gaps) * 2 ? 'yearly' : null;
     }
 
     /**
@@ -340,10 +353,13 @@ class RecurringPatterns
      * widens the range to five days, which reads as a schedule that wanders when it does not.
      *
      * Where every payment lands on a day of its own -- two yearly payments a fortnight apart,
-     * say -- no day is more common than another, and the newest is taken, because it is the
-     * only evidence there is about when this happens now. Two days that are each paid often
-     * are a different thing entirely: that is a schedule with two days in it, and neither
-     * can be chosen.
+     * say -- the newest is taken, because it is the only evidence there is about when this
+     * happens now.
+     *
+     * And where two days are paid equally often, the first of them: a schedule that is on
+     * the 27th or the 28th is a schedule, and the earlier of the two is the one a rule can be
+     * written from without having to be wrong on half the months. Both are still reported,
+     * so the report can say the day it settled on and the day it could have been.
      *
      * @param  list<string>  $dates  oldest first
      * @return array{day: ?int, tied: list<int>, spread: int}
@@ -366,9 +382,7 @@ class RecurringPatterns
         $singles = $common === array_keys($counts) && count($counts) === count($dates);
 
         return [
-            'day' => $singles
-                ? (int) Carbon::parse($dates[count($dates) - 1])->day
-                : (count($tied) === 1 ? $tied[0] : null),
+            'day' => $singles ? (int) Carbon::parse($dates[count($dates) - 1])->day : $tied[0],
             'tied' => $singles || count($tied) === 1 ? [] : $tied,
             'spread' => max($common) - min($common),
         ];
@@ -451,11 +465,7 @@ class RecurringPatterns
             $flags[] = 'amount';
         }
 
-        if ($found['day'] === null) {
-            // Ambiguous rather than different: the history does not name one day to move it
-            // to, so there is nothing to say it should be.
-            $flags[] = 'day_ambiguous';
-        } elseif (self::scheduledDay($rule) !== $found['day']) {
+        if (self::scheduledDay($rule) !== $found['day']) {
             $flags[] = 'day';
         }
 

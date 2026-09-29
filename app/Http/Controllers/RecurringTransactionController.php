@@ -10,7 +10,9 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\RecurringTransaction;
+use App\Support\RecurringApply;
 use App\Support\RecurringPayments;
+use App\Support\RecurringScan;
 use Illuminate\Http\Request;
 use Spatie\LaravelData\PaginatedDataCollection;
 
@@ -19,6 +21,12 @@ class RecurringTransactionController extends Controller
     private const DEFAULT_SORT = 'start_date';
 
     private const SORTABLE = ['description', 'type', 'amount', 'frequency', 'start_date', 'active'];
+
+    /**
+     * A pair of years. A yearly rule needs three payments to be found at all, so anything
+     * shorter cannot find one however long it looks.
+     */
+    private const FIND_MONTHS = 24;
 
     public function index(Request $r)
     {
@@ -97,18 +105,56 @@ class RecurringTransactionController extends Controller
             'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'asc'],
         ];
 
-        return inertia('recurring', compact(
-            'formEmpty',
-            'data',
-            'params',
-            'meta',
-            'options',
-            'nextDates',
-            'typeOptions',
-            'typeDefaults',
-            'currencyOptions',
-            'frequencyOptions',
-        ));
+        return inertia('recurring', [
+            ...compact(
+                'formEmpty',
+                'data',
+                'params',
+                'meta',
+                'options',
+                'nextDates',
+                'typeOptions',
+                'typeDefaults',
+                'currencyOptions',
+                'frequencyOptions',
+            ),
+            // Only after a find, and only for the one request it flashes into: the dialog
+            // opens on what the scan found, and every other visit has none to show.
+            'findings' => $r->session()->get('findings'),
+        ]);
+    }
+
+    /**
+     * What the last two years of cash and card movements look like, as rules. Reads and
+     * writes nothing, so the report can be looked at before anything is adopted.
+     */
+    public function find(Request $r)
+    {
+        $findings = RecurringScan::findings((int) $r->integer('months', self::FIND_MONTHS));
+
+        return back()->with('findings', $findings);
+    }
+
+    /**
+     * Put the rules in line with the history. Scanned again rather than acting on what the
+     * dialog was holding: a report a minute old is a report about a ledger that may have
+     * moved, and the scan is cheap enough not to be worth the risk of trusting it.
+     *
+     * Nothing is recorded here. The recorder writes what is due, and a rule this leaves
+     * alone can owe months of it -- so a button pressed to look at the history would have
+     * written pending transactions for a rule nobody touched. That is what Run now and the
+     * nightly command are for.
+     */
+    public function applyFindings(Request $r)
+    {
+        $findings = RecurringScan::findings((int) $r->integer('months', self::FIND_MONTHS));
+        $done = RecurringApply::apply($findings);
+
+        // To the first page rather than back: the table is ten rows sorted by start date, and
+        // a page of ten is quite likely to be showing the same ten rows it was showing before
+        // -- the rules just created sort after the ones just corrected, and there are more of
+        // them than fit. Landing on the top of a refreshed table is the point of applying.
+        return to_route('recurring.index')->with('message', ucfirst(RecurringApply::summary($done)));
     }
 
     public function store(RecurringTransactionData $data)

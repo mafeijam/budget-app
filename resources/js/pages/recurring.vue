@@ -13,6 +13,21 @@
           </div>
           <q-space />
           <div class="row items-center q-gutter-sm">
+            <RecurringFindDialog v-model="findOpen" :findings="findings ?? []" />
+            <q-btn
+              unelevated
+              no-caps
+              class="text-weight-bold app-btn"
+              icon="manage_search"
+              label="Find from history"
+              :loading="finding"
+              @click="find"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                Look for recurring payments in the last two years, and put the rules in line with
+                what they say
+              </q-tooltip>
+            </q-btn>
             <q-btn
               unelevated
               no-caps
@@ -74,11 +89,37 @@ const props = defineProps({
   ...hasTableProps,
   options: { type: Object, default: Object },
   nextDates: { type: Object, default: Object },
+  findings: { type: Array, default: null },
 })
 
 const pagination = usePagination()
 
 const running = ref(false)
+const finding = ref(false)
+const findOpen = ref(false)
+
+// The scan comes back with the page rather than in a message, so the dialog opens on it.
+// Nothing on any other visit, so a page reload does not reopen a dialog nobody asked for.
+watch(
+  () => props.findings,
+  found => {
+    if (found?.length) findOpen.value = true
+  },
+  { immediate: true },
+)
+
+const find = () =>
+  router.post(
+    '/recurring/find',
+    {},
+    {
+      preserveScroll: true,
+      // The button's own spinner -- see app.js.
+      showProgress: false,
+      onStart: () => (finding.value = true),
+      onFinish: () => (finding.value = false),
+    },
+  )
 
 const runNow = () =>
   router.post(

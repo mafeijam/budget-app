@@ -158,15 +158,17 @@ class RecurringPatternsTest extends TestCase
         ]))['day']);
     }
 
-    public function test_two_days_equally_often_is_no_day(): void
+    public function test_two_days_equally_often_are_settled_on_the_first(): void
     {
+        // A schedule on the 27th or the 28th is a schedule, and the earlier of the two is the
+        // one a rule can be written from. Both are still reported.
         $finding = $this->find($this->history('PCCW', '204.0000', [
             '2026-01-27', '2026-02-28', '2026-03-27', '2026-04-28', '2026-05-27', '2026-06-28',
         ]));
 
-        $this->assertNull($finding['day']);
+        $this->assertSame(27, $finding['day']);
         $this->assertSame([27, 28], $finding['tied_days']);
-        $this->assertNull($finding['start_date'], 'A rule cannot be scheduled on either of two days.');
+        $this->assertSame('2026-10-27', $finding['start_date']);
     }
 
     public function test_two_yearly_payments_on_different_days_take_the_newest(): void
@@ -235,21 +237,30 @@ class RecurringPatternsTest extends TestCase
         $this->assertNull($finding['last']);
     }
 
-    public function test_a_rule_with_one_missed_month_is_not_reported_stopped(): void
+    public function test_one_missed_month_does_not_hide_a_subscription(): void
     {
-        // HMVOD missed a January and has paid six times since. Reading a gap in the history
-        // as the end of the rule reads as permission to delete a subscription that is
-        // working, and nothing in the report would say otherwise.
+        // HMVOD missed a January and has paid six times since, every gap but one of them a
+        // month. Reading that single gap as the end of the pattern left a rule firing on the
+        // 1st beside a subscription that pays on the 13th, with nothing to act on.
         $dates = ['2026-01-13', '2026-03-13', '2026-04-13', '2026-05-13', '2026-06-13', '2026-07-13', '2026-08-13'];
 
         $finding = $this->find(
             $this->history('HMVOD', '48.4800', $dates),
-            [$this->rule(['description' => 'HMVOD', 'amount' => '48.4800', 'start_date' => '2026-01-13'])]
+            [$this->rule(['description' => 'HMVOD', 'amount' => '48.4800', 'start_date' => '2026-01-01'])]
         );
 
-        $this->assertSame('unclear', $finding['verdict']);
-        $this->assertSame('2026-08-13', $finding['last']);
-        $this->assertSame([], $finding['flags'], 'Nothing to change, and nothing said.');
+        $this->assertSame('differs', $finding['verdict']);
+        $this->assertSame('monthly', $finding['cadence']);
+        $this->assertSame(['day'], $finding['flags']);
+    }
+
+    public function test_a_pattern_with_too_many_gaps_is_still_not_a_pattern(): void
+    {
+        // Two thirds of the gaps have to be in one band, so a schedule that is mostly one
+        // thing is a pattern and one that is a bit of everything is not.
+        $this->assertNotFound($this->history('SOMETHING', '100.0000', [
+            '2026-01-13', '2026-02-20', '2026-04-02', '2026-05-19', '2026-06-30', '2026-08-11',
+        ]));
     }
 
     public function test_a_yearly_rule_last_paid_eight_months_ago_has_not_stopped(): void
