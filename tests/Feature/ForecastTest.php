@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Account;
+use App\Models\Price;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Support\Forecast;
@@ -112,6 +114,35 @@ class ForecastTest extends TestCase
         $this->assertSame('140.0000', $outlook['to_come']['spending']);
         $this->assertSame('860.0000', $outlook['likely_known']);
         $this->assertSame(11, $outlook['days_left']);
+    }
+
+    public function test_every_currency_is_merged_in_hkd_or_one_is_shown_in_its_own(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        Transaction::create([
+            'account_id' => $usd->id, 'category_id' => null, 'date' => '2026-01-02', 'type' => 'deposit',
+            'description' => 'Salary', 'amount' => '100', 'ccy' => 'USD', 'status' => 'posted',
+        ]);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-01-19', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'manual']);
+
+        $all = Forecast::for(today(), 3)->projection();
+
+        // 1000 HKD and 100 USD at 7.8.
+        $this->assertCount(1, $all);
+        $this->assertSame('HKD', $all[0]['ccy']);
+        $this->assertSame('1780.0000', $all[0]['points'][0]['known']);
+        $this->assertSame('100.0000', collect($all[0]['accounts'])->firstWhere('ccy', 'USD')['native']['opening']);
+
+        $only = Forecast::for(today(), 3)->projection('USD');
+
+        $this->assertSame('USD', $only[0]['ccy']);
+        $this->assertSame('100.0000', $only[0]['points'][0]['known']);
+
+        $this->get('/forecast?ccy=USD')->assertInertia(fn (Assert $page) => $page
+            ->where('ccy', 'USD')
+            ->where('currencies', ['HKD', 'USD'])
+        );
+        $this->get('/forecast?ccy=EUR')->assertInertia(fn (Assert $page) => $page->where('ccy', null));
     }
 
     public function test_the_page_takes_an_offered_horizon_and_ignores_any_other(): void

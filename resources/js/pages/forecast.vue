@@ -4,7 +4,34 @@
     <div>
       <div class="row items-end q-col-gutter-md">
         <div class="col">
-          <div class="text-h6 text-weight-medium">Forecast</div>
+          <div class="row items-center">
+            <div class="text-h6 text-weight-medium q-mr-md">Forecast</div>
+            <q-select
+              v-if="currencies.length > 1"
+              :model-value="ccy ?? ''"
+              :options="currencyOptions"
+              class="app-broker-select"
+              dense
+              outlined
+              emit-value
+              map-options
+              options-dense
+              @update:model-value="value => visit({ ccy: value || null })"
+            >
+              <template #prepend>
+                <q-icon name="payments" size="xs" color="grey-7" />
+              </template>
+
+              <template #option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section>
+                    {{ scope.opt.label }}
+                    <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+          </div>
           <div class="text-caption text-grey-7">
             Each cash account from today: rows dated ahead or still pending, recurring rules, and
             card statements paid from their bank on the due date. Typical spending is an estimate
@@ -90,7 +117,13 @@
     <q-card v-for="section in projection" :key="section.ccy" flat bordered>
       <q-card-section class="row items-center q-gutter-sm">
         <q-icon name="query_stats" size="sm" color="grey-6" />
-        <div class="text-subtitle1 text-weight-medium">{{ section.ccy }}</div>
+        <div>
+          <div class="text-subtitle1 text-weight-medium">Cash runway</div>
+          <div class="text-caption text-grey-7">
+            <template v-if="ccy">Every {{ ccy }} account, in {{ ccy }}.</template>
+            <template v-else>Every cash account, in {{ base }} at today's rate.</template>
+          </div>
+        </div>
         <q-space />
         <!-- Top-aligned, so a figure with a caption under it does not lift the rest. -->
         <div class="row items-start no-wrap">
@@ -137,13 +170,26 @@
         </thead>
         <tbody>
           <tr v-for="account in section.accounts" :key="account.id">
-            <td class="text-weight-medium">{{ account.name }}</td>
-            <td class="text-right money">{{ money(account.opening) }}</td>
+            <td class="text-weight-medium">
+              {{ account.name }}
+              <q-badge v-if="foreign(account)" outline color="grey-7" :label="account.ccy" />
+            </td>
+            <td class="text-right money">
+              {{ money(account.opening) }}
+              <div v-if="foreign(account)" class="text-caption text-grey-6">
+                {{ money(account.native.opening) }} {{ account.ccy }}
+              </div>
+            </td>
             <td class="text-right money text-weight-bold" :class="lowClass(account.lowest.amount)">
               {{ money(account.lowest.amount) }}
             </td>
             <td class="text-grey-7">{{ formatDate(account.lowest.date) }}</td>
-            <td class="text-right money">{{ money(account.closing) }}</td>
+            <td class="text-right money">
+              {{ money(account.closing) }}
+              <div v-if="foreign(account)" class="text-caption text-grey-6">
+                {{ money(account.native.closing) }} {{ account.ccy }}
+              </div>
+            </td>
           </tr>
         </tbody>
       </q-markup-table>
@@ -202,7 +248,26 @@ const props = defineProps({
   horizons: { type: Array, default: () => [3, 6, 12] },
   upcomingDays: { type: Number, default: 30 },
   outlook: { type: Array, default: () => [] },
+  ccy: { type: String, default: null },
+  currencies: { type: Array, default: () => [] },
+  base: { type: String, default: 'HKD' },
 })
+
+const currencyOptions = computed(() => [
+  { label: `All, in ${props.base}`, value: '', caption: "Converted at today's rate" },
+  ...props.currencies.map(code => ({ label: code, value: code, caption: `${code} accounts only` })),
+])
+
+// Held in another currency than the one shown, so its own figure is given too.
+const foreign = account => account.ccy !== (props.ccy ?? props.base)
+
+// The horizon and currency together, each off the URL at its default.
+const visit = ({ months = props.months, ccy = props.ccy }) =>
+  router.get(
+    '/forecast',
+    { ...(months === 3 ? {} : { months }), ...(ccy ? { ccy } : {}) },
+    { preserveScroll: true, replace: true },
+  )
 
 // The known figures alone while the estimate is switched off.
 const likely = row => (withTypical.value ? row.likely_net : row.likely_known)
@@ -240,8 +305,7 @@ const formatDate = useCalendarDay()
 const withTypical = useLocalStorage('forecast.typical', true)
 
 // Three months is the default, so it stays off the URL.
-const choose = n =>
-  router.get('/forecast', n === 3 ? {} : { months: n }, { preserveScroll: true, replace: true })
+const choose = n => visit({ months: n })
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
@@ -260,7 +324,7 @@ const allWarnings = computed(() => [
       .filter(account => negative(account.lowest.amount))
       .map(
         account =>
-          `${account.name} goes below zero: ${money(account.lowest.amount)} ${section.ccy} on ${formatDate(account.lowest.date)}.`,
+          `${account.name} goes below zero: ${money(account.native.lowest)} ${account.ccy} on ${formatDate(account.lowest.date)}.`,
       ),
   ),
   ...props.warnings,

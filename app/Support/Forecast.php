@@ -21,8 +21,10 @@ use Illuminate\Support\Collection;
  * not written yet, and every card statement still owed, paid from the card's bank on its
  * due date.
  *
- * Nothing here is guessed except "typical spending", which is kept apart: a per-currency
- * daily allowance from the last year's spending, less what the recurring rules already
+ * Everything is in the base currency at today's rate, the only one known for the days
+ * ahead, so every cash account is on one chart.
+ *
+ * Nothing here is guessed except "typical spending", which is kept apart: a daily allowance from the last year's spending, less what the recurring rules already
  * account for. The known figures never include it, so the page can show both.
  *
  * Dividends are left out: they are irregular, and money not yet declared is not money
@@ -42,8 +44,10 @@ class Forecast
     /** @var list<array{date: string, account_id: int, amount: BigDecimal, description: string, kind: string, link: array<string, mixed>}> */
     private array $events = [];
 
-    /** @var list<string> */
+    /** @var list<array{ccy: string, message: string}> */
     private array $warnings = [];
+
+    private Fx $fx;
 
     public function __construct(private Carbon $today, private Carbon $end)
     {
@@ -52,6 +56,8 @@ class Forecast
             ->orderBy('name')
             ->get()
             ->keyBy('id');
+
+        $this->fx = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
 
         $this->knownRows();
         $this->recurring();
@@ -71,92 +77,149 @@ class Forecast
      *
      * @return list<array<string, mixed>>
      */
-    public function projection(): array
+    public function projection(?string $only = null): array
     {
-        $opening = AccountBalance::forAccounts($this->cash, $this->today->toDateString());
+        $day = $this->today->toDateString();
+        $shownIn = $only ?? Fx::BASE->value;
+        $opening = AccountBalance::forAccounts($this->cash, $day);
         $typical = $this->typicalSpending();
-        $report = [];
+        $moving = collect($this->events)->pluck('account_id')->unique()->all();
 
-        foreach ($this->cash->groupBy('ccy') as $ccy => $accounts) {
-            $balances = [];
+        // Each account at today's rate into the base currency, the only rate known for the
+        // days ahead. One with no rate yet is left out and named, as on the net worth page.
+        $rates = [];
+        $balances = [];
 
-            foreach ($accounts as $account) {
-                $balances[$account->id] = BigDecimal::of($opening[$account->id] ?? '0');
-            }
+        foreach ($this->cash as $account) {
+            $balance = BigDecimal::of($opening[$account->id] ?? '0');
 
             // An account with nothing in it and nothing coming is left off the page.
-            $moving = collect($this->events)->pluck('account_id')->unique()->all();
-            $balances = array_filter(
-                $balances,
-                fn (BigDecimal $balance, int $id) => ! $balance->isZero() || in_array($id, $moving, true),
-                ARRAY_FILTER_USE_BOTH
-            );
-
-            if ($balances === []) {
+            if ($balance->isZero() && ! in_array($account->id, $moving, true)) {
                 continue;
             }
 
-            $lowest = array_map(fn (BigDecimal $balance) => [$balance, $this->today->toDateString()], $balances);
-            $daily = BigDecimal::of($typical[$ccy]['monthly'] ?? '0')
-                ->multipliedBy(12)
-                ->dividedBy(365, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
-
-            $byDay = collect($this->events)
-                ->whereIn('account_id', array_keys($balances))
-                ->groupBy('date');
-
-            $points = [];
-            $allowance = BigDecimal::zero();
-            $lowestTotal = null;
-
-            for ($day = $this->today->copy(); $day->lessThanOrEqualTo($this->end); $day->addDay()) {
-                $date = $day->toDateString();
-
-                foreach ($byDay[$date] ?? [] as $event) {
-                    $balances[$event['account_id']] = $balances[$event['account_id']]->plus($event['amount']);
-                }
-
-                // From tomorrow: today's spending is in today's balance already.
-                if ($day->greaterThan($this->today)) {
-                    $allowance = $allowance->plus($daily);
-                }
-
-                foreach ($balances as $id => $balance) {
-                    if ($balance->isLessThan($lowest[$id][0])) {
-                        $lowest[$id] = [$balance, $date];
-                    }
-                }
-
-                $total = array_reduce($balances, fn (BigDecimal $sum, BigDecimal $b) => $sum->plus($b), BigDecimal::zero());
-
-                if ($lowestTotal === null || $total->isLessThan($lowestTotal[0])) {
-                    $lowestTotal = [$total, $date];
-                }
-
-                $points[] = [
-                    'date' => $date,
-                    'known' => self::money($total),
-                    'typical' => self::money($total->minus($allowance)),
-                ];
+            if ($only !== null && $account->ccy !== $only) {
+                continue;
             }
 
-            $report[] = [
-                'ccy' => $ccy,
-                'points' => $points,
-                'typical_monthly' => $typical[$ccy]['monthly'] ?? '0.0000',
-                'typical_basis' => $typical[$ccy] ?? null,
-                'lowest' => ['amount' => self::money($lowestTotal[0]), 'date' => $lowestTotal[1]],
-                'accounts' => collect($balances)->map(fn (BigDecimal $closing, int $id) => [
-                    'id' => $id,
-                    'name' => $this->cash[$id]->name,
-                    'opening' => self::money(BigDecimal::of($opening[$id] ?? '0')),
-                    'closing' => self::money($closing),
-                    'lowest' => ['amount' => self::money($lowest[$id][0]), 'date' => $lowest[$id][1]],
-                ])->values()->all(),
+            // In its own currency when one is picked, so nothing converts at all.
+            $rate = $only === null ? $this->fx->rate($account->ccy, $day) : '1';
+
+            if ($rate === null) {
+                $this->warnings[] = ['ccy' => $account->ccy, 'message' => sprintf(
+                    'No %s rate yet, so [%s] is left out. Fetch prices on the Positions page.',
+                    $account->ccy,
+                    $account->name
+                )];
+
+                continue;
+            }
+
+            $rates[$account->id] = BigDecimal::of($rate);
+            $balances[$account->id] = $balance;
+        }
+
+        if ($balances === []) {
+            return [];
+        }
+
+        $base = fn (int $id, BigDecimal $amount) => $amount->multipliedBy($rates[$id])->toScale(4, RoundingMode::HalfUp);
+
+        $monthly = $average = $covered = BigDecimal::zero();
+
+        foreach ($typical as $ccy => $figures) {
+            if ($only !== null && $ccy !== $only) {
+                continue;
+            }
+
+            $rate = $only === null ? $this->fx->rate($ccy, $day) : '1';
+
+            if ($rate === null) {
+                continue;
+            }
+
+            $monthly = $monthly->plus(BigDecimal::of($figures['monthly'])->multipliedBy($rate));
+            $average = $average->plus(BigDecimal::of($figures['average'])->multipliedBy($rate));
+            $covered = $covered->plus(BigDecimal::of($figures['recurring'])->multipliedBy($rate));
+        }
+
+        $daily = $monthly->multipliedBy(12)->dividedBy(365, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+
+        $lowest = array_map(fn (BigDecimal $balance) => [$balance, $day], $balances);
+        $byDay = collect($this->events)->whereIn('account_id', array_keys($balances))->groupBy('date');
+
+        $points = [];
+        $allowance = BigDecimal::zero();
+        $lowestTotal = null;
+
+        for ($cursor = $this->today->copy(); $cursor->lessThanOrEqualTo($this->end); $cursor->addDay()) {
+            $date = $cursor->toDateString();
+
+            foreach ($byDay[$date] ?? [] as $event) {
+                $balances[$event['account_id']] = $balances[$event['account_id']]->plus($event['amount']);
+            }
+
+            // From tomorrow: today's spending is in today's balance already.
+            if ($cursor->greaterThan($this->today)) {
+                $allowance = $allowance->plus($daily);
+            }
+
+            $total = BigDecimal::zero();
+
+            foreach ($balances as $id => $balance) {
+                if ($balance->isLessThan($lowest[$id][0])) {
+                    $lowest[$id] = [$balance, $date];
+                }
+
+                $total = $total->plus($base($id, $balance));
+            }
+
+            if ($lowestTotal === null || $total->isLessThan($lowestTotal[0])) {
+                $lowestTotal = [$total, $date];
+            }
+
+            $points[] = [
+                'date' => $date,
+                'known' => self::money($total),
+                'typical' => self::money($total->minus($allowance)),
             ];
         }
 
-        return $report;
+        return [[
+            'ccy' => $shownIn,
+            'points' => $points,
+            'typical_monthly' => self::money($monthly),
+            'typical_basis' => ['average' => self::money($average), 'recurring' => self::money($covered)],
+            'lowest' => ['amount' => self::money($lowestTotal[0]), 'date' => $lowestTotal[1]],
+            'accounts' => collect($balances)->map(function (BigDecimal $closing, int $id) use ($opening, $lowest, $base) {
+                $start = BigDecimal::of($opening[$id] ?? '0');
+
+                return [
+                    'id' => $id,
+                    'name' => $this->cash[$id]->name,
+                    'ccy' => $this->cash[$id]->ccy,
+                    'opening' => self::money($base($id, $start)),
+                    'closing' => self::money($base($id, $closing)),
+                    'lowest' => ['amount' => self::money($base($id, $lowest[$id][0])), 'date' => $lowest[$id][1]],
+                    // In the account's own currency, for the one not held in the base.
+                    'native' => [
+                        'opening' => self::money($start),
+                        'closing' => self::money($closing),
+                        'lowest' => self::money($lowest[$id][0]),
+                    ],
+                ];
+            })->values()->all(),
+        ]];
+    }
+
+    /**
+     * The currencies the cash accounts are in, for the page's picker.
+     *
+     * @return list<string>
+     */
+    public function currencies(): array
+    {
+        return $this->cash->pluck('ccy')->unique()->sort()->values()->all();
     }
 
     /**
@@ -164,12 +227,13 @@ class Forecast
      *
      * @return list<array<string, mixed>>
      */
-    public function upcoming(): array
+    public function upcoming(?string $only = null): array
     {
         $until = $this->today->copy()->addDays(self::UPCOMING_DAYS)->toDateString();
 
         return collect($this->events)
             ->filter(fn (array $event) => $event['date'] <= $until)
+            ->filter(fn (array $event) => $only === null || $this->cash[$event['account_id']]->ccy === $only)
             ->map(fn (array $event) => [
                 ...$event,
                 'amount' => self::money($event['amount']),
@@ -191,7 +255,7 @@ class Forecast
      *
      * @return list<array<string, mixed>>
      */
-    public function monthOutlook(): array
+    public function monthOutlook(?string $only = null): array
     {
         $monthEnd = $this->today->copy()->endOfMonth()->toDateString();
         $daysLeft = (int) $this->today->diffInDays($this->today->copy()->endOfMonth());
@@ -251,7 +315,49 @@ class Forecast
             ];
         }
 
-        return $report;
+        if ($only !== null) {
+            return array_values(array_filter($report, fn (array $row) => $row['ccy'] === $only));
+        }
+
+        return $this->combined($report);
+    }
+
+    /**
+     * The outlook's rows as one, in the base currency at today's rate. A currency with no
+     * rate yet is left out, as the projection leaves it out.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function combined(array $rows): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+
+        $day = $this->today->toDateString();
+        $paths = ['so_far.income', 'so_far.spending', 'so_far.net', 'to_come.income', 'to_come.spending', 'typical_rest', 'likely_known', 'likely_net', 'average_net'];
+        $sums = array_fill_keys($paths, BigDecimal::zero());
+
+        foreach ($rows as $row) {
+            $rate = $this->fx->rate($row['ccy'], $day);
+
+            if ($rate === null) {
+                continue;
+            }
+
+            foreach ($paths as $path) {
+                $sums[$path] = $sums[$path]->plus(BigDecimal::of(data_get($row, $path))->multipliedBy($rate));
+            }
+        }
+
+        $combined = ['ccy' => Fx::BASE->value, 'month' => $rows[0]['month'], 'days_left' => $rows[0]['days_left']];
+
+        foreach ($sums as $path => $sum) {
+            data_set($combined, $path, self::money($sum));
+        }
+
+        return [$combined];
     }
 
     /** Money in or spent, as the cash flow report reads it; anything else is neither. */
@@ -327,9 +433,12 @@ class Forecast
     }
 
     /** @return list<string> */
-    public function warnings(): array
+    public function warnings(?string $only = null): array
     {
-        return $this->warnings;
+        return array_values(array_map(
+            fn (array $warning) => $warning['message'],
+            array_filter($this->warnings, fn (array $warning) => $only === null || $warning['ccy'] === $only)
+        ));
     }
 
     // ---------------------------------------------------------------------
@@ -435,13 +544,13 @@ class Forecast
                 }
 
                 if ($bank === null || ! $this->cash->has($bank->id)) {
-                    $this->warnings[] = sprintf(
+                    $this->warnings[] = ['ccy' => $card->ccy, 'message' => sprintf(
                         'Card [%s] owes %s %s due %s but names no bank to pay it from, so it is not in any balance here.',
                         $card->name,
                         self::money($owed),
                         $card->ccy,
                         $statement->dueDate
-                    );
+                    )];
 
                     continue;
                 }
