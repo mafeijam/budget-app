@@ -64,6 +64,12 @@ const menus = computed(() => {
       to: () => to('/transactions'),
     },
     {
+      label: 'Recurring',
+      active: active('recurring'),
+      icon: 'event_repeat',
+      to: () => to('/recurring'),
+    },
+    {
       label: 'Positions',
       active: active('position'),
       icon: 'show_chart',

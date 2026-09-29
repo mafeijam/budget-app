@@ -11,6 +11,10 @@ transactions on them, and the card statements they add up to.
   the bank it is paid from, or corrects its due date.
 - **Accounts** holds each account's balance and terms: a card's statement day, its
   payment term, and the bank it is paid from.
+- **Recurring** holds withdrawals, deposits, charges and payments that repeat
+  monthly or yearly on a cash account or a card. Each is written as a pending
+  transaction on the day it falls due, so it counts toward nothing until it is
+  posted. A pause skips what falls due during it rather than catching up.
 - **Categories** are what spending is filed under.
 
 A statement that has been paid is fixed. A charge cannot be added to it, moved in
@@ -74,11 +78,26 @@ does not look like a test one:
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevCategorySeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevAccountSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTransactionSeeder
+DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevRecurringSeeder
 ```
 
 `DevTransactionSeeder` owns the transactions on the accounts it names: it deletes
 them before writing, so re-running restores the intended state rather than
 doubling every figure. That also means it undoes anything you settled by hand.
+
+### Scheduled jobs
+
+Two commands run from the scheduler, which does nothing unless something calls
+`schedule:run` every minute:
+
+```bash
+* * * * * cd /path/to/budget-app && php artisan schedule:run >> /dev/null 2>&1
+```
+
+- `prices:fetch` at 06:30 Hong Kong time, for the brokerage's closing prices.
+- `recurring:record` at 00:05 Hong Kong time, for the recurring transactions due
+  that day. A missed run catches up on the next one, and saving a rule records
+  whatever is already due, so the page works without cron and only goes stale.
 
 ### Tests and checks
 

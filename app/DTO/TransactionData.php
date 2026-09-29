@@ -92,6 +92,25 @@ class TransactionData extends Data
         }
     }
 
+    /** The row, its bag and its cash side. The caller owns the database transaction. */
+    public function write(): Transaction
+    {
+        $transaction = Transaction::create($this->except('meta_data')->toArray());
+
+        // Nulls dropped, falsy kept: filter() would drop a fee of '0'.
+        $meta = collect($this->meta_data?->all())->filter(fn ($value) => $value !== null);
+
+        if ($meta->isNotEmpty()) {
+            $transaction->meta()->create([
+                'meta' => $meta,
+            ]);
+        }
+
+        TradeCash::sync($transaction);
+
+        return $transaction;
+    }
+
     public static function rules()
     {
         return [

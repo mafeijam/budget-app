@@ -20,6 +20,7 @@ declare module 'vue' {
     FormAccount: typeof import('./resources/js/components/Form/FormAccount.vue')['default']
     FormCategory: typeof import('./resources/js/components/Form/FormCategory.vue')['default']
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']
+    FormRecurring: typeof import('./resources/js/components/Form/FormRecurring.vue')['default']
     FormTransaction: typeof import('./resources/js/components/Form/FormTransaction.vue')['default']
     SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
     TransactionFilters: typeof import('./resources/js/components/TransactionFilters.vue')['default']
