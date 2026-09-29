@@ -354,3 +354,8 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.app-broker-select {
+  min-width: 260px;
+  background: var(--app-surface);
+}

@@ -1,7 +1,33 @@
 <template>
   <div class="column no-wrap q-gutter-lg">
     <div class="row items-center">
-      <div class="text-h6 text-weight-medium">Positions</div>
+      <div class="text-h6 text-weight-medium q-mr-md">Positions</div>
+
+      <q-select
+        v-if="brokerages.length > 1"
+        v-model="brokerId"
+        :options="brokerOptions"
+        class="app-broker-select"
+        dense
+        outlined
+        emit-value
+        map-options
+        options-dense
+      >
+        <template #prepend>
+          <q-icon name="show_chart" size="xs" color="grey-7" />
+        </template>
+
+        <template #option="scope">
+          <q-item v-bind="scope.itemProps">
+            <q-item-section>
+              {{ scope.opt.label }}
+              <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+            </q-item-section>
+          </q-item>
+        </template>
+      </q-select>
+
       <q-space />
 
       <div class="app-toolbar row items-center no-wrap">
@@ -45,7 +71,7 @@
       No brokerage account yet. Add one on Accounts, then record buys and sells on Transactions.
     </div>
 
-    <q-card v-for="broker in brokerages" :key="broker.id" flat bordered>
+    <q-card v-if="broker" :key="broker.id" flat bordered>
       <q-card-section class="row items-center q-gutter-sm q-pb-sm">
         <q-icon name="show_chart" size="sm" color="grey-6" />
         <div class="text-subtitle1 text-weight-medium">{{ broker.name }}</div>
@@ -155,7 +181,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   brokerages: { type: Array, default: Array },
   pricesUpdatedAt: { type: String, default: null },
 })
@@ -182,6 +208,26 @@ const whenUpdated = value => {
 }
 
 const showClosed = ref(false)
+
+// One brokerage at a time, remembered per browser so a Fetch prices reload keeps it.
+const brokerId = useStorage('positions.broker', 0)
+
+const broker = computed(
+  () => props.brokerages.find(b => b.id === brokerId.value) ?? props.brokerages[0] ?? null,
+)
+
+const brokerOptions = computed(() =>
+  props.brokerages.map(b => ({
+    label: b.name,
+    value: b.id,
+    caption: `${money(b.market_value)} ${b.ccy}`,
+  })),
+)
+
+// A stored id that no longer names a brokerage falls back to the first rather than to nothing.
+watchEffect(() => {
+  if (broker.value && broker.value.id !== brokerId.value) brokerId.value = broker.value.id
+})
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
 
