@@ -17,7 +17,7 @@ class CategoryController extends Controller
 
         $accounts = Category::query()
             ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
-            ->paginate($r->input('per_page', 5));
+            ->paginate($r->input('per_page', self::PER_PAGE));
 
         // Before Data::collect(), which replaces the paginator's models with DTOs.
         $refusals = $this->deleteRefusals($accounts->getCollection());

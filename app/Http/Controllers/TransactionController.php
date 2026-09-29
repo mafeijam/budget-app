@@ -161,7 +161,7 @@ class TransactionController extends Controller
             ->orderBy($sort, $dir)
             // Tiebreak by id, or a row could appear on two pages or none.
             ->orderBy('id', $dir)
-            ->paginate($r->input('per_page', 5))
+            ->paginate($r->input('per_page', self::PER_PAGE))
             ->withQueryString();
 
         $page = $transactions->getCollection();

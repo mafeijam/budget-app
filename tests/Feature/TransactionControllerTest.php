@@ -655,7 +655,7 @@ class TransactionControllerTest extends TestCase
 
     public function test_index_pages_the_list(): void
     {
-        foreach (range(1, 6) as $n) {
+        foreach (range(1, 11) as $n) {
             $this->post('/transactions', $this->expense([
                 'date' => sprintf('2026-01-%02d', $n),
                 'description' => "Lunch {$n}",
@@ -663,9 +663,9 @@ class TransactionControllerTest extends TestCase
         }
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->has('data.data', 5)
-            ->where('data.meta.total', 6)
-            ->where('data.meta.per_page', 5)
+            ->has('data.data', 10)
+            ->where('data.meta.total', 11)
+            ->where('data.meta.per_page', 10)
         );
     }
 
