@@ -332,10 +332,8 @@ class TransactionController extends Controller
             ->values()
             ->all();
 
-        // What the filter bar offers. Every account rather than the active ones the form
-        // picks from, since a closed card's history is still worth finding; every type
-        // flat, since a filter is not narrowing by an account type, and in the enum's
-        // filter order rather than its declaration order, which is the form's.
+        // Every account, not just the active ones the form offers: a closed card's
+        // history is still worth finding.
         $filterOptions = [
             'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
