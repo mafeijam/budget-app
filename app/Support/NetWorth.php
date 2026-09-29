@@ -22,7 +22,7 @@ use Illuminate\Support\Collection;
 class NetWorth
 {
     /** The point spacings offered, in months. */
-    public const PERIODS = [1, 3, 6, 9, 12];
+    public const PERIODS = [1, 3, 6, 12];
 
     /** @var Collection<int, Account> */
     private Collection $accounts;

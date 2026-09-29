@@ -208,15 +208,15 @@ const props = defineProps({
   since: { type: Object, default: null },
   history: { type: Array, default: () => [] },
   months: { type: Number, default: 1 },
-  periods: { type: Array, default: () => [1, 3, 6, 9, 12] },
+  periods: { type: Array, default: () => [1, 3, 6, 12] },
 })
 
 const money = useMoney()
 
-const periodLabels = { 1: 'Monthly', 3: 'Quarterly', 6: 'Half-yearly', 9: '9 months', 12: 'Yearly' }
+const periodLabels = { 1: 'Monthly', 3: 'Quarterly', 6: 'Half-yearly', 12: 'Yearly' }
 
 const periodName = computed(
-  () => ({ 1: 'month', 3: 'quarter', 6: 'half-year', 9: 'nine months', 12: 'year' })[props.months],
+  () => ({ 1: 'month', 3: 'quarter', 6: 'half-year', 12: 'year' })[props.months],
 )
 
 // Monthly is the default, so it stays off the URL.

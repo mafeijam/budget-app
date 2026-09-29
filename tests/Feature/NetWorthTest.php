@@ -123,7 +123,10 @@ class NetWorthTest extends TestCase
             ->has('history', 3)
         );
 
-        $this->get('/net-worth?months=5')->assertInertia(fn (Assert $page) => $page->where('months', 1));
+        $this->get('/net-worth?months=9')->assertInertia(fn (Assert $page) => $page
+            ->where('months', 1)
+            ->where('periods', [1, 3, 6, 12])
+        );
     }
 
     private function row(Account $account, string $type, string $date, string $amount, array $extra = []): void
