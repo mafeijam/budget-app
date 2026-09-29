@@ -204,20 +204,22 @@ body {
 .app-home-spark {
   display: block;
   width: 100%;
-  height: 40px;
+  height: 88px;
   /* Pushed to the bottom, so a card with a shorter note still ends on its line. */
   margin-top: auto;
   padding-top: 8px;
 }
 
 /*
- * The line the deferred trend draws, held open until it arrives. The box model of
- * .app-home-spark copied rather than the height alone, so the cards do not resize
- * and the line does not land with a jump under figures already on screen.
+ * The line the deferred trend draws, held open until it arrives. The same height and
+ * padding as .app-home-spark rather than the height alone, so the cards neither resize
+ * nor jump when it lands under figures already on screen. Everything here is border-box,
+ * so the height already covers the padding.
  */
 .app-home-spark-placeholder {
   margin-top: auto;
-  height: 48px;
+  height: 88px;
+  padding-top: 8px;
 }
 
 @media (max-width: 599px) {

@@ -346,13 +346,9 @@ const headlineFigures = computed(() => {
       colour: colours.value,
       value: h.value,
       class: 'text-primary',
-      // Both, since a card has one note line and the share and the gain answer different
-      // questions: how the portfolio moved, and what the market has done to it since.
+      // The same note as the others. The unrealised gain wants a line of its own rather
+      // than a share of this one, and the grid below already carries it per brokerage.
       ...onLastMonth('value'),
-      note: `${onLastMonth('value').note} · ${signed(h.unrealised)} unrealised${
-        h.unpriced ? ` · ${h.unpriced} at cost` : ''
-      }`,
-      noteClass: signClass(h.change.value),
     },
   ]
 })

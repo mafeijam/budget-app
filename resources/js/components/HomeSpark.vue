@@ -29,7 +29,7 @@ const props = defineProps({
 })
 
 const width = 300
-const height = 40
+const height = 88
 const pad = 3
 
 const numbers = computed(() => props.values.map(Number))
