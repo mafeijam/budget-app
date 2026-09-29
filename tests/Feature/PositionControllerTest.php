@@ -157,6 +157,37 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_a_past_day_shows_what_was_held_then_at_its_last_close(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-02-10', 'NVDA', '10', '110');
+        $this->dividend($this->broker, '12.5000');
+
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-01-30', 'close' => '105.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-05', 'close' => '125.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        // Before the second buy and the dividend, at January's close.
+        $this->get('/positions?at=2026-02-01')->assertInertia(fn (Assert $page) => $page
+            ->where('at', '2026-02-01')
+            ->where('today', '2026-03-06')
+            ->where('brokerages.0.positions.0.quantity', '10.00000000')
+            ->where('brokerages.0.positions.0.price_date', '2026-01-30')
+            ->where('brokerages.0.market_value', '1050.0000')
+            ->where('brokerages.0.dividends', '0.0000')
+        );
+
+        // A future or malformed day is today's page.
+        foreach (['2026-03-07', '2026-02-30', 'soon'] as $day) {
+            $this->get("/positions?at={$day}")->assertInertia(fn (Assert $page) => $page
+                ->where('at', null)
+                ->where('brokerages.0.market_value', '2500.0000')
+                ->where('brokerages.0.dividends', '12.5000')
+            );
+        }
+    }
+
     public function test_only_received_dividends_are_totalled(): void
     {
         foreach (['posted' => '12.5000', 'pending' => '99.0000'] as $status => $amount) {

@@ -31,6 +31,45 @@
       <q-space />
 
       <div class="app-toolbar row items-center no-wrap">
+        <!-- A calendar day, so the day formatter; the server owns today, not the browser. -->
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="event"
+          :label="at ? `As at ${formatDate(at)}` : 'Today'"
+          :color="at ? 'primary' : 'grey-8'"
+          class="q-px-sm text-weight-bold"
+        >
+          <q-menu ref="dayMenu" :offset="[0, 8]">
+            <q-date
+              :model-value="at ?? today"
+              mask="YYYY-MM-DD"
+              minimal
+              color="primary"
+              :options="day => day <= today.replaceAll('-', '/')"
+              @update:model-value="pickDay"
+            />
+          </q-menu>
+          <q-tooltip :delay="500" :offset="[0, 6]">
+            Look back: what was held that day, at its last close
+          </q-tooltip>
+        </q-btn>
+        <q-btn
+          v-if="at"
+          flat
+          dense
+          round
+          size="sm"
+          icon="close"
+          color="grey-7"
+          @click="visit(null)"
+        >
+          <q-tooltip :delay="500" :offset="[0, 6]">Back to today</q-tooltip>
+        </q-btn>
+
+        <q-separator vertical inset class="q-mx-sm" />
+
         <q-toggle
           v-model="showClosed"
           label="Show sold out"
@@ -153,9 +192,11 @@
                   }}{{ position.price_source === 'manual' ? ' · manual' : '' }}
                 </div>
               </template>
-              <span v-else-if="position.open" class="text-grey-5">set price</span>
+              <span v-else-if="position.open && !at" class="text-grey-5">set price</span>
+              <span v-else-if="position.open" class="text-grey-5">no price</span>
+              <!-- A hand-set price is filed for today, so not while looking back. -->
               <q-popup-edit
-                v-if="position.open"
+                v-if="position.open && !at"
                 v-slot="scope"
                 :model-value="position.price"
                 buttons
@@ -203,7 +244,19 @@ const props = defineProps({
   combined: { type: Object, default: null },
   base: { type: String, default: 'HKD' },
   pricesUpdatedAt: { type: String, default: null },
+  at: { type: String, default: null },
+  today: { type: String, default: null },
 })
+
+const dayMenu = ref(null)
+
+const visit = day =>
+  router.get('/positions', day ? { at: day } : {}, { preserveScroll: true, replace: true })
+
+const pickDay = day => {
+  dayMenu.value?.hide()
+  visit(day && day !== props.today ? day : null)
+}
 
 const money = useMoney()
 const formatDate = useCalendarDay()
@@ -287,7 +340,9 @@ const view = computed(() => {
     currencies: props.totals.map(total => total.ccy),
     caption: [
       `${props.brokerages.length} brokerages`,
-      ...(props.combined ? [`all in ${props.base} at today's rate`] : []),
+      ...(props.combined
+        ? [`all in ${props.base} at ${props.at ? "that day's" : "today's"} rate`]
+        : []),
       ...(props.combined?.unconverted.length
         ? [`${props.combined.unconverted.join(', ')} left out of it, no rate yet`]
         : []),

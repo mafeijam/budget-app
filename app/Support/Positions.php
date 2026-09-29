@@ -36,14 +36,17 @@ class Positions
     /**
      * One valuation for the Positions page and the accounts list. A price in another
      * currency is ignored rather than summed as though it were the same money, and
-     * `unpriced` counts the open positions missing from the totals.
+     * `unpriced` counts the open positions missing from the totals. With $on, as it stood
+     * that day: its trades up to then, at the last close on or before it.
      *
      * @return array{positions: list<array<string, mixed>>, totals: array<string, mixed>}
      */
-    public static function valued(Account $broker): array
+    public static function valued(Account $broker, ?string $on = null): array
     {
-        $positions = array_values(self::forAccount($broker));
-        $prices = Price::latestFor(array_column($positions, 'symbol'), today()->toDateString());
+        $on ??= today()->toDateString();
+        $trades = array_values(array_filter(self::tradesOf($broker), fn (array $trade) => $trade['date'] <= $on));
+        $positions = array_values(self::fromTrades($trades));
+        $prices = Price::latestFor(array_column($positions, 'symbol'), $on);
 
         $positions = array_map(function (array $position) use ($prices, $broker) {
             $price = $prices[$position['symbol']] ?? null;

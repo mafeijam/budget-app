@@ -18,8 +18,16 @@ use Illuminate\Validation\Rule;
 
 class PositionController extends Controller
 {
-    public function index()
+    public function index(Request $r)
     {
+        // A past day picked to look back on, or today. A malformed or future day is today,
+        // since no price is known past it.
+        $today = today();
+        $at = $r->input('at');
+        $at = is_string($at) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $at) && checkdate(
+            (int) substr($at, 5, 2), (int) substr($at, 8, 2), (int) substr($at, 0, 4)
+        ) && $at < $today->toDateString() ? $at : $today->toDateString();
+
         $brokers = Account::query()
             ->where('type', AccountType::Security->value)
             ->with('meta')
@@ -31,13 +39,14 @@ class PositionController extends Controller
         $dividends = Transaction::query()
             ->where('type', TransactionType::Dividend->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->where('date', '<=', $at)
             ->with('meta')
             ->get(['id', 'amount'])
             ->groupBy(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0));
 
         $brokerages = $brokers
-            ->map(function (Account $broker) use ($dividends) {
-                $valued = Positions::valued($broker);
+            ->map(function (Account $broker) use ($dividends, $at) {
+                $valued = Positions::valued($broker, $at);
                 $positions = $valued['positions'];
 
                 $sum = fn (iterable $values) => (string) collect($values)
@@ -79,46 +88,50 @@ class PositionController extends Controller
             })
             ->values();
 
-        $combined = $this->combined($totals->all());
+        $combined = $this->combined($totals->all(), $at);
 
         // ISO 8601 with offset: max() returns a bare 'Y-m-d H:i:s', which new Date()
         // reads as browser-local time, or rejects in Safari.
         $latest = Price::where('source', 'yahoo')->max('updated_at');
         $pricesUpdatedAt = $latest === null ? null : Carbon::parse($latest)->toIso8601String();
 
-        return inertia('position', [...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt'), 'base' => Fx::BASE->value]);
+        return inertia('position', [
+            ...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt'),
+            'base' => Fx::BASE->value,
+            'at' => $at === $today->toDateString() ? null : $at,
+            'today' => $today->toDateString(),
+        ]);
     }
 
     /**
-     * Every currency's totals in the base currency at today's rate, for the All view, or
+     * Every currency's totals in the base currency at $day's rate, for the All view, or
      * null with only one currency. A currency with no rate yet is left out and named, so
      * a total missing something says so.
      *
      * @param  list<array<string, mixed>>  $totals
      * @return array<string, mixed>|null
      */
-    private function combined(array $totals): ?array
+    private function combined(array $totals, string $day): ?array
     {
         if (count($totals) < 2) {
             return null;
         }
 
         $fx = Fx::for(array_column($totals, 'ccy'));
-        $today = today()->toDateString();
         $keys = ['market_value', 'unrealised', 'open_cost', 'realised', 'fees', 'dividends'];
         $sums = array_fill_keys($keys, BigDecimal::zero());
         $unconverted = [];
         $unpriced = 0;
 
         foreach ($totals as $total) {
-            if ($fx->rate($total['ccy'], $today) === null) {
+            if ($fx->rate($total['ccy'], $day) === null) {
                 $unconverted[] = $total['ccy'];
 
                 continue;
             }
 
             foreach ($keys as $key) {
-                $sums[$key] = $sums[$key]->plus($fx->toBase($total[$key], $total['ccy'], $today));
+                $sums[$key] = $sums[$key]->plus($fx->toBase($total[$key], $total['ccy'], $day));
             }
 
             $unpriced += $total['unpriced'];
