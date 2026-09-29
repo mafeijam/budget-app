@@ -445,7 +445,8 @@ class SettledStatementTest extends TestCase
 
         $figures = ['account_id', 'type', 'amount', 'ccy', 'status'];
 
-        $this->get('/transactions?per_page=10')->assertInertia(fn (Assert $page) => $page
+        // Payments asked for by type: the list hides a card payment otherwise.
+        $this->get('/transactions?per_page=10&filter[type]=charge,payment,withdraw')->assertInertia(fn (Assert $page) => $page
             ->where("editLocks.{$paid->id}.fields", [
                 'account_id', 'type', 'date', 'amount', 'ccy', 'status', 'meta_data.card_amount',
             ])

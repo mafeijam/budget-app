@@ -1369,7 +1369,8 @@ class TransactionControllerTest extends TestCase
         $payment = Transaction::where('type', 'payment')->firstOrFail();
         $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
 
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+        // Payments asked for by type: the list hides a card payment otherwise.
+        $this->get('/transactions?filter[type]=charge,payment,withdraw')->assertInertia(fn (Assert $page) => $page
             // The whole map in one assertion. A prop of this shape arrives as a
             // Collection rather than a plain array, and comparing it with == would
             // fail on that rather than on the data -- hence all(). Counting the

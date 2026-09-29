@@ -498,6 +498,27 @@ class TransactionFilterTest extends TestCase
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page->where('totals', null));
     }
 
+    public function test_a_card_payment_is_hidden_unless_the_filter_asks_for_it(): void
+    {
+        $this->payment('2026-02-01', '50.0000', '2026-02-09');
+
+        $listed = fn (string $query) => $this->get('/transactions?per_page=20'.$query)
+            ->viewData('page')['props']['data']['data'];
+        $payments = fn (string $query) => collect($listed($query))->where('type', 'payment')->count();
+
+        $this->assertSame(0, $payments(''));
+        $this->assertSame(1, $payments('&filter[type]=payment'));
+        $this->assertSame(1, $payments('&filter[account_id]='.$this->card->id));
+        $this->assertSame(1, $payments('&filter[account_id]='.$this->card->id.'&filter[due_date]=2026-02-09'));
+    }
+
+    public function test_the_amount_sorts_by_its_signed_figure(): void
+    {
+        // Salary +30000, then the two charges of -120, newer first on the id tiebreak, then
+        // rent at -9000. By magnitude, rent would come second.
+        $this->assertListed(['sort' => 'amount', 'dir' => 'desc'], ['Salary', 'Books', 'Coffee, tea', 'Rent']);
+    }
+
     /** The descriptions listed for a query, newest day first. */
     private function assertListed(array $query, array $descriptions): void
     {

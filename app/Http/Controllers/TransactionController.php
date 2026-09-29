@@ -164,11 +164,20 @@ class TransactionController extends Controller
             )
             ->with(['meta', 'account']);
 
+        // A card payment is the other half of a bank withdrawal the list already shows, so
+        // it is hidden, from the totals too, unless the filter is asking for it.
+        if (! $this->wantsCardPayments((array) $r->input('filter', []))) {
+            $transactions->where('type', '!=', TransactionType::Payment->value);
+        }
+
         // Every filtered row, not the page: a total of ten rows would read as the filter's.
         $totals = $r->has('filter') ? $this->totals(clone $transactions->getEloquentBuilder()) : null;
 
-        $transactions = $transactions
-            ->orderBy($sort, $dir)
+        // By the signed figure the Amount column shows, not the stored magnitude, or money in
+        // and money out interleave.
+        $transactions = ($sort === 'amount'
+            ? $transactions->orderByRaw(self::signedAmountSql().' '.$dir)
+            : $transactions->orderBy($sort, $dir))
             // Tiebreak by id, or a row could appear on two pages or none.
             ->orderBy('id', $dir)
             ->paginate($r->input('per_page', self::PER_PAGE))
@@ -783,6 +792,56 @@ class TransactionController extends Controller
         return back()->with('message', $period === null
             ? 'Card settlement deleted in full: 2 transactions'
             : sprintf('Card settlement [%s] deleted in full: 2 transactions', $period));
+    }
+
+    /**
+     * A card payment is wanted by name, by a card chosen as the account, or with a
+     * statement, which is its charges and the payments naming it.
+     *
+     * @param  array<string, mixed>  $filter
+     */
+    private function wantsCardPayments(array $filter): bool
+    {
+        $list = fn ($value) => array_filter(is_array($value) ? $value : explode(',', (string) $value));
+
+        if (in_array(TransactionType::Payment->value, $list($filter['type'] ?? ''), true)) {
+            return true;
+        }
+
+        if (! empty($filter['due_date'])) {
+            return true;
+        }
+
+        $accounts = $list($filter['account_id'] ?? '');
+
+        return $accounts !== [] && Account::query()
+            ->whereIn('id', $accounts)
+            ->where('type', AccountType::Card->value)
+            ->exists();
+    }
+
+    /**
+     * The amount signed as movesBalanceOn() signs it, as SQL. Built from the enums, so it
+     * cannot drift from the Amount column's sign. A brokerage row moves no balance and
+     * shows no sign, so it sorts as money in.
+     */
+    private static function signedAmountSql(): string
+    {
+        $cases = [];
+
+        foreach (TransactionType::cases() as $type) {
+            foreach ($type->accountTypes() as $accountType) {
+                if ($type->movesBalanceOn($accountType) < 0) {
+                    $cases[] = sprintf(
+                        "WHEN transactions.type = '%s' AND (SELECT a.type FROM accounts a WHERE a.id = transactions.account_id) = '%s' THEN -transactions.amount",
+                        $type->value,
+                        $accountType->value
+                    );
+                }
+            }
+        }
+
+        return 'CASE '.implode(' ', $cases).' ELSE transactions.amount END';
     }
 
     /**
