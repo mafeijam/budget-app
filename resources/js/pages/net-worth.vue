@@ -1,10 +1,27 @@
 <template>
   <div class="column no-wrap q-gutter-lg">
     <div>
-      <div class="text-h6 text-weight-medium">Net worth</div>
-      <div class="text-caption text-grey-7">
-        Cash, less what the cards owe, plus the stocks at their last close, in {{ base }}. Pending
-        rows are left out.
+      <div class="row items-end q-col-gutter-md">
+        <div class="col">
+          <div class="text-h6 text-weight-medium">
+            Net worth
+            <span v-if="at" class="text-subtitle1 text-grey-7">on {{ dayLabel(at) }}</span>
+          </div>
+          <div class="text-caption text-grey-7">
+            Cash, less what the cards owe, plus the stocks at their last close, in {{ base }}.
+            Pending rows are left out. Click a point on the chart to see that day.
+          </div>
+        </div>
+        <div v-if="at" class="col-auto">
+          <q-btn
+            class="text-weight-bold app-btn"
+            unelevated
+            no-caps
+            icon="today"
+            label="Back to today"
+            @click="visit({ at: null })"
+          />
+        </div>
       </div>
     </div>
 
@@ -25,144 +42,147 @@
       </div>
     </div>
 
-    <div class="row q-col-gutter-md">
-      <div class="col-12 col-sm-6 col-md">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="text-caption text-grey-7">Net worth</div>
-            <div class="text-h5 text-weight-bold money">{{ figure(current.net_worth) }}</div>
-            <q-badge
-              v-if="monthChange"
-              class="q-mt-sm"
-              :class="
-                monthChange.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'
-              "
-              :label="`${monthChange.up ? '+' : ''}${money(monthChange.amount)} on last month${monthChange.pct}`"
-            />
-            <div v-if="growth" class="text-caption text-grey-7 q-mt-sm">
-              {{ growth.up ? '+' : '' }}{{ money(growth.amount) }}{{ growth.pct }} since
-              {{ monthLabel(since.date) }}
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-12 col-sm-6 col-md">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="text-caption text-grey-7">Cash</div>
-            <div class="text-h5 text-weight-bold text-positive money">
-              {{ figure(current.cash) }}
-            </div>
-            <q-badge
-              class="q-mt-sm app-tint app-tint--positive"
-              :label="`${share(current.cash)} of net worth`"
-            />
-            <div class="q-mt-sm">
-              <div
-                v-for="account in accountsOf('cash')"
-                :key="account.id"
-                class="row no-wrap text-caption"
-              >
-                <span class="text-grey-7 ellipsis q-mr-sm">{{ account.name }}</span>
-                <q-space />
-                <span class="money">{{ money(account.base ?? account.balance) }}</span>
-              </div>
-              <div v-if="!isZero(current.cards)" class="row no-wrap text-caption q-mt-xs">
-                <span class="text-grey-7">Cards owe</span>
-                <q-space />
-                <span class="money text-negative">{{ money(current.cards) }}</span>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-12 col-sm-6 col-md">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="text-caption text-grey-7">Stock market value</div>
-            <div class="text-h5 text-weight-bold text-primary money">
-              {{ figure(current.value) }}
-            </div>
-            <q-badge
-              class="q-mt-sm app-tint app-tint--info"
-              :label="`${share(current.value)} of net worth`"
-            />
-            <div class="q-mt-sm">
-              <div
-                v-for="broker in current.brokerages"
-                :key="broker.id"
-                class="row no-wrap text-caption"
-              >
-                <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                <q-space />
-                <span class="money">
-                  {{ money(broker.value_base ?? broker.value) }}
-                  <q-tooltip v-if="broker.ccy !== base" :delay="300" :offset="[0, 6]">
-                    {{ money(broker.value) }} {{ broker.ccy }}
-                  </q-tooltip>
-                </span>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-12 col-sm-6 col-md">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="text-caption text-grey-7">Stock cost</div>
-            <div class="text-h5 text-weight-bold money">{{ figure(current.cost) }}</div>
-            <div class="q-mt-sm">
-              <div
-                v-for="broker in current.brokerages"
-                :key="broker.id"
-                class="row no-wrap text-caption"
-              >
-                <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                <q-space />
-                <span class="money">{{ money(broker.cost_base ?? broker.cost) }}</span>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-12 col-sm-6 col-md">
-        <q-card flat bordered class="full-height">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="text-caption text-grey-7">Unrealised P&amp;L</div>
-              <q-space />
+    <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
+    <div>
+      <div class="row q-col-gutter-md">
+        <div class="col-12 col-sm-6 col-md">
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="text-caption text-grey-7">Net worth</div>
+              <div class="text-h5 text-weight-bold money">{{ figure(current.net_worth) }}</div>
               <q-badge
-                v-if="unrealisedPct"
+                v-if="monthChange"
+                class="q-mt-sm"
                 :class="
-                  up(current.unrealised)
-                    ? 'app-tint app-tint--positive'
-                    : 'app-tint app-tint--negative'
+                  monthChange.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'
                 "
-                :label="unrealisedPct"
+                :label="`${monthChange.up ? '+' : ''}${money(monthChange.amount)} on last month${monthChange.pct}`"
               />
-            </div>
-            <div class="text-h5 text-weight-bold money" :class="signClass(current.unrealised)">
-              {{ figure(current.unrealised, true) }}
-            </div>
-            <div class="q-mt-sm">
-              <div
-                v-for="broker in current.brokerages"
-                :key="broker.id"
-                class="row no-wrap text-caption"
-              >
-                <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                <q-space />
-                <span class="money" :class="signClass(gain(broker))">{{
-                  money(gain(broker))
-                }}</span>
+              <div v-if="growth" class="text-caption text-grey-7 q-mt-sm">
+                {{ growth.up ? '+' : '' }}{{ money(growth.amount) }}{{ growth.pct }} since
+                {{ monthLabel(since.date) }}
               </div>
-            </div>
-          </q-card-section>
-        </q-card>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md">
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="text-caption text-grey-7">Cash</div>
+              <div class="text-h5 text-weight-bold text-positive money">
+                {{ figure(current.cash) }}
+              </div>
+              <q-badge
+                class="q-mt-sm app-tint app-tint--positive"
+                :label="`${share(current.cash)} of net worth`"
+              />
+              <div class="q-mt-sm">
+                <div
+                  v-for="account in accountsOf('cash')"
+                  :key="account.id"
+                  class="row no-wrap text-caption"
+                >
+                  <span class="text-grey-7 ellipsis q-mr-sm">{{ account.name }}</span>
+                  <q-space />
+                  <span class="money">{{ money(account.base ?? account.balance) }}</span>
+                </div>
+                <div v-if="!isZero(current.cards)" class="row no-wrap text-caption q-mt-xs">
+                  <span class="text-grey-7">Cards owe</span>
+                  <q-space />
+                  <span class="money text-negative">{{ money(current.cards) }}</span>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md">
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="text-caption text-grey-7">Stock market value</div>
+              <div class="text-h5 text-weight-bold text-primary money">
+                {{ figure(current.value) }}
+              </div>
+              <q-badge
+                class="q-mt-sm app-tint app-tint--info"
+                :label="`${share(current.value)} of net worth`"
+              />
+              <div class="q-mt-sm">
+                <div
+                  v-for="broker in current.brokerages"
+                  :key="broker.id"
+                  class="row no-wrap text-caption"
+                >
+                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
+                  <q-space />
+                  <span class="money">
+                    {{ money(broker.value_base ?? broker.value) }}
+                    <q-tooltip v-if="broker.ccy !== base" :delay="300" :offset="[0, 6]">
+                      {{ money(broker.value) }} {{ broker.ccy }}
+                    </q-tooltip>
+                  </span>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md">
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="text-caption text-grey-7">Stock cost</div>
+              <div class="text-h5 text-weight-bold money">{{ figure(current.cost) }}</div>
+              <div class="q-mt-sm">
+                <div
+                  v-for="broker in current.brokerages"
+                  :key="broker.id"
+                  class="row no-wrap text-caption"
+                >
+                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
+                  <q-space />
+                  <span class="money">{{ money(broker.cost_base ?? broker.cost) }}</span>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md">
+          <q-card flat bordered class="full-height">
+            <q-card-section>
+              <div class="row items-center">
+                <div class="text-caption text-grey-7">Unrealised P&amp;L</div>
+                <q-space />
+                <q-badge
+                  v-if="unrealisedPct"
+                  :class="
+                    up(current.unrealised)
+                      ? 'app-tint app-tint--positive'
+                      : 'app-tint app-tint--negative'
+                  "
+                  :label="unrealisedPct"
+                />
+              </div>
+              <div class="text-h5 text-weight-bold money" :class="signClass(current.unrealised)">
+                {{ figure(current.unrealised, true) }}
+              </div>
+              <div class="q-mt-sm">
+                <div
+                  v-for="broker in current.brokerages"
+                  :key="broker.id"
+                  class="row no-wrap text-caption"
+                >
+                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
+                  <q-space />
+                  <span class="money" :class="signClass(gain(broker))">{{
+                    money(gain(broker))
+                  }}</span>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
       </div>
     </div>
 
@@ -193,7 +213,14 @@
       <q-separator />
 
       <q-card-section>
-        <NetWorthChart v-if="history.length" :history="history" :base="base" :months="months" />
+        <NetWorthChart
+          v-if="history.length"
+          :history="history"
+          :base="base"
+          :months="months"
+          :selected="at ?? history.at(-1)?.date"
+          @select="pick"
+        />
         <div v-else class="text-grey-6">No transactions yet.</div>
       </q-card-section>
     </q-card>
@@ -209,7 +236,19 @@ const props = defineProps({
   history: { type: Array, default: () => [] },
   months: { type: Number, default: 1 },
   periods: { type: Array, default: () => [1, 3, 6, 12] },
+  at: { type: String, default: null },
 })
+
+// The spacing and the picked snapshot, each off the URL at its default.
+const visit = ({ months = props.months, at = props.at }) =>
+  router.get(
+    '/net-worth',
+    { ...(months === 1 ? {} : { months }), ...(at ? { at } : {}) },
+    { preserveScroll: true, replace: true },
+  )
+
+// The last point is today's, which is the page without a day picked.
+const pick = day => visit({ at: day === props.history.at(-1)?.date ? null : day })
 
 const money = useMoney()
 
@@ -220,8 +259,7 @@ const periodName = computed(
 )
 
 // Monthly is the default, so it stays off the URL.
-const choose = n =>
-  router.get('/net-worth', n === 1 ? {} : { months: n }, { preserveScroll: true, replace: true })
+const choose = n => visit({ months: n })
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
@@ -255,6 +293,19 @@ const growth = computed(() => change(props.since))
 const unrealisedPct = computed(() => percent(props.current.unrealised, props.current.cost))
 
 const gain = broker => broker.unrealised_base ?? broker.unrealised
+
+const dayFormat = new Intl.DateTimeFormat('en', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+const dayLabel = day => {
+  const [year, month, date] = day.split('-').map(Number)
+
+  return dayFormat.format(new Date(Date.UTC(year, month - 1, date)))
+}
 
 const monthFormat = new Intl.DateTimeFormat('en', {
   month: 'long',

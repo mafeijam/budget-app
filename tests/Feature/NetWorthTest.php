@@ -129,6 +129,27 @@ class NetWorthTest extends TestCase
         );
     }
 
+    public function test_a_picked_day_puts_its_snapshot_in_the_cards(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        $this->get('/net-worth?at=2026-03-31')->assertInertia(fn (Assert $page) => $page
+            ->where('at', '2026-03-31')
+            ->where('current.cash', '100.0000')
+            ->where('lastMonth.date', '2026-02-28')
+            ->where('lastMonth.change', '0.0000')
+        );
+
+        // A future or malformed day is today's page.
+        foreach (['2026-12-31', '2026-02-30', 'soon'] as $day) {
+            $this->get("/net-worth?at={$day}")->assertInertia(fn (Assert $page) => $page
+                ->where('at', null)
+                ->where('current.cash', '150.0000')
+            );
+        }
+    }
+
     private function row(Account $account, string $type, string $date, string $amount, array $extra = []): void
     {
         $this->post('/transactions', [

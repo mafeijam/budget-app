@@ -38,6 +38,16 @@
         </g>
 
         <line
+          v-if="selectedIndex !== null"
+          :x1="x(selectedIndex)"
+          :x2="x(selectedIndex)"
+          :y1="top"
+          :y2="bottom"
+          :stroke="colours.net_worth"
+          stroke-width="1.5"
+        />
+
+        <line
           v-if="hovered !== null"
           :x1="x(hovered)"
           :x2="x(hovered)"
@@ -48,14 +58,14 @@
         />
 
         <!-- Fills first, so the lines and dots sit on top of them. -->
-        <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
+        <path :d="area('value')" :fill="colours.value" fill-opacity="0.08" />
         <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
         <path
-          v-for="(piece, i) in losses"
-          :key="`loss-${i}`"
-          :d="piece"
-          :fill="colours.cost"
-          fill-opacity="0.22"
+          v-for="(piece, i) in gaps"
+          :key="`gap-${i}`"
+          :d="piece.d"
+          :fill="piece.gain ? colours.value : colours.cost"
+          :fill-opacity="piece.gain ? 0.3 : 0.25"
         />
 
         <polyline
@@ -99,8 +109,10 @@
           :width="step"
           :height="bottom - top"
           fill="transparent"
+          class="cursor-pointer"
           @mouseenter="hovered = i"
           @mouseleave="hovered = null"
+          @click="emit('select', point.date)"
         />
       </svg>
 
@@ -122,7 +134,11 @@ const props = defineProps({
   history: { type: Array, default: () => [] },
   base: { type: String, default: '' },
   months: { type: Number, default: 1 },
+  // The snapshot the cards show, marked on the chart.
+  selected: { type: String, default: null },
 })
+
+const emit = defineEmits(['select'])
 
 const money = useMoney()
 
@@ -144,7 +160,10 @@ const legend = [
   { key: 'cost', label: 'Stock cost', colour: colours.cost },
 ]
 
-const bands = [{ label: 'Below cost', colour: colours.cost }]
+const bands = [
+  { label: 'Above cost', colour: colours.value },
+  { label: 'Below cost', colour: colours.cost },
+]
 
 const lines = [
   { key: 'cost', colour: colours.cost, dashed: true },
@@ -161,6 +180,12 @@ const top = 12
 const bottom = height - 32
 
 const hovered = ref(null)
+
+const selectedIndex = computed(() => {
+  const i = props.history.findIndex(point => point.date === props.selected)
+
+  return i === -1 ? null : i
+})
 
 const shortDate = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -306,21 +331,21 @@ const area = key => {
   return `M${sampled[0][0]},${y(0)} L${line(key).replaceAll(' ', ' L')} L${sampled.at(-1)[0]},${y(0)} Z`
 }
 
-// Red between the market value and the cost wherever the stocks are worth less than they
-// cost; the value's own area already fills the rest blue. Built on the sampled curves, and
-// split where they cross, so the red stops exactly at the crossing.
-const losses = computed(() => {
+// The gap between the market value and the cost: blue while the stocks are worth their
+// cost or more, red while below. Built on the sampled curves and split where they cross,
+// so each colour stops exactly at the crossing.
+const gaps = computed(() => {
   const value = curves.value.value
   const cost = curves.value.cost
   const pieces = []
   let run = []
 
-  const close = () => {
+  const close = gain => {
     if (run.length > 1) {
       const top = run.map(([px, v]) => `${px},${y(v)}`)
       const bottom = [...run].reverse().map(([px, , c]) => `${px},${y(c)}`)
 
-      pieces.push(`M${[...top, ...bottom].join(' L')} Z`)
+      pieces.push({ gain, d: `M${[...top, ...bottom].join(' L')} Z` })
     }
 
     run = []
@@ -334,21 +359,22 @@ const losses = computed(() => {
       const [qx, pv] = value[i - 1]
       const pc = cost[i - 1][1]
 
-      // A crossing between two samples: end or start the run at the meeting point.
+      // A crossing between two samples: the run ends at the meeting point, and the next
+      // one starts there.
       if ((pv - pc) * (v - c) < 0) {
         const t = (pv - pc) / (pv - pc - (v - c))
-        const meet = [qx + (px - qx) * t, pv + (v - pv) * t]
+        const meet = [qx + (px - qx) * t, pv + (v - pv) * t, pv + (v - pv) * t]
 
-        run.push([meet[0], meet[1], meet[1]])
-
-        if (v >= c) close()
+        run.push(meet)
+        close(pv >= pc)
+        run.push(meet)
       }
     }
 
-    if (v < c) run.push([px, v, c])
+    run.push([px, v, c])
   }
 
-  close()
+  close(value.length ? value.at(-1)[1] >= cost.at(-1)[1] : true)
 
   return pieces
 })

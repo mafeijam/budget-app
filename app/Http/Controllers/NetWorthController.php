@@ -19,8 +19,15 @@ class NetWorthController extends Controller
         $worth = new NetWorth;
         $today = today();
 
+        // The day the cards show: a snapshot picked on the chart, or today. A malformed or
+        // future day is today, since there is nothing to show past it.
+        $at = $r->input('at');
+        $at = is_string($at) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $at) && checkdate(
+            (int) substr($at, 5, 2), (int) substr($at, 8, 2), (int) substr($at, 0, 4)
+        ) && $at < $today->toDateString() ? Carbon::parse($at) : $today;
+
         $first = Transaction::query()->min('date');
-        $current = $worth->on($today->toDateString());
+        $current = $worth->on($at->toDateString());
 
         // The comparisons the net worth card makes: last month's end, and the first month's.
         $against = fn (string $day) => [
@@ -32,9 +39,10 @@ class NetWorthController extends Controller
         return inertia('net-worth', [
             'base' => Fx::BASE->value,
             'current' => $current,
-            'lastMonth' => $against($today->copy()->startOfMonth()->subDay()->toDateString()),
+            'lastMonth' => $against($at->copy()->startOfMonth()->subDay()->toDateString()),
             'since' => $first === null ? null : $against(Carbon::parse($first)->endOfMonth()->toDateString()),
             'history' => $worth->history($months, $today),
+            'at' => $at->isSameDay($today) ? null : $at->toDateString(),
             'months' => $months,
             'periods' => NetWorth::PERIODS,
         ]);
