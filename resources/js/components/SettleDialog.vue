@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="open" persistent>
-    <q-card flat class="card-form-dialog settle-dialog">
+    <q-card flat class="card-form-dialog app-dialog--narrow">
       <q-card-section class="row items-start no-wrap">
         <q-icon name="credit_card" size="sm" color="grey-6" class="q-mr-sm q-mt-xs" />
         <div>

@@ -360,7 +360,7 @@ body {
   background: var(--app-surface);
 }
 
-/* Narrower than a form: two fields and one figure do not need 800px. */
-.settle-dialog {
+/* The settle and due-date dialogs: a field or two and one figure do not need 800px. */
+.app-dialog--narrow {
   width: 600px;
 }

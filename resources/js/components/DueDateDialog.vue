@@ -1,46 +1,36 @@
 <template>
   <q-dialog v-model="open" persistent>
-    <q-card flat class="card-form-dialog">
-      <q-card-section>
-        <div class="row justify-between items-center">
-          <div class="text-h6 text-grey-9 text-weight-bold">Statement issued</div>
-          <q-btn flat round color="grey-6" icon="close" @click="open = false" />
+    <q-card flat class="card-form-dialog app-dialog--narrow">
+      <q-card-section class="row items-start no-wrap">
+        <q-icon name="edit_calendar" size="sm" color="grey-6" class="q-mr-sm q-mt-xs" />
+        <div>
+          <div class="text-h6 text-grey-9 text-weight-bold">{{ group.card?.name }} statement</div>
+          <div v-if="period" class="text-caption text-grey-7">
+            <template v-if="covers">Covers {{ covers }} · </template>
+            {{ count(period.charge_count, 'charge') }} · owes {{ money(period.owed) }}
+            {{ group.card.ccy }}
+          </div>
         </div>
+        <q-space />
+        <q-btn flat round dense color="grey-6" icon="close" @click="open = false" />
       </q-card-section>
 
-      <q-separator inset />
-
-      <q-card-section v-if="period" class="q-gutter-sm">
-        <div class="text-subtitle2 text-weight-medium">
-          {{ group.card.name }} · statement due {{ formatDate(period.due_date) }}
+      <q-card-section v-if="period" class="q-pt-none">
+        <!-- The one figure: the day it falls due, following the field as it is changed. -->
+        <div class="text-caption text-grey-7">Due</div>
+        <div class="row items-baseline q-gutter-x-sm q-mb-lg">
+          <div class="text-h4 text-weight-bold text-grey-9">{{ formatDate(stated || was) }}</div>
+          <div v-if="changed" class="text-caption text-grey-7">
+            was <span class="text-strike">{{ formatDate(was) }}</span>
+          </div>
         </div>
-
-        <q-markup-table dense flat class="q-my-sm">
-          <tbody>
-            <tr>
-              <td>Covers</td>
-              <td class="text-right">{{ covers }}</td>
-            </tr>
-            <tr>
-              <td>Charges</td>
-              <td class="text-right">
-                {{ period.charge_count }} · {{ money(period.charged) }} {{ group.card.ccy }}
-              </td>
-            </tr>
-            <tr class="text-weight-medium">
-              <td>Owes</td>
-              <td class="text-right">{{ money(period.owed) }} {{ group.card.ccy }}</td>
-            </tr>
-          </tbody>
-        </q-markup-table>
 
         <!-- Duplicated, not extracted, like SettleDialog's: see FormContractTest. -->
         <q-input
           v-model="stated"
-          class="q-mb-sm"
           label="Due on the statement"
           filled
-          :hint="hint"
+          bottom-slots
           :error="!!fieldError"
           :error-message="fieldError"
         >
@@ -59,43 +49,56 @@
           </template>
         </q-input>
 
-        <div v-if="changed" class="app-note">
-          Every charge and payment in this statement moves to
-          {{ formatDate(stated) }}. The amount does not change.
+        <div class="row no-wrap text-caption text-grey-7 q-mt-xs">
+          <q-icon name="subdirectory_arrow_right" size="xs" class="q-mr-xs" />
+          <div v-if="changed">
+            Moves every charge and payment in this statement to {{ formatDate(stated) }}. The amount
+            does not change, and later statements still follow the card's terms.
+          </div>
+          <div v-else>
+            Counted from the card's statement day and term. Change it to the date the bank printed.
+          </div>
         </div>
 
-        <div v-if="error" class="app-note app-note--negative">
-          {{ error }}
+        <!-- Tinted notes are for what stops the change, not for describing it. -->
+        <div v-if="period.pending_count" class="app-note app-note--warning row no-wrap q-mt-md">
+          <q-icon name="schedule" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
+          <div>
+            {{ count(period.pending_count, 'row') }} in this statement
+            {{ period.pending_count === 1 ? 'is' : 'are' }} not yet posted, so it has not been
+            issued. Post or remove {{ period.pending_count === 1 ? 'it' : 'them' }} first.
+          </div>
+        </div>
+
+        <div v-if="error" class="app-note app-note--negative row no-wrap q-mt-md">
+          <q-icon name="error_outline" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
+          <div>{{ error }}</div>
         </div>
       </q-card-section>
 
-      <q-separator v-if="period" inset />
+      <q-separator v-if="period" />
 
       <q-card-actions class="q-pa-md">
-        <div class="col-12">
-          <div class="row">
-            <q-space />
-            <q-btn
-              class="text-weight-bold q-mr-md"
-              color="grey-6"
-              padding="sm md"
-              flat
-              no-caps
-              label="Cancel"
-              @click="open = false"
-            />
-            <q-btn
-              class="text-weight-bold app-btn app-btn--positive"
-              padding="sm md"
-              unelevated
-              no-caps
-              :label="saving ? 'Saving' : 'Save due date'"
-              :loading="saving"
-              :disable="!saveable"
-              @click="confirm"
-            />
-          </div>
-        </div>
+        <q-space />
+        <q-btn
+          class="text-weight-bold q-mr-sm"
+          color="grey-6"
+          padding="sm md"
+          flat
+          no-caps
+          label="Cancel"
+          @click="open = false"
+        />
+        <q-btn
+          class="text-weight-bold app-btn app-btn--positive"
+          padding="sm md"
+          unelevated
+          no-caps
+          :label="saving ? 'Saving' : changed ? `Move to ${formatDate(stated)}` : 'Save due date'"
+          :loading="saving"
+          :disable="!saveable"
+          @click="confirm"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -128,11 +131,7 @@ const covers = computed(() => {
   return from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`
 })
 
-const hint = computed(() =>
-  changed.value
-    ? `Was ${formatDate(was.value)}, counted from the card's terms`
-    : "What the card's statement day and term make of it",
-)
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 const money = useMoney()
 
