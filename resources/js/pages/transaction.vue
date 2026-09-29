@@ -4,7 +4,7 @@
 
     <CardStatements :groups="statements" :banks="cardBanks" />
 
-    <AppTable :rows="data.data" :columns="columns" title="Transaction">
+    <AppTable :rows="data.data" :columns="columns" title="Transaction" dense>
       <template #top>
         <TransactionFilters title="Transactions">
           <template #actions>

@@ -23,9 +23,23 @@
         flat
         no-caps
         color="grey-8"
-        label="Filters"
+        :label="chips.length ? `Filters (${chips.length})` : 'Filters'"
         :icon="rowOpen ? 'expand_less' : 'expand_more'"
         @click="rowOpen = !rowOpen"
+      />
+    </div>
+
+    <!-- What the closed panel is filtering by, each removable on its own. -->
+    <div v-if="!rowOpen && chips.length" class="col-auto row items-center q-gutter-xs q-mr-md">
+      <q-chip
+        v-for="chip in chips"
+        :key="chip.key"
+        dense
+        removable
+        square
+        class="app-tint app-tint--info q-ma-none"
+        :label="chip.label"
+        @remove="chip.remove"
       />
     </div>
 
@@ -281,6 +295,31 @@ const query = () =>
   )
 
 const active = computed(() => Object.keys(query()).length > 0)
+
+const chips = computed(() => {
+  const picked = [
+    ['account_id', 'Account', accountOptions.value],
+    ['account_type', 'Account type', null],
+    ['type', 'Type', null],
+    ['status', 'Status', null],
+    ['ccy', 'Currency', null],
+    ['category_id', 'Category', categoryOptions.value],
+    ['symbol', 'Symbol', null],
+  ]
+    .filter(([key]) => filters[key].length)
+    .map(([key, name, options]) => ({
+      key,
+      label: `${name}: ${shown(filters[key], options)}`,
+      remove: () => (filters[key] = []),
+    }))
+
+  return filters.date_from
+    ? [
+        { key: 'date', label: `Date: ${rangeLabel.value}`, remove: () => (range.value = null) },
+        ...picked,
+      ]
+    : picked
+})
 
 const apply = () => {
   const { sort, dir, per_page: perPage } = page.props.params ?? {}

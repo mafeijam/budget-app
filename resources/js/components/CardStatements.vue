@@ -15,7 +15,6 @@
           <th>Covers</th>
           <th>Due</th>
           <th class="text-right">Charges</th>
-          <th class="text-right">Paid</th>
           <th class="text-right">Owes</th>
           <th />
         </tr>
@@ -23,7 +22,7 @@
       <tbody>
         <template v-for="group in groups" :key="group.card.id">
           <tr class="bg-grey-1">
-            <th colspan="6" class="text-left q-py-sm">
+            <th colspan="5" class="text-left q-py-sm">
               <!-- A flex row: inline, the icon, badge and caption each sat on their own line. -->
               <div class="row items-center no-wrap">
                 <q-icon name="credit_card" size="xs" color="grey-7" class="q-mr-sm" />
@@ -51,8 +50,9 @@
                   dense
                   flat
                   round
+                  size="sm"
                   class="q-ml-xs"
-                  color="grey-7"
+                  color="grey-6"
                   icon="edit_calendar"
                   :disable="!correctable(period)"
                   @click="openCorrect(group, period)"
@@ -67,17 +67,19 @@
               </div>
             </td>
             <td class="text-right money">
+              <span class="text-caption text-grey-6 q-mr-sm">
+                {{ count(period.charge_count, 'charge') }}
+              </span>
               {{ money(period.charged) }}
-              <div class="text-caption text-grey-6">{{ count(period.charge_count, 'charge') }}</div>
             </td>
             <td class="text-right money">
-              {{ money(period.paid) }}
-              <div class="text-caption text-grey-6">
-                {{ count(period.payment_count, 'payment') }}
-              </div>
-            </td>
-            <td class="text-right text-subtitle1 text-weight-bold money" :class="owedClass(period)">
-              {{ money(period.owed) }}
+              <!-- Paid only once something is, since it is almost always nothing. -->
+              <span v-if="!isZero(period.paid)" class="text-caption text-grey-6 q-mr-sm">
+                {{ money(period.paid) }} paid · {{ count(period.payment_count, 'payment') }}
+              </span>
+              <span class="text-subtitle1 text-weight-bold" :class="owedClass(period)">
+                {{ money(period.owed) }}
+              </span>
             </td>
             <td class="text-right">
               <q-btn
@@ -121,6 +123,9 @@ const formatDate = useCalendarDay()
 const money = useMoney()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+// On the decimal string, not a float.
+const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
 
 const bankLine = group => {
   const bank = props.banks[group.card.id]
