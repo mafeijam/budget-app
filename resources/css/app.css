@@ -381,3 +381,8 @@ body {
   height: 33px;
   bottom: 1px;
 }
+
+/* Centred, so the action icons line up with the bold Owes figure beside them. */
+.app-statement-period > td {
+  vertical-align: middle !important;
+}

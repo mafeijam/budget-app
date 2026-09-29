@@ -37,6 +37,7 @@
           <tr
             v-for="period in group.periods"
             :key="`${group.card.id}-${period.due_date}`"
+            class="app-statement-period"
             :class="{ 'bg-blue-1': isShown(group, period) }"
           >
             <td class="text-grey-8">{{ covers(period) }}</td>
@@ -50,37 +51,6 @@
                   class="q-ml-sm app-tint app-tint--warning"
                   :label="`${period.pending_count} not yet posted`"
                 />
-                <q-btn
-                  dense
-                  flat
-                  round
-                  size="sm"
-                  class="q-ml-xs"
-                  :color="isShown(group, period) ? 'primary' : 'grey-6'"
-                  icon="filter_list"
-                  @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
-                >
-                  <q-tooltip :delay="500" :offset="[0, 6]">
-                    Show this statement's transactions
-                  </q-tooltip>
-                </q-btn>
-                <q-btn
-                  dense
-                  flat
-                  round
-                  size="sm"
-                  color="grey-6"
-                  icon="edit_calendar"
-                  :disable="!correctable(period)"
-                  @click="openCorrect(group, period)"
-                >
-                  <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
-                    {{ correctionBlocked(period) }}
-                  </q-tooltip>
-                  <q-tooltip v-else :delay="500" :offset="[0, 6]">
-                    Correct this statement's due date
-                  </q-tooltip>
-                </q-btn>
               </div>
             </td>
             <td class="text-right money">
@@ -98,20 +68,62 @@
                 {{ money(period.owed) }}
               </span>
             </td>
+            <!-- Every action on the period, as icons, so the figures keep the width. -->
             <td class="text-right">
-              <q-btn
-                dense
-                unelevated
-                no-caps
-                label="Settle"
-                class="q-px-sm text-weight-bold app-btn app-btn--positive"
-                :disable="!settleable(group, period)"
-                @click="openSettle(group, period)"
-              >
-                <q-tooltip v-if="!settleable(group, period)" :delay="500" :offset="[0, 6]">
-                  {{ blockedReason(group, period) }}
-                </q-tooltip>
-              </q-btn>
+              <div class="row items-center justify-end no-wrap">
+                <q-btn
+                  dense
+                  flat
+                  round
+                  size="sm"
+                  :color="isShown(group, period) ? 'primary' : 'grey-7'"
+                  icon="filter_list"
+                  @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
+                >
+                  <q-tooltip :delay="500" :offset="[0, 6]">
+                    {{
+                      isShown(group, period)
+                        ? 'Show every transaction'
+                        : "Show this statement's transactions"
+                    }}
+                  </q-tooltip>
+                </q-btn>
+                <q-btn
+                  dense
+                  flat
+                  round
+                  size="sm"
+                  color="grey-7"
+                  icon="edit_calendar"
+                  :disable="!correctable(period)"
+                  @click="openCorrect(group, period)"
+                >
+                  <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
+                    {{ correctionBlocked(period) }}
+                  </q-tooltip>
+                  <q-tooltip v-else :delay="500" :offset="[0, 6]">
+                    Correct this statement's due date
+                  </q-tooltip>
+                </q-btn>
+                <q-btn
+                  dense
+                  flat
+                  round
+                  size="sm"
+                  :color="settleable(group, period) ? 'positive' : 'grey-7'"
+                  icon="payments"
+                  :disable="!settleable(group, period)"
+                  @click="openSettle(group, period)"
+                >
+                  <q-tooltip :delay="500" :offset="[0, 6]">
+                    {{
+                      settleable(group, period)
+                        ? 'Pay this statement'
+                        : blockedReason(group, period)
+                    }}
+                  </q-tooltip>
+                </q-btn>
+              </div>
             </td>
           </tr>
         </template>
