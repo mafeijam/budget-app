@@ -64,7 +64,7 @@
           :points="line(series.key)"
           fill="none"
           :stroke="series.colour"
-          :stroke-width="series.key === 'net_worth' ? 2.5 : 2"
+          stroke-width="2"
           :stroke-dasharray="series.dashed ? '5 4' : null"
           stroke-linejoin="round"
           stroke-linecap="round"
@@ -135,7 +135,7 @@ const money = useMoney()
 // Cash in the app's positive, stocks in its primary, cost as a dashed line in the negative
 // so the gap to the market value reads as the unrealised gain or loss.
 const colours = {
-  net_worth: '#0f172a',
+  net_worth: '#475569',
   cash: '#059669',
   value: '#2563eb',
   cost: '#e11d48',
