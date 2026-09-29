@@ -18,9 +18,14 @@
         </TransactionFilters>
       </template>
 
-      <template #body-cell-accountType="cell">
+      <template #body-cell-account="cell">
         <q-td :props="cell">
-          <q-badge v-bind="accountTypeBadges[cell.value] ?? {}" :label="cell.value" />
+          {{ cell.value }}
+          <q-badge
+            v-bind="accountTypeBadges[cell.row.account_type] ?? {}"
+            class="q-ml-xs text-weight-regular"
+            :label="cell.row.account_type"
+          />
         </q-td>
       </template>
 
@@ -209,20 +214,12 @@ const columns = reactive([
   },
   {
     name: 'account',
-    width: '130px',
+    width: '200px',
     label: 'Account',
     // Not sortable: the list orders against transactions, which has no account_name.
     field: 'account_name',
     align: 'left',
     classes: 'text-weight-medium text-grey-9',
-    sortable: false,
-  },
-  {
-    name: 'accountType',
-    width: '110px',
-    label: 'Account type',
-    field: 'account_type',
-    align: 'left',
     sortable: false,
   },
   {
