@@ -86,7 +86,7 @@ const runNow = () =>
     {},
     {
       preserveScroll: true,
-      // The button's own spinner -- see plugins/quasar.js.
+      // The button's own spinner -- see app.js.
       showProgress: false,
       onStart: () => (running.value = true),
       onSuccess: () => notifySuccess(),

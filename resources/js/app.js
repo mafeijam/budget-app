@@ -7,6 +7,19 @@ import globalHelper from './plugins/global-helper'
 import '../css/app.css'
 
 createInertiaApp({
+  /*
+    The one loading indicator, and Inertia's own. It installs this bar by default, so
+    passing nothing here is not the same as passing no bar: plugins/quasar.js also drove
+    Quasar's LoadingBar over the top of it, and a visit slower than the delay drew two,
+    in two colours, for one request. A call that shows its own control's spinner passes
+    showProgress: false, which is honoured natively on this path and by nothing else.
+
+    The colour is a CSS var because Quasar writes --q-primary onto the body element at
+    install and this stylesheet is injected into the head, where the var still inherits
+    down to #nprogress; a hex would be a second copy of the brand primary to keep in step.
+    The delay is the one plugins/quasar.js had, so a fast visit does not flash the bar.
+  */
+  progress: { color: 'var(--q-primary)', delay: 300 },
   resolve: name => {
     const pages = import.meta.glob('./pages/**/*.vue', { eager: true })
     const page = pages[`./pages/${name}.vue`]

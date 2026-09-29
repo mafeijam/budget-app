@@ -254,7 +254,7 @@ const confirm = () => {
     {
       preserveScroll: true,
       preserveState: true,
-      // Settle's own spinner -- see plugins/quasar.js.
+      // Settle's own spinner -- see app.js.
       showProgress: false,
       onError: errors => {
         fieldError.value = errors.date ?? null

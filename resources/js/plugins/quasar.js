@@ -1,4 +1,4 @@
-import { Quasar, LoadingBar, Notify, Dialog } from 'quasar'
+import { Quasar, Notify, Dialog } from 'quasar'
 
 import '@quasar/extras/material-icons/material-icons.css'
 // Quasar's stylesheet names Roboto as the first family in every font stack it sets
@@ -8,34 +8,6 @@ import '@quasar/extras/material-icons/material-icons.css'
 // why the fallback chain and not the intended face is what the spacing was tuned around.
 import '@quasar/extras/roboto-font/roboto-font.css'
 import 'quasar/dist/quasar.css'
-
-let timeout = null
-
-/*
-  Started here rather than by Inertia, because skipHijack below keeps Quasar off the
-  router -- which also means Inertia's own showProgress flag does nothing unless it is
-  read here. A request answered by its own control's spinner passes showProgress: false
-  and this honours it: the button names what is being waited on, and two indicators are
-  the same answer twice.
-
-  The button's :loading is also what disables it, which is why the spinner is the one that
-  stays. Drop it to keep the bar and a second press on Fetch prices fires a second fetch,
-  with no disabled button in the way.
-*/
-router.on('start', event => {
-  if (event.detail.visit.showProgress === false) return
-
-  timeout = setTimeout(() => LoadingBar.start(), 300)
-})
-
-// Stopped by the request that started it: a quiet one finishing alongside a navigating
-// one would switch off a bar the second is still using.
-router.on('finish', event => {
-  if (event.detail.visit.showProgress === false) return
-
-  clearTimeout(timeout)
-  LoadingBar.stop()
-})
 
 export default {
   install(app) {
@@ -49,7 +21,7 @@ export default {
       // And note this is about plugins, not components. The components really are
       // global, which is why no template imports one; a plugin is an object with state
       // behind it, and Dialog.create() is a method on it rather than a component.
-      plugins: { LoadingBar, Notify, Dialog },
+      plugins: { Notify, Dialog },
       /*
         The app's colours, named once. They were palette entries picked per component
         instead -- indigo-1/blue-9 on the add button, green-1/green-9 on the three submit
@@ -60,7 +32,8 @@ export default {
         Primary is the only interactive colour, and negative is the only destructive one, so
         a role is now a name rather than a shade. Quasar turns each into a --q- CSS variable,
         which is what lets text-positive and text-negative in the tables follow the same
-        values without a single component naming a hex.
+        values without a single component naming a hex -- or the progress bar in app.js,
+        which names var(--q-primary) rather than copy the value out of this block.
       */
       brand: {
         primary: '#2563eb',
@@ -71,13 +44,6 @@ export default {
         negative: '#dc2626',
         info: '#0284c7',
         warning: '#b45309',
-      },
-      config: {
-        loadingBar: {
-          color: 'primary',
-          size: '3px',
-          skipHijack: true,
-        },
       },
     })
   },

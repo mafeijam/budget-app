@@ -157,7 +157,7 @@ const confirm = () => {
     {
       preserveScroll: true,
       preserveState: true,
-      // Save's own spinner -- see plugins/quasar.js.
+      // Save's own spinner -- see app.js.
       showProgress: false,
       onError: errors => {
         fieldError.value = errors.new_due_date ?? null
