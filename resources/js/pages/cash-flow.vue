@@ -1,10 +1,45 @@
 <template>
   <div class="column no-wrap q-gutter-lg">
     <div>
-      <div class="text-h6 text-weight-medium">Cash flow</div>
-      <div class="text-caption text-grey-7">
+      <div class="row items-center">
+        <div class="text-h6 text-weight-medium q-mr-md">Cash flow</div>
+        <q-select
+          v-if="currencies.length > 1"
+          :model-value="ccy ?? ''"
+          :options="currencyOptions"
+          class="app-broker-select"
+          dense
+          outlined
+          emit-value
+          map-options
+          options-dense
+          @update:model-value="value => visit(value || null)"
+        >
+          <template #prepend>
+            <q-icon name="payments" size="xs" color="grey-7" />
+          </template>
+
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>
+                {{ scope.opt.label }}
+                <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+      </div>
+      <div class="text-caption text-grey-7 q-mt-xs">
         The last {{ months }} months. Paying a card and trading are moves between your own accounts,
         so neither counts as spending; pending rows are left out.
+      </div>
+    </div>
+
+    <div v-for="code in unconverted" :key="code" class="app-note app-note--warning row no-wrap">
+      <q-icon name="warning_amber" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
+      <div>
+        Some {{ code }} rows are left out: there is no {{ code }} rate on their day yet. Fetch
+        prices on the Positions page to add it.
       </div>
     </div>
 
@@ -15,7 +50,13 @@
     <q-card v-for="section in report" :key="section.ccy" flat bordered>
       <q-card-section class="row items-center q-gutter-sm">
         <q-icon name="insights" size="sm" color="grey-6" />
-        <div class="text-subtitle1 text-weight-medium">{{ section.ccy }}</div>
+        <div>
+          <div class="text-subtitle1 text-weight-medium">Income and spending</div>
+          <div class="text-caption text-grey-7">
+            <template v-if="ccy">Every {{ ccy }} account, in {{ ccy }}.</template>
+            <template v-else>Every account, in {{ base }} at the rate on each row's day.</template>
+          </div>
+        </div>
         <q-space />
         <div v-for="figure in figures(section)" :key="figure.label" class="text-right q-ml-lg">
           <div class="text-caption text-grey-7">{{ figure.label }}</div>
@@ -108,7 +149,19 @@
 const props = defineProps({
   report: { type: Array, default: () => [] },
   months: { type: Number, default: 12 },
+  ccy: { type: String, default: null },
+  currencies: { type: Array, default: () => [] },
+  base: { type: String, default: 'HKD' },
+  unconverted: { type: Array, default: () => [] },
 })
+
+const currencyOptions = computed(() => [
+  { label: `All, in ${props.base}`, value: '', caption: "Converted at each day's rate" },
+  ...props.currencies.map(code => ({ label: code, value: code, caption: `${code} accounts only` })),
+])
+
+const visit = ccy =>
+  router.get('/cash-flow', ccy ? { ccy } : {}, { preserveScroll: true, replace: true })
 
 const money = useMoney()
 

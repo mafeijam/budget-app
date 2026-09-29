@@ -7,8 +7,10 @@ use App\Enums\AccountType;
 use App\Enums\Currency;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
+use App\Models\Account;
 use App\Models\Transaction;
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 
 /**
@@ -20,7 +22,8 @@ use Carbon\Carbon;
  * bank row is paired with, so nothing has to be tagged by hand.
  *
  * A charge counts on its own date, in the card's currency at its card_amount, the figure
- * AccountBalance sums. Nothing is converted, so each currency is its own report.
+ * AccountBalance sums. lastMonths() reports each currency in its own money; combined()
+ * converts every row into the base currency at its own day's rate.
  */
 class CashFlow
 {
@@ -30,6 +33,60 @@ class CashFlow
      * @return list<array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}>
      */
     public static function lastMonths(Carbon $today, int $count = self::MONTHS): array
+    {
+        $months = self::months($today, $count);
+        $report = [];
+
+        // Currency::cases() order, so the report reads the same way as every picker.
+        foreach (self::book($today, $count, null) as $ccy => $byMonth) {
+            $report[$ccy] = self::currencyReport($ccy, $byMonth, $months);
+        }
+
+        return array_values(array_filter(array_map(
+            fn (Currency $currency) => $report[$currency->value] ?? null,
+            Currency::cases()
+        )));
+    }
+
+    /**
+     * Every currency in one report in the base currency, and the currencies left out for
+     * having no rate on a row's day, so a total missing something says so.
+     *
+     * @return array{report: array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}|null, unconverted: list<string>}
+     */
+    public static function combined(Carbon $today, int $count = self::MONTHS): array
+    {
+        $fx = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
+        $unconverted = [];
+        $book = self::book($today, $count, $fx, $unconverted);
+        $base = Fx::BASE->value;
+
+        return [
+            'report' => isset($book[$base]) ? self::currencyReport($base, $book[$base], self::months($today, $count)) : null,
+            'unconverted' => array_values(array_unique($unconverted)),
+        ];
+    }
+
+    /** @return list<Carbon> */
+    private static function months(Carbon $today, int $count): array
+    {
+        $months = [];
+
+        for ($n = $count - 1; $n >= 0; $n--) {
+            $months[] = $today->copy()->startOfMonth()->subMonthsNoOverflow($n);
+        }
+
+        return $months;
+    }
+
+    /**
+     * Each row's figure, by currency and month: its own currency's, or with $fx, the base
+     * currency's at the rate on the row's day.
+     *
+     * @param  list<string>  $unconverted  filled with the currency of every row left out
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    private static function book(Carbon $today, int $count, ?Fx $fx, array &$unconverted = []): array
     {
         $first = $today->copy()->startOfMonth()->subMonthsNoOverflow($count - 1);
         $last = $today->copy()->endOfMonth();
@@ -44,6 +101,7 @@ class CashFlow
         $partners = self::partnersOf($rows);
 
         $book = [];
+        $rates = [];
 
         foreach ($rows as $row) {
             $flow = self::classify($row, $partners[$row->id] ?? null);
@@ -54,6 +112,20 @@ class CashFlow
 
             [$kind, $figure] = $flow;
             $ccy = $row->account->ccy;
+
+            if ($fx !== null) {
+                $rate = $rates[$ccy][$row->date] ??= $fx->rate($ccy, $row->date);
+
+                if ($rate === null) {
+                    $unconverted[] = $ccy;
+
+                    continue;
+                }
+
+                $figure = $figure->multipliedBy($rate)->toScale(TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+                $ccy = Fx::BASE->value;
+            }
+
             $month = substr($row->date, 0, 7);
 
             $entry = &$book[$ccy][$month];
@@ -68,24 +140,7 @@ class CashFlow
             unset($entry);
         }
 
-        $months = [];
-
-        for ($n = $count - 1; $n >= 0; $n--) {
-            $months[] = $today->copy()->startOfMonth()->subMonthsNoOverflow($n);
-        }
-
-        $report = [];
-
-        // Currency::cases() order, so the report reads the same way as every picker.
-        foreach (Currency::cases() as $currency) {
-            if (! isset($book[$currency->value])) {
-                continue;
-            }
-
-            $report[] = self::currencyReport($currency->value, $book[$currency->value], $months);
-        }
-
-        return $report;
+        return $book;
     }
 
     /**

@@ -177,7 +177,8 @@ const ticks = computed(() => {
   const { tick, high, low } = scale.value
   const list = []
 
-  for (let value = -low; value <= high; value += tick) list.push(value)
+  // `|| 0`, or a scale with nothing below zero starts at -0 and labels it so.
+  for (let value = -low || 0; value <= high; value += tick) list.push(value)
 
   return list
 })

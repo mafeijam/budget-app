@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\Price;
 use App\Models\Transaction;
 use App\Support\CashFlow;
 use Carbon\Carbon;
@@ -139,6 +140,57 @@ class CashFlowTest extends TestCase
 
         $this->assertSame(['HKD', 'USD'], array_column(CashFlow::lastMonths(today()), 'ccy'));
         $this->assertSame('30.0000', $this->month('USD', '2026-09')['income']);
+    }
+
+    public function test_the_combined_report_converts_each_row_at_its_own_days_rate(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $jpy = Account::create(['name' => 'Bank JPY', 'status' => 'active', 'type' => 'cash', 'ccy' => 'JPY']);
+
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-08-01', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'manual']);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-09-05', 'close' => '8', 'ccy' => 'HKD', 'source' => 'manual']);
+
+        $this->cash('deposit', '2026-09-01', '100');
+        $this->cash('deposit', '2026-08-10', '10', account: $usd);
+        $this->cash('deposit', '2026-09-10', '10', account: $usd);
+        $this->cash('deposit', '2026-09-10', '10', account: $jpy);
+
+        $combined = CashFlow::combined(today());
+        $months = collect($combined['report']['months'])->keyBy('month');
+
+        $this->assertSame('HKD', $combined['report']['ccy']);
+        $this->assertSame('78.0000', $months['2026-08']['income']);
+        $this->assertSame('180.0000', $months['2026-09']['income']);
+
+        // No JPY rate, so its row is left out and named rather than counted at nothing.
+        $this->assertSame(['JPY'], $combined['unconverted']);
+    }
+
+    public function test_the_page_combines_currencies_unless_one_is_picked(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-08-01', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'manual']);
+
+        $this->cash('deposit', '2026-09-01', '100');
+        $this->cash('deposit', '2026-09-01', '10', account: $usd);
+
+        $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
+            ->where('ccy', null)
+            ->where('currencies', ['HKD', 'USD'])
+            ->has('report', 1)
+            ->where('report.0.totals.income', '178.0000')
+        );
+
+        $this->get('/cash-flow?ccy=USD')->assertInertia(fn (Assert $page) => $page
+            ->where('ccy', 'USD')
+            ->has('report', 1)
+            ->where('report.0.ccy', 'USD')
+            ->where('report.0.totals.income', '10.0000')
+        );
+
+        // A currency with no rows is a hand-edited URL, and gets the combined report.
+        $this->get('/cash-flow?ccy=JPY')->assertInertia(fn (Assert $page) => $page->where('ccy', null));
     }
 
     public function test_the_page_carries_the_report(): void
