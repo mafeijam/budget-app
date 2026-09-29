@@ -365,18 +365,7 @@ class TransactionController extends Controller
         DB::beginTransaction();
 
         try {
-            $transaction = Transaction::create($data->except('meta_data')->toArray());
-
-            // Nulls dropped, falsy kept: filter() would drop a fee of '0'.
-            $meta = collect($data->meta_data?->all())->filter(fn ($value) => $value !== null);
-
-            if ($meta->isNotEmpty()) {
-                $transaction->meta()->create([
-                    'meta' => $meta,
-                ]);
-            }
-
-            TradeCash::sync($transaction);
+            $transaction = $data->write();
 
             DB::commit();
         } catch (Exception $e) {
