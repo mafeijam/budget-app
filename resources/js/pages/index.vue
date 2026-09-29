@@ -17,15 +17,25 @@
               {{ base }} {{ money(figure.value) }}
             </div>
             <div class="text-caption q-mt-xs" :class="figure.noteClass">
-              {{ figure.note ?? `last ${trend.length - 1} months` }}
+              {{ figure.note ?? trendCaption }}
             </div>
           </q-card-section>
-          <HomeSpark
-            v-if="trend.length > 1"
-            :values="trend.map(point => point[figure.key])"
-            :colour="figure.colour"
-            :label="`${figure.label}, last ${trend.length - 1} months`"
-          />
+          <!--
+            Deferred, so the line lands after the figures it sits under. The fallback is
+            the height of a drawn line: anything shorter and the cards jump as it arrives.
+          -->
+          <Deferred data="trend" :rescue="trendRescue">
+            <template #fallback>
+              <div class="app-home-spark-placeholder" />
+            </template>
+
+            <HomeSpark
+              v-if="trend.length > 1"
+              :values="trend.map(point => point[figure.key])"
+              :colour="figure.colour"
+              :label="`${figure.label}, ${trendCaption}`"
+            />
+          </Deferred>
         </q-card>
       </div>
       <div v-if="headline.unconverted.length" class="text-caption text-grey-7 q-mt-sm">
@@ -228,6 +238,8 @@
 </template>
 
 <script setup>
+import { Deferred, router } from '@inertiajs/vue3'
+
 const props = defineProps({
   cash: { type: Array, default: Array },
   brokerages: { type: Array, default: Array },
@@ -245,6 +257,30 @@ const props = defineProps({
 const money = useMoney()
 const dueBadge = useDueBadge()
 const formatDate = useCalendarDay()
+
+// The trend is deferred, so it is empty until it arrives. The caption counts the points
+// it has, which read "last -1 months" before any have; a fixed wording waits instead.
+const TREND_MONTHS = 6
+const trendCaption = computed(() =>
+  props.trend.length > 1 ? `last ${props.trend.length - 1} months` : `last ${TREND_MONTHS} months`,
+)
+
+const trendRescue = () =>
+  h('div', { class: 'text-caption text-grey-7 q-mt-xs' }, [
+    'Trend unavailable.',
+    h(
+      'a',
+      {
+        href: '#',
+        class: 'q-ml-xs',
+        onClick: e => {
+          e.preventDefault()
+          router.reload({ only: ['trend'] })
+        },
+      },
+      'Retry',
+    ),
+  ])
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 

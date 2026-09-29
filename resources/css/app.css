@@ -210,6 +210,16 @@ body {
   padding-top: 8px;
 }
 
+/*
+ * The line the deferred trend draws, held open until it arrives. The box model of
+ * .app-home-spark copied rather than the height alone, so the cards do not resize
+ * and the line does not land with a jump under figures already on screen.
+ */
+.app-home-spark-placeholder {
+  margin-top: auto;
+  height: 48px;
+}
+
 @media (max-width: 599px) {
   .app-home-headline .text-h5 {
     font-size: 1.15rem;

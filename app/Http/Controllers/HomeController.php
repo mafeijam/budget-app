@@ -12,6 +12,7 @@ use App\Support\Fx;
 use App\Support\NetWorth;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
+use Inertia\Inertia;
 
 class HomeController extends Controller
 {
@@ -112,7 +113,17 @@ class HomeController extends Controller
                 'owed' => (string) $owed->toScale(4),
             ],
             // Month ends and today's, for each headline card's line.
-            'trend' => $worth->history(1, $today, self::TREND_MONTHS),
+            //
+            // Deferred, and it is what is left worth deferring: six period snapshots for a
+            // sparkline drawn under figures that are already on screen. Nothing waits on
+            // it, so it should not hold the page up.
+            //
+            // rescued, because a trend that cannot be computed is a missing line and not a
+            // broken page -- the headline figures are the page.
+            'trend' => Inertia::defer(
+                fn () => $worth->history(1, today(), self::TREND_MONTHS),
+                rescue: true
+            ),
             'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
             'month' => $forecast->monthOutlook()[0] ?? null,
             'upcoming' => $upcoming->take(self::UPCOMING_SHOWN)->all(),

@@ -139,9 +139,18 @@ class HomeTest extends TestCase
             ->where('headline.last_month', '1000.0000')
             ->where('headline.change', '300.0000')
             ->where('headline.owed', '200.0000')
+            // Deferred, so it is not in the first response at all. Asserted here because
+            // a `->where('trend', ...)` against a prop that never arrives passes against
+            // nothing, which is the same way a broken chart hides.
+            ->missing('trend')
+        );
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
             // January's end, then today's: the history starts at the first transaction.
-            ->where('trend', fn ($points) => $points->pluck('date')->all() === ['2026-01-31', '2026-02-15'])
-            ->where('trend.1.cards', '-200.0000')
+            ->loadDeferredProps('default', fn (Assert $deferred) => $deferred
+                ->where('trend', fn ($points) => $points->pluck('date')->all() === ['2026-01-31', '2026-02-15'])
+                ->where('trend.1.cards', '-200.0000')
+            )
         );
     }
 
