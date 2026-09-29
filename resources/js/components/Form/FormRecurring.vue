@@ -52,7 +52,7 @@
         label="Amount"
         filled
         type="number"
-        step="0.0001"
+        step="0.01"
         min="0"
         hint="Recorded as pending, so it can be corrected before it counts"
         :error="!!form.errors.amount"
@@ -84,7 +84,7 @@
         label="Amount in the card's currency"
         filled
         type="number"
-        step="0.0001"
+        step="0.01"
         :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
         :error="!!form.errors.card_amount"
         :error-message="form.errors.card_amount"
@@ -190,7 +190,17 @@ const accountTypeBadges = {
 }
 
 const { schema, form } = useFormEmpty()
-const { target, resetEdit } = useEdit(form)
+const { target: row, resetEdit } = useEdit(form)
+
+const target = computed(() =>
+  row.value
+    ? {
+        ...row.value,
+        amount: twoPlaces(row.value.amount),
+        card_amount: twoPlaces(row.value.card_amount),
+      }
+    : null,
+)
 const submit = useSubmit(form, pagination)
 
 const typeOptionsByAccountType = computed(() => usePage().props.typeOptions ?? {})

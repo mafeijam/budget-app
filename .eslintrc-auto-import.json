@@ -123,6 +123,7 @@
     "tryOnMounted": true,
     "tryOnScopeDispose": true,
     "tryOnUnmounted": true,
+    "twoPlaces": true,
     "unref": true,
     "unrefElement": true,
     "until": true,
