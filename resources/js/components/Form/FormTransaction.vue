@@ -280,7 +280,28 @@
         :error-message="form.errors['meta_data.card_amount']"
       />
 
-      <template v-if="writesCashSide">
+      <template v-if="showsSymbol">
+        <q-select
+          v-if="isDividend"
+          v-model="form.meta_data.brokerage_account_id"
+          :options="brokerageOptions"
+          class="col-6"
+          label="Brokerage"
+          filled
+          emit-value
+          map-options
+          :error="!!form.errors['meta_data.brokerage_account_id']"
+          :error-message="form.errors['meta_data.brokerage_account_id']"
+        >
+          <template #no-option>
+            <q-item>
+              <q-item-section class="text-grey">
+                No brokerage settles into this account
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
         <!-- No fill-input: QSelect already draws the value, so it would show twice. -->
         <q-select
           v-if="isDividend"
@@ -319,6 +340,7 @@
 
         <!-- false-value null, or unticking stores false. -->
         <q-toggle
+          v-if="derivesAmount"
           v-model="form.meta_data.no_cash"
           :false-value="null"
           class="col-6"
@@ -435,16 +457,20 @@ const categoryOptions = computed(() => props.options?.categories ?? [])
 
 const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).includes(form.type))
 
-const writesCashSide = computed(() => (usePage().props.cashSideTypes ?? []).includes(form.type))
+const showsSymbol = computed(() => (usePage().props.symbolTypes ?? []).includes(form.type))
 
-const isDividend = computed(() => writesCashSide.value && !derivesAmount.value)
+const isDividend = computed(() => showsSymbol.value && !derivesAmount.value)
 
 const chosenAccount = computed(() => accountOptions.value.find(a => a.value === form.account_id))
 
 const heldSymbols = computed(() => usePage().props.heldSymbols ?? {})
 
+const brokerageOptions = computed(
+  () => (usePage().props.dividendBrokerages ?? {})[form.account_id] ?? [],
+)
+
 const symbolOptions = computed(() =>
-  (heldSymbols.value[chosenAccount.value?.value] ?? []).map(symbol => ({
+  (heldSymbols.value[form.meta_data.brokerage_account_id] ?? []).map(symbol => ({
     label: symbol,
     value: symbol,
   })),
@@ -665,9 +691,24 @@ watch(
 
     if (derivesAmount.value) form.amount = null
 
-    if (!writesCashSide.value) form.meta_data.no_cash = null
+    if (!derivesAmount.value) form.meta_data.no_cash = null
   },
 )
+
+// A dividend's brokerage must settle into the chosen bank, and a lone one is picked for you.
+watch([isDividend, brokerageOptions], ([dividend, options]) => {
+  const chosen = form.meta_data.brokerage_account_id
+
+  if (!dividend) {
+    if (chosen !== null && chosen !== undefined) form.meta_data.brokerage_account_id = null
+
+    return
+  }
+
+  if (!options.some(option => option.value === chosen)) {
+    form.meta_data.brokerage_account_id = options.length === 1 ? options[0].value : null
+  }
+})
 
 // The DTO refuses a card_amount it does not need, even once the field is hidden.
 watch(needsCardAmount, applies => {

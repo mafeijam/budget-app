@@ -154,9 +154,9 @@ class TransactionMetaDataTest extends TestCase
 
         foreach (TransactionType::cases() as $type) {
             $this->assertSame(
-                $type->needsCashSide(),
+                $type->carriesSymbol(),
                 $this->rejects('symbol', ['symbol' => null], ['type' => $type->value]),
-                "symbol required for {$type->value} disagrees with needsCashSide()."
+                "symbol required for {$type->value} disagrees with carriesSymbol()."
             );
 
             foreach (['quantity', 'unit_price'] as $field) {
@@ -168,9 +168,15 @@ class TransactionMetaDataTest extends TestCase
             }
 
             $this->assertSame(
-                ! $type->needsCashSide(),
+                ! $type->derivesAmount(),
                 $this->rejects('no_cash', ['no_cash' => true], ['type' => $type->value]),
-                "no_cash refused for {$type->value} disagrees with needsCashSide()."
+                "no_cash refused for {$type->value} disagrees with derivesAmount()."
+            );
+
+            $this->assertSame(
+                $type === TransactionType::Dividend,
+                $this->rejects('brokerage_account_id', ['brokerage_account_id' => null], ['type' => $type->value]),
+                "brokerage required for {$type->value}: only a dividend names one."
             );
 
             foreach (['due_date', 'card_amount'] as $field) {
@@ -218,7 +224,7 @@ class TransactionMetaDataTest extends TestCase
         // This is a whitelist rather than a lookup, so a rule new to this bag
         // has to be added here deliberately -- which is the point. `date_format`
         // arrived with due_date; the rest predate it.
-        $supported = ['nullable', 'required_unless', 'prohibited_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
+        $supported = ['nullable', 'required_unless', 'prohibited_unless', 'integer', 'max', 'decimal', 'gt', 'min', 'date_format'];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {

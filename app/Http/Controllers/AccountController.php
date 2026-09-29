@@ -6,6 +6,7 @@ use App\DTO\AccountData;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use App\Enums\Currency;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\AccountBalance;
@@ -170,6 +171,12 @@ class AccountController extends Controller
             ))
             ->groupBy(fn (Account $settler) => (string) $settler->meta->meta['settlement_account_id']);
 
+        $dividends = Transaction::query()
+            ->where('type', TransactionType::Dividend->value)
+            ->with('meta')
+            ->get(['id'])
+            ->countBy(fn (Transaction $row) => (string) ($row->meta?->meta['brokerage_account_id'] ?? ''));
+
         $refusals = [];
 
         foreach ($accounts as $account) {
@@ -182,6 +189,20 @@ class AccountController extends Controller
                     $account->name,
                     $count,
                     $count === 1 ? '' : 's'
+                );
+
+                continue;
+            }
+
+            $paid = (int) ($dividends[(string) $account->id] ?? 0);
+
+            if ($paid > 0) {
+                $refusals[$account->id] = sprintf(
+                    'Account [%s] is named by %s dividend%s and cannot be deleted. Set it to '
+                        .'inactive instead.',
+                    $account->name,
+                    $paid,
+                    $paid === 1 ? '' : 's'
                 );
 
                 continue;

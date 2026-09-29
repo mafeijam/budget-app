@@ -72,6 +72,7 @@ class TransactionData extends Data
 
         $this->guardAccountType($account);
         $this->guardTradeCurrency($account);
+        $this->guardDividendBrokerage($account);
         $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
@@ -190,6 +191,31 @@ class TransactionData extends Data
                 ),
             ]);
         }
+    }
+
+    /** The brokerage a dividend names must settle into the bank it is paid into. */
+    private function guardDividendBrokerage(?Account $account): void
+    {
+        $brokerageId = $this->meta_data?->brokerage_account_id;
+
+        if ($account === null || $brokerageId === null || $this->type !== TransactionType::Dividend) {
+            return;
+        }
+
+        $brokerage = Account::with('meta')->find($brokerageId);
+
+        if ($brokerage?->type === AccountType::Security->value
+            && $brokerage->settlementAccount()?->id === $account->id) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'meta_data.brokerage_account_id' => sprintf(
+                'A dividend on [%s] names a brokerage that settles into it, and %s does not.',
+                $account->name,
+                $brokerage === null ? 'that account does not exist, so it' : "[{$brokerage->name}]"
+            ),
+        ]);
     }
 
     private function guardAccountType(?Account $account): void
@@ -366,24 +392,23 @@ class TransactionData extends Data
         }
 
         // A trade's cash side is written from it and follows the edit.
-        if ($partner !== null && TradeCash::hasCashSide($row)) {
+        if ($partner !== null && TradeCash::isTrade($row)) {
             return null;
         }
 
-        if (TradeCash::hasCashSide($partner)) {
+        if (TradeCash::isTrade($partner)) {
             $cash = ['account_id' => 'account', 'type' => 'type', 'date' => 'date']
                 + Arr::except(self::FIGURES, ['account_id', 'type', 'meta_data.card_amount']);
 
-            $noun = TradeCash::isDividend($partner) ? 'dividend' : 'trade';
             $other = TradeCash::describe($partner);
             $words = Arr::join(array_values($cash), ', ', ' and ');
 
             return [
                 'fields' => array_keys($cash),
-                'message' => "This {$row->type} is the cash side of the {$noun} {$other}, so its "
-                    ."{$words} follow the {$noun}. Edit the {$noun} instead.",
-                'refusal' => "This {$row->type} is the cash side of the {$noun} {$other}, so its %s "
-                    ."cannot be changed here. Edit the {$noun} instead.",
+                'message' => "This {$row->type} is the cash side of the trade {$other}, so its "
+                    ."{$words} follow the trade. Edit the trade instead.",
+                'refusal' => "This {$row->type} is the cash side of the trade {$other}, so its %s "
+                    .'cannot be changed here. Edit the trade instead.',
             ];
         }
 

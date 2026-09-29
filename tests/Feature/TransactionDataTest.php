@@ -365,9 +365,9 @@ class TransactionDataTest extends TestCase
             'a trade belongs on a broker account, not a cash account' => ['cash', 'buy'],
             'an expense is not spending a card' => ['card', 'withdraw'],
             'income into a cash account is not income on a card' => ['card', 'deposit'],
-            'a dividend belongs on a broker account, not a card' => ['card', 'dividend'],
-            'a dividend belongs on a broker account, not a bank' => ['cash', 'dividend'],
-            'a deposit on a brokerage is a dividend' => ['security', 'deposit'],
+            'a dividend is paid into a bank, not a card' => ['card', 'dividend'],
+            'a dividend is paid into a bank, not a brokerage' => ['security', 'dividend'],
+            'a deposit on a brokerage is not a thing' => ['security', 'deposit'],
         ];
     }
 
@@ -679,14 +679,14 @@ class TransactionDataTest extends TestCase
 
     public function test_a_dividend_keeps_its_supplied_amount(): void
     {
+        $this->settleBrokerIntoTheBank();
+
         // Not a trade: a fixed sum with no quantity or price to derive one from.
         $data = TransactionData::from($this->postRequest([
-            'account_id' => $this->securityId,
             'type' => 'dividend',
-            'ccy' => 'HKD',
             'category_id' => null,
             'amount' => '312.4400',
-            'meta_data' => ['symbol' => '0700.HK'],
+            'meta_data' => ['symbol' => '0700.HK', 'brokerage_account_id' => $this->securityId],
         ]));
 
         $this->assertSame('312.4400', $data->amount);
@@ -695,18 +695,46 @@ class TransactionDataTest extends TestCase
 
     public function test_a_dividend_with_no_symbol_is_refused(): void
     {
+        $this->settleBrokerIntoTheBank();
+
         $this->assertFieldRejected(
             [
-                'account_id' => $this->securityId,
                 'type' => 'dividend',
-                // The brokerage's own currency, which every row on it must be in --
-                // otherwise guardTradeCurrency() refuses first and this says nothing
-                // about the symbol.
-                'ccy' => 'HKD',
-                'meta_data' => ['symbol' => null],
+                'meta_data' => ['symbol' => null, 'brokerage_account_id' => $this->securityId],
             ],
             'meta_data.symbol'
         );
+    }
+
+    public function test_a_dividend_with_no_brokerage_is_refused(): void
+    {
+        $this->assertFieldRejected(
+            ['type' => 'dividend', 'meta_data' => ['symbol' => '0700.HK']],
+            'meta_data.brokerage_account_id'
+        );
+    }
+
+    public function test_a_dividend_naming_a_brokerage_that_settles_elsewhere_is_refused(): void
+    {
+        $this->assertFieldRejected(
+            ['type' => 'dividend', 'meta_data' => ['symbol' => '0700.HK', 'brokerage_account_id' => $this->securityId]],
+            'meta_data.brokerage_account_id'
+        );
+    }
+
+    public function test_only_a_dividend_names_a_brokerage(): void
+    {
+        $this->settleBrokerIntoTheBank();
+
+        $this->assertFieldRejected(
+            ['type' => 'deposit', 'category_id' => null, 'meta_data' => ['brokerage_account_id' => $this->securityId]],
+            'meta_data.brokerage_account_id'
+        );
+    }
+
+    private function settleBrokerIntoTheBank(): void
+    {
+        Account::find($this->securityId)->meta()->create(['meta' => ['settlement_account_id' => $this->accountId]]);
     }
 
     public function test_a_deposit_on_a_bank_needs_no_symbol(): void

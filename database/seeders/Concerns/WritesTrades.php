@@ -3,6 +3,7 @@
 namespace Database\Seeders\Concerns;
 
 use App\DTO\TransactionData;
+use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Price;
 use App\Models\Transaction;
@@ -10,7 +11,7 @@ use App\Models\Transaction;
 /**
  * Writing a brokerage's history the way the form does: through TransactionData and
  * write(), so TradeCash writes and links each cash side and guardHoldings() refuses a
- * sell the fixtures got wrong.
+ * sell the fixtures got wrong. A dividend is written on the brokerage's bank, naming it.
  */
 trait WritesTrades
 {
@@ -29,15 +30,22 @@ trait WritesTrades
             return;
         }
 
+        $dividend = $type === TransactionType::Dividend->value;
+        $account = $dividend ? $broker->settlementAccount() : $broker;
+
+        if ($dividend) {
+            $meta['brokerage_account_id'] = $broker->id;
+        }
+
         $data = TransactionData::from([
             'id' => null,
-            'account_id' => $broker->id,
+            'account_id' => $account->id,
             'category_id' => null,
             'date' => $date->toDateString(),
             'type' => $type,
             'description' => $description,
             'amount' => $amount,
-            'ccy' => $broker->ccy,
+            'ccy' => $account->ccy,
             'status' => 'posted',
             'meta_data' => $meta,
             'created_at' => null,
@@ -60,10 +68,15 @@ trait WritesTrades
         return $rows;
     }
 
-    /** A brokerage's rows and the cash sides TradeCash wrote for them. */
+    /** A brokerage's rows, the cash sides TradeCash wrote for them, and its dividends. */
     protected function clearTrades(Account $broker): void
     {
-        $rows = Transaction::with('meta')->where('account_id', $broker->id)->get();
+        $dividends = Transaction::with('meta')
+            ->where('type', TransactionType::Dividend->value)
+            ->get()
+            ->filter(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0) === $broker->id);
+
+        $rows = Transaction::with('meta')->where('account_id', $broker->id)->get()->concat($dividends);
 
         $cash = $rows->map(fn (Transaction $row) => $row->meta?->meta['paired_transaction_id'] ?? null)->filter();
 

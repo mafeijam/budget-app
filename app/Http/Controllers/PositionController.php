@@ -26,12 +26,13 @@ class PositionController extends Controller
             ->get();
 
         // A pending dividend has not paid.
+        // Paid into the bank, and tagged with the brokerage whose holding paid it.
         $dividends = Transaction::query()
-            ->whereIn('account_id', $brokers->pluck('id'))
             ->where('type', TransactionType::Dividend->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
-            ->get(['account_id', 'amount'])
-            ->groupBy('account_id');
+            ->with('meta')
+            ->get(['id', 'amount'])
+            ->groupBy(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0));
 
         $brokerages = $brokers
             ->map(function (Account $broker) use ($dividends) {

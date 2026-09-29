@@ -8,8 +8,8 @@ use App\Models\Account;
 use App\Models\Transaction;
 
 /**
- * The bank row a buy takes money out of, and a sell or a dividend pays into; a brokerage
- * holds no balance, so without it the money moved nowhere.
+ * The bank row a buy takes money out of, and a sell pays into; a brokerage holds no
+ * balance, so without it the money moved nowhere.
  *
  * Linked both ways by paired_transaction_id, and rewritten from the trade on every edit
  * rather than locking it: correcting a price is the ordinary edit. On the trade date,
@@ -28,8 +28,8 @@ class TradeCash
      */
     public static function sync(Transaction $trade, ?string $wasType = null): void
     {
-        $wanted = TransactionType::from($trade->type)->needsCashSide()
-            || ($wasType !== null && TransactionType::from($wasType)->needsCashSide());
+        $wanted = TransactionType::from($trade->type)->derivesAmount()
+            || ($wasType !== null && TransactionType::from($wasType)->derivesAmount());
 
         if (! $wanted) {
             return;
@@ -77,31 +77,19 @@ class TradeCash
         $cash->update($attributes);
     }
 
-    /**
-     * Whether a row is a trade or a dividend. Asked of a row's partner, it says the row
-     * is that cash side; false for a card payment's pair.
-     */
-    public static function hasCashSide(?Transaction $row): bool
+    /** Asked of a row's partner, it says the row is that trade's cash side. */
+    public static function isTrade(?Transaction $row): bool
     {
-        return $row !== null && TransactionType::from($row->type)->needsCashSide();
+        return $row !== null && TransactionType::from($row->type)->derivesAmount();
     }
 
-    public static function isDividend(?Transaction $row): bool
-    {
-        return $row?->type === TransactionType::Dividend->value;
-    }
-
-    /** "Buy 10 NVDA [Broker]", or "Dividend NVDA [Broker]". */
+    /** "Buy 10 NVDA [Broker]". */
     public static function describe(Transaction $trade): string
     {
         $meta = $trade->meta?->meta?->getArrayCopy() ?? [];
 
         $symbol = strtoupper(trim((string) ($meta['symbol'] ?? '')));
         $account = $trade->account?->name;
-
-        if ($trade->type === TransactionType::Dividend->value) {
-            return sprintf('Dividend %s [%s]', $symbol, $account);
-        }
 
         return sprintf(
             '%s %s %s [%s]',
@@ -119,7 +107,7 @@ class TradeCash
             return null;
         }
 
-        if (! TransactionType::from($trade->type)->needsCashSide()) {
+        if (! TransactionType::from($trade->type)->derivesAmount()) {
             return null;
         }
 

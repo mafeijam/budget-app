@@ -20,7 +20,7 @@ class TransactionMetaData extends Data
     public const MAX_AMOUNT = '99999999.9999';
 
     public function __construct(
-        // Trades and dividends. A quantity takes eight places, for fractional shares.
+        // Trades, and a dividend's symbol. A quantity takes eight places, for fractional shares.
         public ?string $symbol = null,
         public ?string $quantity = null,
         public ?string $unit_price = null,
@@ -29,6 +29,10 @@ class TransactionMetaData extends Data
         // The money moved outside these accounts, so TradeCash writes no cash row.
         // Null rather than false when it did, so absence is the only way to say no.
         public ?bool $no_cash = null,
+
+        // On a bank dividend: the brokerage whose holding paid it, which the positions
+        // page totals dividends by. See guardDividendBrokerage().
+        public ?int $brokerage_account_id = null,
 
         // The statement a charge rolls up into, or a payment settles.
         public ?string $due_date = null,
@@ -45,16 +49,23 @@ class TransactionMetaData extends Data
 
     public static function rules()
     {
-        $cashSide = self::typesWhere(fn (TransactionType $type) => $type->needsCashSide());
-        $noCashSide = self::typesWhere(fn (TransactionType $type) => ! $type->needsCashSide());
+        $derived = self::typesWhere(fn (TransactionType $type) => $type->derivesAmount());
         $notDerived = self::typesWhere(fn (TransactionType $type) => ! $type->derivesAmount());
+        $noSymbol = self::typesWhere(fn (TransactionType $type) => ! $type->carriesSymbol());
+        $notDividend = self::typesWhere(fn (TransactionType $type) => $type !== TransactionType::Dividend);
 
         return [
-            'symbol' => ['nullable', 'required_unless:type,'.$noCashSide, 'max:32'],
+            'symbol' => ['nullable', 'required_unless:type,'.$noSymbol, 'max:32'],
             'quantity' => ['nullable', 'required_unless:type,'.$notDerived, 'decimal:0,8', 'gt:0'],
             'unit_price' => ['nullable', 'required_unless:type,'.$notDerived, 'decimal:0,4', 'gt:0'],
             'fees' => ['nullable', 'decimal:0,4', 'min:0'],
-            'no_cash' => ['nullable', 'prohibited_unless:type,'.$cashSide],
+            'no_cash' => ['nullable', 'prohibited_unless:type,'.$derived],
+            'brokerage_account_id' => [
+                'nullable',
+                'required_unless:type,'.$notDividend,
+                'prohibited_unless:type,'.TransactionType::Dividend->value,
+                'integer',
+            ],
 
             // Not required for a charge: it is derived after validation.
             'due_date' => ['nullable', 'date_format:Y-m-d'],
@@ -87,6 +98,7 @@ class TransactionMetaData extends Data
             'unit_price' => 'unit price',
             'fees' => 'fees',
             'no_cash' => 'no cash side',
+            'brokerage_account_id' => 'brokerage',
             'due_date' => 'due date',
             'card_amount' => 'amount in the card\'s currency',
         ];
@@ -96,7 +108,9 @@ class TransactionMetaData extends Data
     public static function messages()
     {
         return [
-            'no_cash.prohibited_unless' => 'Only a buy, a sell or a dividend has a cash side to skip.',
+            'no_cash.prohibited_unless' => 'Only a buy or a sell has a cash side to skip.',
+            'brokerage_account_id.required_unless' => 'A dividend names the brokerage whose holding paid it.',
+            'brokerage_account_id.prohibited_unless' => 'Only a dividend names a brokerage.',
         ];
     }
 

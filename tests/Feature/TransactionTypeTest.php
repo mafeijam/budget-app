@@ -105,20 +105,20 @@ class TransactionTypeTest extends TestCase
         }
     }
 
-    public function test_a_dividend_is_a_brokerage_row_with_a_supplied_amount(): void
+    public function test_a_dividend_is_money_into_a_bank_with_a_supplied_amount(): void
     {
-        $this->assertSame([AccountType::Security], TransactionType::Dividend->accountTypes());
-        $this->assertSame([AccountType::Cash], TransactionType::Deposit->accountTypes());
+        $this->assertSame([AccountType::Cash], TransactionType::Dividend->accountTypes());
+        $this->assertSame(1, TransactionType::Dividend->movesBalanceOn(AccountType::Cash));
         $this->assertFalse(TransactionType::Dividend->derivesAmount());
     }
 
-    public function test_a_cash_side_is_a_trade_or_a_dividend(): void
+    public function test_a_symbol_is_carried_by_a_trade_or_a_dividend(): void
     {
         $this->assertSame(
             ['buy', 'sell', 'dividend'],
             array_values(array_map(
                 fn (TransactionType $type) => $type->value,
-                array_filter(TransactionType::cases(), fn (TransactionType $type) => $type->needsCashSide())
+                array_filter(TransactionType::cases(), fn (TransactionType $type) => $type->carriesSymbol())
             ))
         );
     }

@@ -98,9 +98,9 @@ class WithdrawTest extends TestCase
         // Derived from the enum, so the reduction from four cash types to two needed no
         // template and no list. Asserted through the endpoint the form reads.
         $this->get('/transactions')->assertInertia(fn ($page) => $page
-            ->where('typeOptions.cash', ['withdraw', 'deposit'])
+            ->where('typeOptions.cash', ['withdraw', 'deposit', 'dividend'])
             ->where('typeOptions.card', ['charge', 'payment'])
-            ->where('typeOptions.security', ['buy', 'sell', 'dividend'])
+            ->where('typeOptions.security', ['buy', 'sell'])
         );
     }
 

@@ -150,7 +150,11 @@ const metaChips = row => {
 
       plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
     } else {
-      plain(meta.symbol)
+      const brokerage = usePage().props.filterOptions?.accounts?.find(
+        account => account.value === meta.brokerage_account_id,
+      )
+
+      plain(brokerage ? `${meta.symbol} from ${brokerage.label}` : meta.symbol)
     }
   }
 
@@ -164,6 +168,7 @@ const metaChips = row => {
     'unit_price',
     'fees',
     'no_cash',
+    'brokerage_account_id',
   ]
 
   Object.entries(meta)

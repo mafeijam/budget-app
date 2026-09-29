@@ -54,8 +54,8 @@ use RuntimeException;
  *   writes, so the two halves are recognisable as a pair.
  * - One card left owing something and one card fully settled, so the Balance column
  *   has both a figure and a zero to show rather than only one.
- * - A dividend on a brokerage, the one row here that writes a second row of its own:
- *   its cash side, which is why Dev Cash's balance below depends on it.
+ * - A buy on a brokerage, the one row here that writes a second row of its own: its
+ *   cash side in Dev Cash. And a dividend on Dev Cash, naming that brokerage.
  */
 class DevTransactionSeeder extends Seeder
 {
@@ -100,6 +100,12 @@ class DevTransactionSeeder extends Seeder
         ]);
 
         $meta = $row['meta'];
+
+        // Named in the definition, so resolved to the id the bag stores.
+        if (isset($meta['brokerage'])) {
+            $meta['brokerage_account_id'] = Account::where('name', $meta['brokerage'])->value('id');
+            unset($meta['brokerage']);
+        }
 
         // Derived BEFORE the emptiness check, not after. A charge's due date is the
         // thing that makes its bag non-empty, so filtering first and returning early
@@ -433,23 +439,18 @@ class DevTransactionSeeder extends Seeder
             ],
 
             // ------------------------------------------------------------------
-            // Dev Brokerage: the holding, and a dividend on it.
+            // Dev Brokerage: the holding, and a dividend on it paid into Dev Cash.
             //
-            // The buy is here for the dividend's sake, and only for it. A dividend
-            // names the holding that paid it, and the form offers the brokerage's
-            // holdings to pick from -- so a fixture with a dividend and no position is
-            // a dividend with nothing to be one of, and the picker is empty.
+            // The buy is here for the dividend's sake: the form offers the brokerage's
+            // holdings as the dividend's symbols, so without it the picker is empty.
             //
             // No price fixture, so the position reads as unpriced on the positions
             // page. That is a state that page handles and counts, and the picker's
             // question is the symbol rather than its value; a price would have to be a
             // fourth Dev seeder for a number nothing here depends on.
             //
-            // Unlike every other row above, these two write a second row each. A
-            // brokerage row writes its cash side into Dev Cash, so Dev Cash ends 312.44
-            // higher and 4000.0000 lower than the bank rows alone would leave it, and
-            // the positions page's Dividends figure and the bank balance are the same
-            // number.
+            // The buy writes its cash side into Dev Cash, so Dev Cash ends 4000.0000
+            // lower than its own rows alone would leave it.
             //
             // The buy's amount is the derived figure written out, 10 x 400. TradeCash
             // copies it onto the cash row it writes, and the column is NOT NULL, so a
@@ -470,7 +471,7 @@ class DevTransactionSeeder extends Seeder
                 'meta' => ['symbol' => '0700.HK', 'quantity' => '10', 'unit_price' => '400.0000'],
             ],
             [
-                'account' => 'Dev Brokerage',
+                'account' => 'Dev Cash',
                 'date' => '2026-01-15',
                 'type' => TransactionType::Dividend->value,
                 'description' => 'Dividend 0700.HK',
@@ -478,7 +479,7 @@ class DevTransactionSeeder extends Seeder
                 'ccy' => $hkd,
                 'status' => $posted,
                 'category' => null,
-                'meta' => ['symbol' => '0700.HK'],
+                'meta' => ['symbol' => '0700.HK', 'brokerage' => 'Dev Brokerage'],
             ],
         ];
     }

@@ -174,15 +174,17 @@ class TransactionControllerTest extends TestCase
 
     public function test_a_dividend_keeps_its_supplied_amount(): void
     {
+        $this->broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
         $this->post('/transactions', [
-            'account_id' => $this->broker->id,
+            'account_id' => $this->bank->id,
             'category_id' => null,
             'date' => '2026-02-02',
             'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => '312.4400',
             'ccy' => 'HKD',
-            'meta_data' => ['symbol' => 'NVDA'],
+            'meta_data' => ['symbol' => 'NVDA', 'brokerage_account_id' => $this->broker->id],
         ])->assertSessionHasNoErrors();
 
         $dividend = Transaction::where('type', 'dividend')->firstOrFail();
@@ -955,16 +957,28 @@ class TransactionControllerTest extends TestCase
 
         // The picker is not a gate: the symbol is still submittable, since a position sold
         // after the ex-date still pays out and nothing in the DTO checks the list.
+        $this->broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
         $this->post('/transactions', [
-            'account_id' => $this->broker->id,
+            'account_id' => $this->bank->id,
             'category_id' => null,
             'date' => '2026-03-02',
             'type' => 'dividend',
             'description' => 'Dividend 0700.HK',
             'amount' => '312.4400',
             'ccy' => 'HKD',
-            'meta_data' => ['symbol' => '0700.HK'],
+            'meta_data' => ['symbol' => '0700.HK', 'brokerage_account_id' => $this->broker->id],
         ])->assertSessionHasNoErrors();
+    }
+
+    public function test_a_bank_is_offered_the_brokerages_settling_into_it_for_a_dividend(): void
+    {
+        $this->broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $offered = $this->get('/transactions')->viewData('page')['props']['dividendBrokerages'];
+
+        $this->assertSame([['label' => 'Broker', 'value' => $this->broker->id]], $offered[$this->bank->id]);
+        $this->assertArrayNotHasKey($this->card->id, $offered);
     }
 
     public function test_a_closed_brokerage_is_not_read_for_holdings(): void

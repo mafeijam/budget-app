@@ -231,18 +231,29 @@ class TransactionController extends Controller
             ->values()
             ->all();
 
-        $cashSideTypes = collect(TransactionType::cases())
-            ->filter(fn (TransactionType $type) => $type->needsCashSide())
+        $symbolTypes = collect(TransactionType::cases())
+            ->filter(fn (TransactionType $type) => $type->carriesSymbol())
             ->map(fn (TransactionType $type) => $type->value)
             ->values()
             ->all();
 
-        // Open positions only: a dividend is paid on something held.
-        $heldSymbols = Account::query()
+        $brokers = Account::query()
             ->where('type', AccountType::Security->value)
             ->where('status', 'active')
-            ->get()
+            ->with('meta')
+            ->orderBy('name')
+            ->get();
+
+        // Open positions only: a dividend is paid on something held.
+        $heldSymbols = $brokers
             ->mapWithKeys(fn (Account $broker) => [$broker->id => Positions::heldSymbols($broker)])
+            ->all();
+
+        // A bank dividend's brokerage picker: the brokerages settling into each bank.
+        $dividendBrokerages = $brokers
+            ->groupBy(fn (Account $broker) => (string) ($broker->meta?->meta['settlement_account_id'] ?? ''))
+            ->forget('')
+            ->map(fn ($group) => $group->map(fn (Account $broker) => ['label' => $broker->name, 'value' => $broker->id])->values())
             ->all();
 
         $statusOptions = array_column(TransactionStatus::cases(), 'value');
@@ -340,8 +351,9 @@ class TransactionController extends Controller
             'typeOptions',
             'typeDefaults',
             'derivesAmountTypes',
-            'cashSideTypes',
+            'symbolTypes',
             'heldSymbols',
+            'dividendBrokerages',
             'statusOptions',
             'currencyOptions',
             'templates',
@@ -693,7 +705,7 @@ class TransactionController extends Controller
         $pairedId = $transaction->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
         $period = $this->settlementPeriod($transaction, $partner);
-        $cashSide = TradeCash::hasCashSide($transaction) ? TradeCash::describe($transaction) : null;
+        $cashSide = TradeCash::isTrade($transaction) ? TradeCash::describe($transaction) : null;
 
         // A settlement's two rows go together or not at all.
         $rows = $partner === null ? [$transaction] : [$transaction, $partner];
@@ -725,9 +737,7 @@ class TransactionController extends Controller
         }
 
         if ($cashSide !== null) {
-            $noun = TradeCash::isDividend($transaction) ? 'Dividend' : 'Trade';
-
-            return back()->with('message', "{$noun} {$cashSide} deleted with its cash side: 2 transactions");
+            return back()->with('message', "Trade {$cashSide} deleted with its cash side: 2 transactions");
         }
 
         return back()->with('message', $period === null
@@ -763,16 +773,12 @@ class TransactionController extends Controller
         $pairedId = $transaction?->meta?->meta?->getArrayCopy()['paired_transaction_id'] ?? null;
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
 
-        if (TradeCash::hasCashSide($partner)) {
-            $noun = TradeCash::isDividend($partner) ? 'dividend' : 'trade';
-
+        if (TradeCash::isTrade($partner)) {
             return sprintf(
-                'This %s is the cash side of the %s %s. Delete the %s instead, and its cash '
+                'This %s is the cash side of the trade %s. Delete the trade instead, and its cash '
                     .'goes with it.',
                 $transaction->type,
-                $noun,
-                TradeCash::describe($partner),
-                $noun
+                TradeCash::describe($partner)
             );
         }
 
@@ -923,8 +929,7 @@ class TransactionController extends Controller
                 // due date moves it too.
                 'due_date' => $other->meta?->meta['due_date'] ?? null,
                 'kind' => match (true) {
-                    TradeCash::isDividend($other), TradeCash::isDividend($row) => 'dividend',
-                    TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',
+                    TradeCash::isTrade($other), TradeCash::isTrade($row) => 'trade',
                     default => 'settlement',
                 },
                 // For figureLock(); stripped before the page gets it.

@@ -234,6 +234,11 @@ class DevHistorySeeder extends Seeder
                 continue;
             }
 
+            // A brokerage's dividend, which DevTradingSeeder owns.
+            if (($row->meta?->meta['brokerage_account_id'] ?? null) !== null) {
+                continue;
+            }
+
             $row->meta()->delete();
             $row->delete();
         }
