@@ -919,6 +919,9 @@ class TransactionController extends Controller
                 'amount' => $other->amount,
                 'ccy' => $other->ccy,
                 'account_name' => $other->account?->name,
+                // Read off the card's half rather than stored on the bank's, so a corrected
+                // due date moves it too.
+                'due_date' => $other->meta?->meta['due_date'] ?? null,
                 'kind' => match (true) {
                     TradeCash::isDividend($other), TradeCash::isDividend($row) => 'dividend',
                     TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',

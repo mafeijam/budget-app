@@ -137,6 +137,11 @@ const metaChips = row => {
       label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
       class: 'app-tint app-tint--info',
     })
+
+    // The bank's half: which statement it paid, from the card's half.
+    if (!meta.due_date && other?.kind === 'settlement' && other.due_date) {
+      plain(`Pays statement ${other.due_date}`)
+    }
   }
 
   if (meta.symbol) {

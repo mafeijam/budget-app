@@ -828,4 +828,21 @@ class CardSettlementTest extends TestCase
         $this->assertSame(0, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
         $this->assertSame('120.0000', CardStatement::forAccount($this->card)->sole()->owed());
     }
+
+    public function test_the_bank_half_names_the_statement_it_paid(): void
+    {
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000'])->assertSessionHasNoErrors();
+
+        $transfer = Transaction::where('type', 'withdraw')->firstOrFail();
+
+        // Read off the card's half, not stored on the bank's: its bag holds only the link.
+        $this->assertSame(['paired_transaction_id'], array_keys($transfer->meta->meta->getArrayCopy()));
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where("linked.{$transfer->id}.due_date", self::PERIOD)
+            ->where("linked.{$transfer->id}.kind", 'settlement')
+        );
+    }
 }
