@@ -80,6 +80,7 @@ DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevAccountSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTransactionSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevRecurringSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevHistorySeeder
+DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTradingSeeder
 ```
 
 `DevTransactionSeeder` owns the transactions on the accounts it names: it deletes
