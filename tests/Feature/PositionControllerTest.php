@@ -508,6 +508,34 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_the_unrealised_share_is_against_the_cost_of_what_is_priced(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        Price::create(['symbol' => 'NVDA', 'date' => today()->toDateString(), 'close' => '150.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        // 500 gained on 1,000 of cost.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.open_cost', '1000.0000')
+            ->where('brokerages.0.priced_cost', '1000.0000')
+            ->where('brokerages.0.unrealised', '500.0000')
+        );
+
+        // A second holding with no price. open_cost now covers both, unrealised still
+        // covers only NVDA, so the two are different sums -- which is the whole reason the
+        // priced cost is totalled separately. Dividing the unrealised by the open cost here
+        // would read 50.0% instead of 100.0%, and would be wrong by a holding nobody can
+        // see the value of.
+        $this->trade('buy', '2026-01-06', 'AAPL', '4', '900');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.open_cost', '4600.0000')
+            ->where('brokerages.0.priced_cost', '1000.0000')
+            ->where('brokerages.0.unrealised', '500.0000')
+            ->where('brokerages.0.unpriced', 1)
+        );
+    }
+
     private function trade(string $type, string $date, string $symbol, string $quantity, string $price, ?Account $broker = null): void
     {
         $broker ??= $this->broker;

@@ -81,6 +81,13 @@ class Positions
             'positions' => $positions,
             'totals' => [
                 'open_cost' => $sum(array_column($open, 'cost')),
+                // The cost of what is actually valued, and so the only denominator the
+                // unrealised figure can be read against. open_cost covers every open
+                // holding while unrealised covers only the priced ones, so dividing one by
+                // the other is a share of nothing in particular -- and it goes quietly
+                // wrong the moment a holding loses its price, which is exactly when
+                // someone is most likely to be looking at it.
+                'priced_cost' => $sum(array_column($priced, 'cost')),
                 'realised' => $sum(array_column($positions, 'realised')),
                 'fees' => $sum(array_column($positions, 'fees')),
                 'market_value' => $sum(array_column($priced, 'market_value')),

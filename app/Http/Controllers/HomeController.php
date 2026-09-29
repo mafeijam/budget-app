@@ -24,6 +24,13 @@ class HomeController extends Controller
     /** How many months back the headline's lines reach. */
     private const TREND_MONTHS = 6;
 
+    /**
+     * The figures a headline card carries a month-on-month change for, and the keys the
+     * trend's points are indexed by. Spelled out rather than taken from a snapshot's keys
+     * so a new key in a snapshot cannot quietly start driving the cards.
+     */
+    private const TREND_FIGURES = ['net_worth', 'cash', 'cards', 'value'];
+
     public function index()
     {
         // A closed account still holding money stays, or the total could not be
@@ -108,8 +115,17 @@ class HomeController extends Controller
             'base' => Fx::BASE->value,
             'headline' => [
                 ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
-                'last_month' => $then['net_worth'],
-                'change' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth']),
+
+                // Both keyed by the same figure the client holds, so every card's note comes
+                // from one expression and net worth stops being the special case. $then is
+                // the whole snapshot for the last month's end, so the other three were here
+                // already and only net_worth was being read out of it.
+                'change' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [
+                        $key => (string) BigDecimal::of($now[$key])->minus($then[$key]),
+                    ])->all(),
+                'last_month' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [$key => $then[$key]])->all(),
                 'owed' => (string) $owed->toScale(4),
             ],
             // Month ends and today's, for each headline card's line.

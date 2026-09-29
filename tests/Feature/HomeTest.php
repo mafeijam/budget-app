@@ -136,8 +136,15 @@ class HomeTest extends TestCase
             ->where('headline.net_worth', '1300.0000')
             ->where('headline.cash', '1500.0000')
             ->where('headline.cards', '-200.0000')
-            ->where('headline.last_month', '1000.0000')
-            ->where('headline.change', '300.0000')
+            // Keyed by figure, so every card's note comes from one expression on the
+            // client and net worth is not the one that carries it.
+            ->where('headline.last_month.net_worth', '1000.0000')
+            ->where('headline.change.net_worth', '300.0000')
+            ->where('headline.last_month.cash', '1000.0000')
+            ->where('headline.change.cash', '500.0000')
+            ->where('headline.last_month.cards', '0.0000')
+            ->where('headline.change.cards', '-200.0000')
+            ->where('headline.change.value', '0.0000')
             ->where('headline.owed', '200.0000')
             // Deferred, so it is not in the first response at all. Asserted here because
             // a `->where('trend', ...)` against a prop that never arrives passes against

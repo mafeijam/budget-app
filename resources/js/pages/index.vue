@@ -301,7 +301,19 @@ const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value
 
 const headlineFigures = computed(() => {
   const h = props.headline
-  const pct = percent(h.change, h.last_month)
+
+  // The month-on-month note every card carries, from the figure's own key. An empty
+  // percentage -- last month's figure was zero, so there is no share to give -- leaves the
+  // change on its own rather than printing a percentage of nothing.
+  const onLastMonth = key => {
+    const change = h.change[key]
+    const pct = percent(change, h.last_month[key])
+
+    return {
+      note: `${signed(change)}${pct ? ` (${pct})` : ''} on last month`,
+      noteClass: signClass(change),
+    }
+  }
 
   return [
     {
@@ -310,24 +322,23 @@ const headlineFigures = computed(() => {
       colour: colours.net_worth,
       value: h.net_worth,
       class: 'text-grey-9',
-      note: `${signed(h.change)}${pct ? ` (${pct})` : ''} on last month`,
-      noteClass: signClass(h.change),
+      ...onLastMonth('net_worth'),
     },
     {
       label: 'Cash',
       key: 'cash',
       colour: colours.cash,
       value: h.cash,
-      noteClass: 'text-grey-6',
       class: negative(h.cash) ? 'text-negative' : 'text-positive',
+      ...onLastMonth('cash'),
     },
     {
       label: 'Cards owe',
       key: 'cards',
       colour: colours.cards,
       value: h.cards,
-      noteClass: 'text-grey-6',
       class: isZero(h.cards) ? 'text-grey-9' : 'text-negative',
+      ...onLastMonth('cards'),
     },
     {
       label: 'Stocks',
@@ -335,8 +346,13 @@ const headlineFigures = computed(() => {
       colour: colours.value,
       value: h.value,
       class: 'text-primary',
-      note: `${signed(h.unrealised)} unrealised${h.unpriced ? ` · ${h.unpriced} at cost` : ''}`,
-      noteClass: signClass(h.unrealised),
+      // Both, since a card has one note line and the share and the gain answer different
+      // questions: how the portfolio moved, and what the market has done to it since.
+      ...onLastMonth('value'),
+      note: `${onLastMonth('value').note} · ${signed(h.unrealised)} unrealised${
+        h.unpriced ? ` · ${h.unpriced} at cost` : ''
+      }`,
+      noteClass: signClass(h.change.value),
     },
   ]
 })
@@ -421,24 +437,33 @@ const cashItems = computed(() =>
 )
 
 const brokerItems = computed(() =>
-  props.brokerages.map(broker => ({
-    key: broker.id,
-    icon: 'show_chart',
-    name: broker.name,
-    ccy: broker.ccy,
-    value: broker.market_value,
-    valueClass: 'text-grey-9',
-    empty: broker.open === 0 && isZero(broker.market_value),
-    lines: [
-      { text: `${signed(broker.unrealised)} unrealised`, class: signClass(broker.unrealised) },
-      {
-        text: `${count(broker.open, 'holding')} · cost ${money(broker.open_cost)}${
-          broker.unpriced ? ` · ${broker.unpriced} unpriced` : ''
-        }`,
-      },
-    ],
-    open: () => openBroker(broker.id),
-  })),
+  props.brokerages.map(broker => {
+    // Against the cost of the holdings that are priced, not the open cost: those are two
+    // different sets, and only the priced one is what the unrealised figure describes.
+    const pct = percent(broker.unrealised, broker.priced_cost)
+
+    return {
+      key: broker.id,
+      icon: 'show_chart',
+      name: broker.name,
+      ccy: broker.ccy,
+      value: broker.market_value,
+      valueClass: 'text-grey-9',
+      empty: broker.open === 0 && isZero(broker.market_value),
+      lines: [
+        {
+          text: `${signed(broker.unrealised)} unrealised${pct ? ` (${pct})` : ''}`,
+          class: signClass(broker.unrealised),
+        },
+        {
+          text: `${count(broker.open, 'holding')} · cost ${money(broker.open_cost)}${
+            broker.unpriced ? ` · ${broker.unpriced} unpriced` : ''
+          }`,
+        },
+      ],
+      open: () => openBroker(broker.id),
+    }
+  }),
 )
 
 const statementItems = computed(() =>
