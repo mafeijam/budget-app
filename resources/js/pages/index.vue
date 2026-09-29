@@ -8,18 +8,24 @@
           :key="figure.label"
           flat
           bordered
-          class="app-home-link"
+          class="app-home-link column no-wrap"
           @click="go('/net-worth')"
         >
-          <q-card-section>
+          <q-card-section class="q-pb-none">
             <div class="text-caption text-grey-7">{{ figure.label }}</div>
             <div class="text-h5 text-weight-bold money" :class="figure.class">
               {{ base }} {{ money(figure.value) }}
             </div>
-            <div v-if="figure.note" class="text-caption q-mt-xs" :class="figure.noteClass">
-              {{ figure.note }}
+            <div class="text-caption q-mt-xs" :class="figure.noteClass">
+              {{ figure.note ?? `last ${trend.length - 1} months` }}
             </div>
           </q-card-section>
+          <HomeSpark
+            v-if="trend.length > 1"
+            :values="trend.map(point => point[figure.key])"
+            :colour="figure.colour"
+            :label="`${figure.label}, last ${trend.length - 1} months`"
+          />
         </q-card>
       </div>
       <div v-if="headline.unconverted.length" class="text-caption text-grey-7 q-mt-sm">
@@ -228,6 +234,7 @@ const props = defineProps({
   statements: { type: Array, default: Array },
   base: { type: String, default: 'HKD' },
   headline: { type: Object, default: () => ({ unconverted: [] }) },
+  trend: { type: Array, default: Array },
   attention: { type: Array, default: Array },
   month: { type: Object, default: null },
   upcoming: { type: Array, default: Array },
@@ -253,6 +260,9 @@ const signClass = value =>
 const percent = (part, whole) =>
   Number(whole) ? `${((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)}%` : ''
 
+// The net worth chart's colours, so a line here is the same line there.
+const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value: '#2563eb' }
+
 const headlineFigures = computed(() => {
   const h = props.headline
   const pct = percent(h.change, h.last_month)
@@ -260,19 +270,33 @@ const headlineFigures = computed(() => {
   return [
     {
       label: 'Net worth',
+      key: 'net_worth',
+      colour: colours.net_worth,
       value: h.net_worth,
       class: 'text-grey-9',
       note: `${signed(h.change)}${pct ? ` (${pct})` : ''} on last month`,
       noteClass: signClass(h.change),
     },
-    { label: 'Cash', value: h.cash, class: negative(h.cash) ? 'text-negative' : 'text-positive' },
+    {
+      label: 'Cash',
+      key: 'cash',
+      colour: colours.cash,
+      value: h.cash,
+      noteClass: 'text-grey-6',
+      class: negative(h.cash) ? 'text-negative' : 'text-positive',
+    },
     {
       label: 'Cards owe',
+      key: 'cards',
+      colour: colours.cards,
       value: h.cards,
+      noteClass: 'text-grey-6',
       class: isZero(h.cards) ? 'text-grey-9' : 'text-negative',
     },
     {
       label: 'Stocks',
+      key: 'value',
+      colour: colours.value,
       value: h.value,
       class: 'text-primary',
       note: `${signed(h.unrealised)} unrealised${h.unpriced ? ` · ${h.unpriced} at cost` : ''}`,

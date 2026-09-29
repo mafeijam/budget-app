@@ -161,6 +161,23 @@ body {
   }
 }
 
+/* Flush to the card's edges and bottom, under its figures. */
+.app-home-spark {
+  display: block;
+  width: 100%;
+  height: 40px;
+  /* Pushed to the bottom, so a card with a shorter note still ends on its line. */
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+@media (max-width: 599px) {
+  .app-home-headline .text-h5 {
+    font-size: 1.15rem;
+    line-height: 1.6rem;
+  }
+}
+
 .app-home-link {
   cursor: pointer;
   transition: border-color 0.15s;

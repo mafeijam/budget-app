@@ -25,6 +25,7 @@ declare module 'vue' {
     FormRecurring: typeof import('./resources/js/components/Form/FormRecurring.vue')['default']
     FormTransaction: typeof import('./resources/js/components/Form/FormTransaction.vue')['default']
     HomeSection: typeof import('./resources/js/components/HomeSection.vue')['default']
+    HomeSpark: typeof import('./resources/js/components/HomeSpark.vue')['default']
     NetWorthChart: typeof import('./resources/js/components/NetWorthChart.vue')['default']
     SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
     TransactionFilters: typeof import('./resources/js/components/TransactionFilters.vue')['default']

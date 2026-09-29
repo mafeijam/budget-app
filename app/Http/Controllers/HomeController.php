@@ -20,6 +20,9 @@ class HomeController extends Controller
 
     private const UPCOMING_SHOWN = 6;
 
+    /** How many months back the headline's lines reach. */
+    private const TREND_MONTHS = 6;
+
     public function index()
     {
         // A closed account still holding money stays, or the total could not be
@@ -103,6 +106,8 @@ class HomeController extends Controller
                 'change' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth']),
                 'owed' => (string) $owed->toScale(4),
             ],
+            // Month ends and today's, for each headline card's line.
+            'trend' => array_slice($worth->history(1, $today), -(self::TREND_MONTHS + 1)),
             'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
             'month' => $forecast->monthOutlook()[0] ?? null,
             'upcoming' => $upcoming->take(self::UPCOMING_SHOWN)->all(),

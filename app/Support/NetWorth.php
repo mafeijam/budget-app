@@ -201,7 +201,7 @@ class NetWorth
         return array_map(function (string $day) {
             $snapshot = $this->on($day);
 
-            return array_intersect_key($snapshot, array_flip(['date', 'net_worth', 'cash', 'value', 'cost']));
+            return array_intersect_key($snapshot, array_flip(['date', 'net_worth', 'cash', 'cards', 'value', 'cost']));
         }, $points);
     }
 }

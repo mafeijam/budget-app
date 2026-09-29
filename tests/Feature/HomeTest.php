@@ -139,6 +139,9 @@ class HomeTest extends TestCase
             ->where('headline.last_month', '1000.0000')
             ->where('headline.change', '300.0000')
             ->where('headline.owed', '200.0000')
+            // January's end, then today's: the history starts at the first transaction.
+            ->where('trend', fn ($points) => $points->pluck('date')->all() === ['2026-01-31', '2026-02-15'])
+            ->where('trend.1.cards', '-200.0000')
         );
     }
 
