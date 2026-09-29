@@ -251,61 +251,12 @@ const step = computed(() => (width - left - right) / Math.max(points.value.lengt
 const x = i => (points.value.length === 1 ? (left + width - right) / 2 : left + i * step.value)
 
 // Samples per gap between two snapshots, enough for the curve to read as smooth.
-const SAMPLES = 16
-
-// A monotone cubic through every snapshot (Fritsch-Carlson): smooth like the sample, but
-// never overshooting between two points, so a line cannot bulge past a real figure.
-const curve = key => {
-  const values = points.value.map(point => point.numbers[key])
-  const n = values.length
-
-  if (n < 2) return values.map((value, i) => [x(i), value])
-
-  const slopes = values.slice(1).map((value, i) => value - values[i])
-  const tangents = values.map((_, i) => {
-    if (i === 0) return slopes[0]
-    if (i === n - 1) return slopes[n - 2]
-
-    return slopes[i - 1] * slopes[i] <= 0 ? 0 : (slopes[i - 1] + slopes[i]) / 2
-  })
-
-  for (let i = 0; i < n - 1; i++) {
-    if (slopes[i] === 0) {
-      tangents[i] = tangents[i + 1] = 0
-
-      continue
-    }
-
-    const a = tangents[i] / slopes[i]
-    const b = tangents[i + 1] / slopes[i]
-    const h = a * a + b * b
-
-    if (h > 9) {
-      tangents[i] = (3 * a * slopes[i]) / Math.sqrt(h)
-      tangents[i + 1] = (3 * b * slopes[i]) / Math.sqrt(h)
-    }
-  }
-
-  const sampled = [[x(0), values[0]]]
-
-  for (let i = 0; i < n - 1; i++) {
-    for (let k = 1; k <= SAMPLES; k++) {
-      const t = k / SAMPLES
-      const t2 = t * t
-      const t3 = t2 * t
-
-      const value =
-        (2 * t3 - 3 * t2 + 1) * values[i] +
-        (t3 - 2 * t2 + t) * tangents[i] +
-        (-2 * t3 + 3 * t2) * values[i + 1] +
-        (t3 - t2) * tangents[i + 1]
-
-      sampled.push([x(i) + t * step.value, value])
-    }
-  }
-
-  return sampled
-}
+const curve = key =>
+  monotoneCurve(
+    points.value.map(point => point.numbers[key]),
+    x(0),
+    step.value,
+  )
 
 const curves = computed(() =>
   Object.fromEntries(['net_worth', 'cash', 'value', 'cost'].map(key => [key, curve(key)])),

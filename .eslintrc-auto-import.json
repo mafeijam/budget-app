@@ -64,6 +64,7 @@
     "isShallow": true,
     "makeDestructurable": true,
     "markRaw": true,
+    "monotoneCurve": true,
     "nextTick": true,
     "notifySuccess": true,
     "onActivated": true,

@@ -64,8 +64,11 @@
           </text>
         </g>
 
+        <!-- Over the bars, faint enough that they read through it. -->
+        <path :d="netArea" :fill="colours.net" fill-opacity="0.15" />
+
         <polyline
-          :points="points.map((month, i) => `${centre(i)},${y(month.net)}`).join(' ')"
+          :points="netLine"
           fill="none"
           :stroke="colours.net"
           stroke-width="2"
@@ -118,12 +121,12 @@ const props = defineProps({
 
 const money = useMoney()
 
-// The app's positive and negative, as the tables use for money in and out; the net is a
-// total rather than a third series, so it is ink rather than a hue.
+// The app's positive and negative, as the tables use for money in and out; the net in amber,
+// a hue apart from both so its line reads over either bar.
 const colours = {
   income: '#059669',
   spending: '#dc2626',
-  net: '#334155',
+  net: '#f59e0b',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
   hover: '#f1f5f9',
@@ -214,6 +217,25 @@ const column = (i, value, direction) => {
     ? `M${x},${base} V${end + r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end + r} V${base} Z`
     : `M${x},${base} V${end - r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end - r} V${base} Z`
 }
+
+const netCurve = computed(() =>
+  monotoneCurve(
+    points.value.map(month => month.net),
+    centre(0),
+    step.value,
+  ),
+)
+
+const netLine = computed(() => netCurve.value.map(([px, value]) => `${px},${y(value)}`).join(' '))
+
+// Down to the zero line, not the chart's floor, so a month in deficit fills below zero.
+const netArea = computed(() => {
+  const sampled = netCurve.value
+
+  if (!sampled.length) return ''
+
+  return `M${sampled[0][0]},${y(0)} L${netLine.value.replaceAll(' ', ' L')} L${sampled.at(-1)[0]},${y(0)} Z`
+})
 
 const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)

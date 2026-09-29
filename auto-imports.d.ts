@@ -55,6 +55,7 @@ declare global {
   const isShallow: typeof import('vue').isShallow
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
+  const monotoneCurve: typeof import('./resources/js/composables/curve.js').monotoneCurve
   const nextTick: typeof import('vue').nextTick
   const notifySuccess: typeof import('./resources/js/composables/notify.js').notifySuccess
   const onActivated: typeof import('vue').onActivated
