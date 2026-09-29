@@ -2,9 +2,6 @@
   width: 800px;
   max-width: 100% !important;
 
-  /* border-radius: 4px !important;
-  margin-top: 3rem; */
-
   position: absolute;
   top: 3rem;
 }
@@ -13,16 +10,7 @@
   height: calc(100vh - 238px);
 }
 
-/*
-  The app's surfaces, set once, as variables. The one that was a hex literal here is
-  named because something outside this block needs it too: the table's sticky action
-  column paints itself in the surface colour. The rest are read by this file alone. The
-  greys are slate, so the Quasar palette a component still names -- grey-7 on an icon,
-  blue-1 on a fill -- sits in the same family as these rather than against it.
-
-  Only plain values belong in this block. Anything derived from a --q- variable has to
-  go in the body block below, and that split is not tidiness -- see the note there.
-*/
+/* Plain values only: anything derived from a --q- variable goes on body, below. */
 :root {
   --app-ground: #f1f5f9;
   --app-surface: #ffffff;
@@ -35,31 +23,12 @@
 }
 
 /*
-  The brand-derived tints and inks, declared on body and NOT on :root.
+  On body, not :root: Quasar sets its --q-* variables on body, so a color-mix() on :root
+  resolves invalid and every button silently loses its fill.
 
-  Quasar writes its --q-* variables onto document.body as inline styles, not onto the
-  root element. A custom property is substituted where it is declared, so a color-mix()
-  on :root that reads var(--q-primary) resolves against a root element where --q-primary
-  does not exist yet: the mix comes out invalid, the variable holding it computes to the
-  guaranteed-invalid value, and every property that uses it falls back to unset. Nothing
-  throws and nothing logs -- the buttons simply lose their fill and go transparent, and
-  the label goes black because the ink has fallen back to inherited. That is the whole
-  symptom, and it is why the plain values beside the mixes here are not belt and braces.
-
-  Declaring them on body puts the substitution inside the scope where --q-primary
-  actually lives, and the resolved colours then inherit down to everything inside it.
-
-  The two blocks below are the same eleven values, and both are needed. The hexes are what
-  a browser without color-mix uses; the mixes are what re-themes with the brand. They are
-  in an @supports rather than declared twice in a row on purpose: two identical custom
-  property declarations in one block are collapsed by the minifier to the last one, which
-  silently deleted the hexes and shipped the color-mix on its own the first time this was
-  written. Separate rules, the second overriding the first, are the only shape that
-  survives a build.
-
-  The hexes are the price of that and they are the one thing here that can drift from the
-  brand: change a colour in plugins/quasar.js and its pair below needs the same treatment,
-  or that button keeps the old tint forever.
+  The hexes are the fallback without color-mix, in a separate @supports rule because the
+  minifier collapses two declarations in one block to the last. They are a copy of the
+  brand: change a colour in plugins/quasar.js and change its hex here too.
 */
 body {
   background: var(--app-ground);
@@ -70,26 +39,14 @@ body {
   --app-negative-tint: #fce9e9;
   --app-info-tint: #e8f4fa;
 
-  /*
-    The ink that goes on a tint, at 60% of the brand and 40% black, for all five alike.
-    80% was the first figure here and it is too light: on a 9% info tint it lands near
-    5.5:1, which passes AA on paper and still reads thin at the size a q-chip sets, and
-    the blue was the worst of the five because a light blue loses more to its own
-    luminance than a light green does. One number rather than five, so a tint and its ink
-    cannot drift apart as the brand is changed.
-  */
+  /* 60% of the brand for every ink: 80% reads thin on a tint at chip size. */
   --app-primary-ink: #163b8d;
   --app-positive-ink: #035a3f;
   --app-warning-ink: #6c3205;
   --app-negative-ink: #841717;
   --app-info-ink: #014f77;
 
-  /*
-    The button fills, at roughly the strength of the Quasar "-1" fills the buttons used
-    to be built from -- indigo-1 and green-1 were the primary colour at about an eighth
-    over white. Mixed onto the surface rather than onto transparency, so the fill is a
-    colour of its own and the same on the grey page ground as on a white card.
-  */
+  /* Mixed onto the surface, not transparency, so a fill is the same on the page as on a card. */
   --app-btn-tint: #e3ebfc;
   --app-btn-negative-tint: #fae3e3;
   --app-btn-positive-tint: #dff1ec;
@@ -115,13 +72,7 @@ body {
   }
 }
 
-/*
-  A ceiling on the content width, centred. The transaction table's ten columns are
-  fixed-width and total about 1,540px, so on a wide monitor the table scrolls sideways
-  while the cards above it stretch to the full width of the screen -- two different
-  widths on one page, neither of them chosen. The table is the widest thing here, so the
-  ceiling is set above it and everything else is narrower by consequence.
-*/
+/* Set above the transaction table's width, so the cards do not stretch past it. */
 .app-page {
   padding: 16px;
   max-width: var(--app-content-max);
@@ -134,10 +85,6 @@ body {
   }
 }
 
-/*
-  The nav item for the page you are on. A tint off the brand rather than a palette entry,
-  for the reason the tint variables above give -- there is no `bg-primary-1` to name.
-*/
 .app-nav-active {
   background: var(--app-primary-tint);
   color: var(--q-primary);
@@ -149,32 +96,20 @@ body {
   border-radius: 12px;
 }
 
-/* The table's own corners clip to the radius; its scrolling happens inside. */
 .q-table__container {
   overflow: hidden;
 }
 
 /*
-  The sideways scroll, on the middle rather than the container. The table carries a
-  min-width at the sum of its declared column widths so a narrow window cannot shrink the
-  columns out from under their contents, and the overflow that creates has to go
-  somewhere: the container is overflow: hidden above, for the radius, which would clip it
-  and leave the columns past the edge unreachable. This is the scrollport, and it is why
-  the action column is pinned to the right in the sticky-table block below.
-
-  min-width: 0 is what makes the overflow-x mean anything. The middle is a flex item --
-  the table's root is a column flex container -- and a flex item's automatic minimum size
-  is its min-content width, which here is the table itself. Left alone it therefore stays
-  1480px wide inside a 1198px container, never overflows itself, and the scrollbar this
-  rule is for never appears; the overflow just escapes and is clipped.
+  The scrollport, since the container clips for its radius. min-width: 0, or as a flex
+  item it grows to the table's width, never overflows, and the scrollbar never appears.
 */
 .q-table__middle {
   overflow-x: auto;
   min-width: 0;
 }
 
-/* The floor, read off the property AppTable sets rather than set here: the sum of the
-   declared column widths differs per page, so it is computed where the columns are. */
+/* Set by AppTable, from the sum of each page's column widths. */
 .q-table__middle table {
   min-width: var(--table-min-width, 0);
 }
@@ -184,22 +119,7 @@ body {
   border-color: var(--app-border);
 }
 
-/*
-  The header row. Quasar ships th at 12px weight 500 in the body's own colour, so the
-  labels read as a slightly smaller, slightly bolder repeat of the data rather than as
-  a header -- and with no ground under them there is nothing to fix the eye on when it
-  arrives at the top of a long table. A tinted band, a bottom rule and a heavier weight
-  give it the one thing a table header is for: a way to tell which column a figure
-  belongs to, without reading the figures.
-
-  Sentence case at 11px, not letter-spaced capitals, and that is a width decision rather
-  than a taste one. The columns are fixed-width and the narrowest is 110px with Quasar's
-  16px of cell padding either side, so "Account type" has 78px to sit in -- and capitals
-  measure nearer 100px there, which wraps the label to two lines inside a
-  table-layout: fixed header and leaves one column taller than the rest. The weight, the
-  tint and the rule under it are what make this read as a header; the capitals were
-  garnish that did not fit.
-*/
+/* Sentence case, not capitals: "Account type" in capitals wraps in its 110px column. */
 .sticky-table thead tr th {
   background: var(--app-header-bg);
   border-bottom: 1px solid var(--app-border);
@@ -208,70 +128,31 @@ body {
   font-weight: 600;
 }
 
-/*
-  Figures in the currency columns line up by their digits, so a column of amounts can be
-  scanned for an odd one out. useMoney formats on the string and never touches a float,
-  which is what keeps the digits themselves right; this only changes which glyph is used
-  for each of them, since a proportional 1 is narrower than a 0 and a column of
-  right-aligned money otherwise staircases.
-*/
+/* A proportional 1 is narrower than a 0, so right-aligned money would staircase. */
 .money {
   font-variant-numeric: tabular-nums;
 }
 
-/*
-  Baseline rather than middle, so a figure with a caption under it and one without read on
-  the same line. Top is not enough: Owes is set larger than the figures beside it.
-*/
+/* Baseline, not top: Owes is set larger than the figures beside it. */
 .q-table tbody td {
   vertical-align: baseline;
 }
 
-/*
-  An icon-only button has no text, so the row took its baseline from the icon glyph and
-  set every figure beside it 7px low. A centred empty first item gives the row a text
-  baseline in the middle of the buttons instead.
-*/
+/* An icon-only button has no text baseline, so the row set every figure beside it 7px low. */
 .app-table-actions::before {
   content: '\200b';
   align-self: center;
 }
 
 /*
-  Buttons: a pale fill with the hue at full strength for the label, which is the shape
-  they had before the palette was named -- indigo-1 on blue-9, green-1 on green-9 -- and
-  reads lighter on a page of white cards than a solid block does. Classes rather than
-  color props, for the reason the tints below give.
-
-  Three colours for three jobs, which is the part worth keeping straight:
-
-    app-btn           opens something -- Add, Fetch prices. Nothing is written yet.
-    app-btn--positive commits it -- Submit, Save due date, Settle.
-    app-btn--negative destroys it -- Delete.
-
-  One colour for all three was tried first and is worse than either extreme: with every
-  button the same, the one that writes to the ledger is no louder than the one that opens
-  a form, and the eye has nothing to land on. Green for the committing button is also the
-  older behaviour here, so this restores a distinction the app had and had lost.
-
-  No hover rules of their own: Quasar already darkens any hoverable button by a few
-  percent on hover, and one on top makes the two fight.
-
-  These are unelevated with no border, which is why they need a fill at all -- .q-btn
-  ships background: transparent and its own colour would otherwise be inherited black.
+  app-btn opens something (Add), --positive commits it (Submit, Settle), --negative
+  destroys it (Delete). No hover rules: Quasar already darkens a button on hover.
 */
 .app-btn {
   background: var(--app-btn-tint);
   color: var(--app-primary-ink);
 
-  /*
-    Centre the content in the button's own box, which it is not doing by default. .q-btn
-    is a column flex container with align-items: stretch, so its content sits at the top
-    and only looks centred on the buttons that happen to be exactly as tall as their
-    content. These are not all of those: padding="sm md" on the dialog buttons and the
-    default padding on the rest give one component two box heights, and the taller ones
-    left the label riding at the top with the space beneath it.
-  */
+  /* .q-btn is a column flex container, so a taller button's label rides at the top. */
   justify-content: center;
 }
 .app-btn--negative {
@@ -284,18 +165,9 @@ body {
 }
 
 /*
-  A disabled button is a different colour, not a quieter version of its own. Quasar
-  disables with opacity and nothing else -- .q-btn.disabled is opacity: 0.7 and no second
-  declaration -- so the Settle button kept the positive fill and the positive ink and gave
-  up only 30% of its contrast against the card, and a fill 13% over white lands within a
-  shade or two of where that leaves it. The reason it cannot be pressed is in a tooltip, so
-  on a row that is not settleable the button was the only thing on screen saying it could be.
-
-  The opacity goes back to 1 because the muted pair is legible as it stands: at Quasar's
-  0.7 it would come to roughly 3.5:1, under AA for a 14px label, where unmixed it is 6.9:1.
-  Overriding an !important takes a selector that outranks it rather than one that merely
-  follows it in the file, so this is three classes to Quasar's two and does not depend on
-  which stylesheet the build emits first.
+  Muted rather than faded: Quasar only drops the opacity, and a faded Settle still looks
+  pressable. Opacity back to 1, since the muted pair at 0.7 falls under AA. Three classes
+  to outrank Quasar's !important whatever order the build emits the stylesheets in.
 */
 .q-btn.app-btn.disabled {
   opacity: 1 !important;
@@ -303,19 +175,11 @@ body {
   color: var(--app-muted-ink);
 }
 
-/*
-  Tinted fills for the badges and the notice boxes. These are classes rather than
-  Quasar color props because the colour is a mix of a brand variable and white, which
-  there is no palette entry for -- Quasar's ramp is fixed at ten shades and does not
-  include whatever brand.primary happens to be. The text is darkened from the same hue
-  rather than left at brand strength, because a tint that light will not carry body text
-  at an acceptable contrast.
-*/
+/* Classes rather than color props: Quasar's palette has no shade mixed from the brand. */
 .app-tint {
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
 }
-/* Same pair as the base, named so the modifier reads beside the others at the call site. */
 .app-tint--muted {
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
@@ -337,11 +201,6 @@ body {
   color: var(--app-info-ink);
 }
 
-/*
-  The notice boxes, which are tints carrying a sentence rather than a label, so they
-  want body text size where a badge wants none. The icon beside them takes the same
-  ink, which is why the rule targets the box rather than each piece of it.
-*/
 .app-note {
   background: var(--app-info-tint);
   color: var(--app-info-ink);
@@ -362,11 +221,7 @@ body {
   color: inherit;
 }
 
-/*
-  Every tooltip, here rather than on each: several carry a refusal, which is a sentence
-  with a way out rather than a label, and Quasar's default is one unwrapped line of
-  caption type. One rule, so a tooltip added later matches without being told to.
-*/
+/* Several tooltips carry a refusal, a sentence rather than a label. */
 .q-tooltip {
   max-width: 320px;
   font-size: 0.875rem;
@@ -377,11 +232,7 @@ body {
   min-height: 310px;
 }
 
-/*
-  The action column is pinned to the right edge, so it scrolls over the columns beside
-  it and therefore needs a background of its own or the figures read through it -- in the
-  surface token rather than a literal white, so it stays the colour of what it sits on.
-*/
+/* Pinned, so it needs a background or the figures scroll through it. */
 .sticky-table td:last-child {
   background-color: var(--app-surface);
   z-index: 1;
@@ -396,17 +247,8 @@ body {
 }
 
 /*
-  The column headers stay put. The offset has to be 0, and not a header height to clear
-  the app's own bar, because .q-table__container is overflow: hidden above: that makes it
-  the scrollport for anything sticky inside the table, and it never scrolls, so any top
-  other than 0 is not a clearance -- it displaces the header down inside the table by
-  that many pixels and leaves it there.
-
-  This was one first-child and one last-child rule with equal specificity, so whichever
-  was written last won; that was the first-child one, and its top was 0. They are merged
-  here rather than kept as a pair, since thead holds a single row -- QTable renders the
-  #top slot as a sibling div of .q-table__middle, not as a row of its own -- and two
-  rules that both match the same th is two chances to set this by accident.
+  top: 0, not the app bar's height: the clipping container is the scrollport, so any other
+  offset only pushes the header down inside the table.
 */
 .sticky-table tr th {
   position: sticky;
@@ -434,13 +276,13 @@ body {
   background-color: #d4d4d8;
 }
 
-/* The template menu's delete buttons show on the row being pointed at, not on every row. */
 .app-template-menu {
   width: 300px;
   max-height: 380px;
   overflow-y: auto;
 }
 
+/* The delete button shows on the row being pointed at, not on every row. */
 @media (hover: hover) {
   .app-template-item .app-template-delete {
     opacity: 0;
