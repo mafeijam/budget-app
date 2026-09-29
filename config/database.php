@@ -63,6 +63,28 @@ return [
             ]) : [],
         ],
 
+        /*
+        | The pre-Laravel budget database, read by budget:migrate and by nothing else.
+        | Separate from the default rather than reached into, so the migration can
+        | only read it: the command's own guard refuses to run if this connection
+        | resolves to the database it is writing.
+        |
+        | utf8mb3, because that is what the old tables are declared in. The
+        | descriptions hold Japanese kana, which survives the trip either way.
+        */
+        'budget' => [
+            'driver' => 'mysql',
+            'host' => env('BUDGET_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('BUDGET_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('BUDGET_DB_DATABASE', 'budget'),
+            'username' => env('BUDGET_DB_USERNAME', env('DB_USERNAME', '')),
+            'password' => env('BUDGET_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => 'utf8mb3',
+            'collation' => 'utf8mb3_unicode_ci',
+            'prefix' => '',
+            'strict' => false,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),
