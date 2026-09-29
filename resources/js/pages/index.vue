@@ -8,7 +8,7 @@
           :key="figure.label"
           flat
           bordered
-          class="app-home-link column no-wrap"
+          class="app-home-link app-home-headline__card column no-wrap"
           @click="go('/net-worth')"
         >
           <q-card-section class="q-pb-none">
