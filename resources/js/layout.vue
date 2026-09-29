@@ -10,21 +10,26 @@
 
     <q-drawer v-model="show" :width="220" bordered class="bg-white" show-if-above>
       <q-list padding class="q-px-sm text-grey-8">
-        <q-item
-          v-for="menu in menus"
-          :key="menu.label"
-          v-ripple
-          clickable
-          :active="menu.active"
-          class="rounded-borders q-mb-xs"
-          active-class="app-nav-active"
-          @click="menu.to"
-        >
-          <q-item-section avatar>
-            <q-icon :name="menu.icon" />
-          </q-item-section>
-          <q-item-section>{{ menu.label }}</q-item-section>
-        </q-item>
+        <template v-for="group in menus" :key="group.heading ?? 'top'">
+          <q-item-label v-if="group.heading" header class="app-nav-heading">
+            {{ group.heading }}
+          </q-item-label>
+          <q-item
+            v-for="menu in group.items"
+            :key="menu.label"
+            v-ripple
+            clickable
+            :active="menu.active"
+            class="rounded-borders q-mb-xs"
+            active-class="app-nav-active"
+            @click="menu.to"
+          >
+            <q-item-section avatar>
+              <q-icon :name="menu.icon" />
+            </q-item-section>
+            <q-item-section>{{ menu.label }}</q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-drawer>
 
@@ -42,62 +47,33 @@ const page = usePage()
 const show = ref(false)
 
 const menus = computed(() => {
-  const active = name => page.component === name
-  const to = path => router.visit(path)
+  const item = (label, component, icon, path) => ({
+    label,
+    icon,
+    active: page.component === component,
+    to: () => router.visit(path),
+  })
+
+  // What is recorded, then what is read off it.
   return [
+    { items: [item('Home', 'index', 'dashboard', '/')] },
     {
-      label: 'Home',
-      active: active('index'),
-      icon: 'dashboard',
-      to: () => to('/'),
+      heading: 'Records',
+      items: [
+        item('Transactions', 'transaction', 'paid', '/transactions'),
+        item('Recurring', 'recurring', 'event_repeat', '/recurring'),
+        item('Accounts', 'account', 'account_balance', '/accounts'),
+        item('Positions', 'position', 'show_chart', '/positions'),
+        item('Categories', 'category', 'category', '/categories'),
+      ],
     },
     {
-      label: 'Accounts',
-      active: active('account'),
-      icon: 'account_balance',
-      to: () => to('/accounts'),
-    },
-    {
-      label: 'Transactions',
-      active: active('transaction'),
-      icon: 'paid',
-      to: () => to('/transactions'),
-    },
-    {
-      label: 'Recurring',
-      active: active('recurring'),
-      icon: 'event_repeat',
-      to: () => to('/recurring'),
-    },
-    {
-      label: 'Net worth',
-      active: active('net-worth'),
-      icon: 'account_balance_wallet',
-      to: () => to('/net-worth'),
-    },
-    {
-      label: 'Forecast',
-      active: active('forecast'),
-      icon: 'query_stats',
-      to: () => to('/forecast'),
-    },
-    {
-      label: 'Cash flow',
-      active: active('cash-flow'),
-      icon: 'insights',
-      to: () => to('/cash-flow'),
-    },
-    {
-      label: 'Positions',
-      active: active('position'),
-      icon: 'show_chart',
-      to: () => to('/positions'),
-    },
-    {
-      label: 'Categories',
-      active: active('category'),
-      icon: 'category',
-      to: () => to('/categories'),
+      heading: 'Reports',
+      items: [
+        item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
+        item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
+        item('Forecast', 'forecast', 'query_stats', '/forecast'),
+      ],
     },
   ]
 })
