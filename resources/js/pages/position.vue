@@ -118,7 +118,7 @@
         <div v-if="view.caption" class="text-caption text-grey-7">{{ view.caption }}</div>
         <q-space />
         <q-btn
-          v-if="view.all && combined"
+          v-if="view.fold"
           flat
           dense
           no-caps
@@ -132,10 +132,10 @@
 
       <!-- One row per currency, and with several, their sum in the base currency first. -->
       <div
-        v-for="row in view.figureRows.filter(row => row.combined || !combined || byCurrency)"
+        v-for="row in view.figureRows.filter(row => row.combined || !view.fold || byCurrency)"
         :key="row.ccy"
         class="app-figures"
-        :class="{ 'app-figures--combined': row.combined && byCurrency }"
+        :class="{ 'app-figures--combined': row.combined && (byCurrency || !view.fold) }"
       >
         <div v-for="figure in figures(row.totals, row.prefix)" :key="figure.label">
           <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
@@ -327,6 +327,14 @@ const brokerOptions = computed(() => [
   })),
 ])
 
+const inBaseCaption = (combined, all = true) =>
+  [
+    `${all ? 'all ' : ''}in ${props.base} at ${props.at ? "that day's" : "today's"} rate`,
+    ...(combined.unconverted.length
+      ? [`${combined.unconverted.join(', ')} left out of it, no rate yet`]
+      : []),
+  ].join(' · ')
+
 const rowsOf = b => shown(b).map(position => ({ owner: b, position }))
 
 // Same symbol at two brokerages stays two rows: each has its own cost basis.
@@ -337,8 +345,29 @@ const view = computed(() => {
       all: false,
       title: broker.value.name,
       currencies: [broker.value.ccy],
-      caption: broker.value.settles_into ? `Settles into ${broker.value.settles_into}` : '',
-      figureRows: [{ ccy: broker.value.ccy, totals: broker.value, prefix: '' }],
+      caption: [
+        ...(broker.value.settles_into ? [`Settles into ${broker.value.settles_into}`] : []),
+        ...(broker.value.combined ? [inBaseCaption(broker.value.combined, false)] : []),
+      ].join(' · '),
+      // A foreign brokerage also in the base currency, above its own figures as in All.
+      figureRows: [
+        ...(broker.value.combined && !broker.value.combined.unconverted.length
+          ? [
+              {
+                ccy: 'all',
+                totals: broker.value.combined,
+                prefix: `In ${props.base} · `,
+                combined: true,
+              },
+            ]
+          : []),
+        {
+          ccy: broker.value.ccy,
+          totals: broker.value,
+          prefix: broker.value.combined ? `${broker.value.ccy} ` : '',
+        },
+      ],
+      fold: false,
       rows: rowsOf(broker.value),
       traded: broker.value.positions.length > 0,
     }
@@ -355,13 +384,9 @@ const view = computed(() => {
     currencies: props.totals.map(total => total.ccy),
     caption: [
       `${props.brokerages.length} brokerages`,
-      ...(props.combined
-        ? [`all in ${props.base} at ${props.at ? "that day's" : "today's"} rate`]
-        : []),
-      ...(props.combined?.unconverted.length
-        ? [`${props.combined.unconverted.join(', ')} left out of it, no rate yet`]
-        : []),
+      ...(props.combined ? [inBaseCaption(props.combined)] : []),
     ].join(' · '),
+    fold: !!props.combined,
     figureRows: [
       ...(props.combined
         ? [

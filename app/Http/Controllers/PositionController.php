@@ -65,6 +65,7 @@ class PositionController extends Controller
                 ];
             })
             ->filter(fn (array $b) => $b['status'] === 'active' || collect($b['positions'])->contains('open', true))
+            ->map(fn (array $b) => [...$b, 'combined' => $this->combined([$b], $at)])
             ->values();
 
         // Per currency, for the All view: nothing here converts HKD into USD.
@@ -104,8 +105,8 @@ class PositionController extends Controller
     }
 
     /**
-     * Every currency's totals in the base currency at $day's rate, for the All view, or
-     * null with only one currency. A currency with no rate yet is left out and named, so
+     * Totals summed in the base currency at $day's rate, or null when they are all in it
+     * already and there is nothing to convert. A currency with no rate yet is left out and named, so
      * a total missing something says so.
      *
      * @param  list<array<string, mixed>>  $totals
@@ -113,7 +114,7 @@ class PositionController extends Controller
      */
     private function combined(array $totals, string $day): ?array
     {
-        if (count($totals) < 2) {
+        if (array_diff(array_column($totals, 'ccy'), [Fx::BASE->value]) === []) {
             return null;
         }
 

@@ -290,11 +290,23 @@ class PositionControllerTest extends TestCase
         );
     }
 
-    public function test_one_currency_has_no_combined_total(): void
+    public function test_a_foreign_brokerage_is_also_summed_in_the_base_currency(): void
     {
-        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $hkBank = Account::create(['name' => 'Bank HKD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $hk = Account::create(['name' => 'Broker HKD', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $hk->meta()->create(['meta' => ['settlement_account_id' => $hkBank->id]]);
 
-        $this->get('/positions')->assertInertia(fn (Assert $page) => $page->where('combined', null));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', '0700.HK', '100', '400', $hk);
+
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-01-02', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        // An HKD brokerage is in the base currency already, so it has nothing to convert.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.name', 'Broker HKD')
+            ->where('brokerages.0.combined', null)
+            ->where('brokerages.1.combined.open_cost', '7800.0000')
+        );
     }
 
     private function trade(string $type, string $date, string $symbol, string $quantity, string $price, ?Account $broker = null): void
