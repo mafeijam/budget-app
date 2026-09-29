@@ -8,6 +8,7 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Price;
 use App\Models\Transaction;
+use App\Support\Fx;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
@@ -78,12 +79,57 @@ class PositionController extends Controller
             })
             ->values();
 
+        $combined = $this->combined($totals->all());
+
         // ISO 8601 with offset: max() returns a bare 'Y-m-d H:i:s', which new Date()
         // reads as browser-local time, or rejects in Safari.
         $latest = Price::where('source', 'yahoo')->max('updated_at');
         $pricesUpdatedAt = $latest === null ? null : Carbon::parse($latest)->toIso8601String();
 
-        return inertia('position', compact('brokerages', 'totals', 'pricesUpdatedAt'));
+        return inertia('position', [...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt'), 'base' => Fx::BASE->value]);
+    }
+
+    /**
+     * Every currency's totals in the base currency at today's rate, for the All view, or
+     * null with only one currency. A currency with no rate yet is left out and named, so
+     * a total missing something says so.
+     *
+     * @param  list<array<string, mixed>>  $totals
+     * @return array<string, mixed>|null
+     */
+    private function combined(array $totals): ?array
+    {
+        if (count($totals) < 2) {
+            return null;
+        }
+
+        $fx = Fx::for(array_column($totals, 'ccy'));
+        $today = today()->toDateString();
+        $keys = ['market_value', 'unrealised', 'open_cost', 'realised', 'fees', 'dividends'];
+        $sums = array_fill_keys($keys, BigDecimal::zero());
+        $unconverted = [];
+        $unpriced = 0;
+
+        foreach ($totals as $total) {
+            if ($fx->rate($total['ccy'], $today) === null) {
+                $unconverted[] = $total['ccy'];
+
+                continue;
+            }
+
+            foreach ($keys as $key) {
+                $sums[$key] = $sums[$key]->plus($fx->toBase($total[$key], $total['ccy'], $today));
+            }
+
+            $unpriced += $total['unpriced'];
+        }
+
+        return [
+            'ccy' => Fx::BASE->value,
+            ...array_map(fn (BigDecimal $sum) => (string) $sum->toScale(4), $sums),
+            'unpriced' => $unpriced,
+            'unconverted' => $unconverted,
+        ];
     }
 
     /** Synchronous on purpose: there is no queue worker. */

@@ -79,8 +79,13 @@
         <div v-if="view.caption" class="text-caption text-grey-7">{{ view.caption }}</div>
       </q-card-section>
 
-      <!-- One row per currency: a total across two would add HKD to USD. -->
-      <div v-for="row in view.figureRows" :key="row.ccy" class="app-figures">
+      <!-- One row per currency, and with several, their sum in the base currency first. -->
+      <div
+        v-for="row in view.figureRows"
+        :key="row.ccy"
+        class="app-figures"
+        :class="{ 'app-figures--combined': row.combined }"
+      >
         <div v-for="figure in figures(row.totals, row.prefix)" :key="figure.label">
           <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
           <div class="text-h6 text-weight-bold money" :class="figure.class">
@@ -195,6 +200,8 @@
 const props = defineProps({
   brokerages: { type: Array, default: Array },
   totals: { type: Array, default: Array },
+  combined: { type: Object, default: null },
+  base: { type: String, default: 'HKD' },
   pricesUpdatedAt: { type: String, default: null },
 })
 
@@ -237,7 +244,10 @@ watchEffect(() => {
 })
 
 const totalsCaption = computed(() =>
-  props.totals.map(total => `${money(total.market_value)} ${total.ccy}`).join(' · '),
+  [
+    ...props.totals.map(total => `${money(total.market_value)} ${total.ccy}`),
+    ...(props.combined ? [`${money(props.combined.market_value)} ${props.base} in all`] : []),
+  ].join(' · '),
 )
 
 const brokerOptions = computed(() => [
@@ -275,12 +285,30 @@ const view = computed(() => {
     all: true,
     title: 'All brokerages',
     currencies: props.totals.map(total => total.ccy),
-    caption: `${props.brokerages.length} brokerages`,
-    figureRows: props.totals.map(total => ({
-      ccy: total.ccy,
-      totals: total,
-      prefix: several ? `${total.ccy} ` : '',
-    })),
+    caption: [
+      `${props.brokerages.length} brokerages`,
+      ...(props.combined ? [`all in ${props.base} at today's rate`] : []),
+      ...(props.combined?.unconverted.length
+        ? [`${props.combined.unconverted.join(', ')} left out of it, no rate yet`]
+        : []),
+    ].join(' · '),
+    figureRows: [
+      ...(props.combined
+        ? [
+            {
+              ccy: 'all',
+              totals: props.combined,
+              prefix: `All in ${props.base} · `,
+              combined: true,
+            },
+          ]
+        : []),
+      ...props.totals.map(total => ({
+        ccy: total.ccy,
+        totals: total,
+        prefix: several ? `${total.ccy} ` : '',
+      })),
+    ],
     rows: props.brokerages
       .flatMap(rowsOf)
       .sort(

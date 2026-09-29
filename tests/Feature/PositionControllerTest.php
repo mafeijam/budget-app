@@ -235,6 +235,37 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_the_all_view_also_sums_every_currency_in_the_base_one(): void
+    {
+        $hkBank = Account::create(['name' => 'Bank HKD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $hk = Account::create(['name' => 'Broker HKD', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $hk->meta()->create(['meta' => ['settlement_account_id' => $hkBank->id]]);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', '0700.HK', '100', '400', $hk);
+
+        // No rate yet: the USD brokerage is named as left out rather than counted at nothing.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('combined.open_cost', '40000.0000')
+            ->where('combined.unconverted', ['USD'])
+        );
+
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-01-02', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('combined.ccy', 'HKD')
+            ->where('combined.open_cost', '47800.0000')
+            ->where('combined.unconverted', [])
+        );
+    }
+
+    public function test_one_currency_has_no_combined_total(): void
+    {
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page->where('combined', null));
+    }
+
     private function trade(string $type, string $date, string $symbol, string $quantity, string $price, ?Account $broker = null): void
     {
         $broker ??= $this->broker;

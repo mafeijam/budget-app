@@ -349,6 +349,13 @@ body {
   padding: 0 16px 16px;
 }
 
+/* The base-currency sum above the per-currency rows, ruled off so it reads as their total. */
+.app-figures--combined {
+  margin: 0 16px 16px;
+  padding: 0 0 16px;
+  border-bottom: 1px dashed var(--app-border);
+}
+
 @media (max-width: 1023px) {
   .app-figures {
     grid-template-columns: repeat(3, minmax(0, 1fr));
