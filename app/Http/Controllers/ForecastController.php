@@ -18,6 +18,7 @@ class ForecastController extends Controller
         return inertia('forecast', [
             'projection' => $forecast->projection(),
             'upcoming' => $forecast->upcoming(),
+            'outlook' => $forecast->monthOutlook(),
             'warnings' => $forecast->warnings(),
             'months' => $months,
             'horizons' => Forecast::HORIZONS,

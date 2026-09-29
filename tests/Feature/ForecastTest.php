@@ -97,6 +97,23 @@ class ForecastTest extends TestCase
         $this->assertTrue((float) $section['points'][30]['typical'] < (float) $section['points'][30]['known']);
     }
 
+    public function test_the_month_outlook_adds_what_is_still_to_come_to_the_month_so_far(): void
+    {
+        // So far: 1000 in on the 2nd. Still to come: a pending 100 out this month, a rule's
+        // 40 on the 25th. A pending row from last month is not this month's.
+        $this->row('withdraw', '2026-01-10', '100', 'pending');
+        $this->row('withdraw', '2025-12-10', '999', 'pending');
+        $this->rule(['type' => 'withdraw', 'amount' => '40', 'start_date' => '2026-01-25']);
+
+        $outlook = Forecast::for(today(), 3)->monthOutlook()[0];
+
+        $this->assertSame('2026-01', $outlook['month']);
+        $this->assertSame('1000.0000', $outlook['so_far']['net']);
+        $this->assertSame('140.0000', $outlook['to_come']['spending']);
+        $this->assertSame('860.0000', $outlook['likely_known']);
+        $this->assertSame(11, $outlook['days_left']);
+    }
+
     public function test_the_page_takes_an_offered_horizon_and_ignores_any_other(): void
     {
         $this->get('/forecast?months=6')->assertInertia(fn (Assert $page) => $page

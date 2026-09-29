@@ -38,6 +38,53 @@
       <div>{{ warning }}</div>
     </div>
 
+    <q-card v-if="outlook.length" flat bordered>
+      <q-card-section class="q-pb-sm">
+        <div class="text-subtitle1 text-weight-medium">
+          {{ monthName(outlook[0].month) }} outlook
+        </div>
+        <div class="text-caption text-grey-7">
+          This month so far, what is known still to come, and typical spending for the
+          {{ outlook[0].days_left }} day{{ outlook[0].days_left === 1 ? '' : 's' }} left.
+        </div>
+      </q-card-section>
+      <q-markup-table flat dense>
+        <thead>
+          <tr class="text-grey-7">
+            <th class="text-left">Currency</th>
+            <th class="text-right">Net so far</th>
+            <th class="text-right">Still to come</th>
+            <th v-if="withTypical" class="text-right">Typical spending</th>
+            <th class="text-right">Likely month end</th>
+            <th class="text-right">Monthly average</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in outlook" :key="row.ccy">
+            <td class="text-weight-medium">{{ row.ccy }}</td>
+            <td class="text-right money">{{ signed(row.so_far.net) }}</td>
+            <td class="text-right money text-grey-8">
+              <span class="text-positive">+{{ money(row.to_come.income) }}</span>
+              <span class="q-mx-xs text-grey-5">/</span>
+              <span class="text-negative">−{{ money(row.to_come.spending) }}</span>
+            </td>
+            <td v-if="withTypical" class="text-right money text-warning">
+              −{{ money(row.typical_rest) }}
+            </td>
+            <td class="text-right money text-weight-bold" :class="signClass(likely(row))">
+              {{ signed(likely(row)) }}
+            </td>
+            <td class="text-right money text-grey-7">
+              {{ signed(row.average_net) }}
+              <span v-if="versus(row)" class="q-ml-xs" :class="versus(row).class">
+                ({{ versus(row).label }})
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </q-markup-table>
+    </q-card>
+
     <div v-if="!projection.length" class="text-grey-6">No cash accounts to forecast.</div>
 
     <q-card v-for="section in projection" :key="section.ccy" flat bordered>
@@ -151,7 +198,37 @@ const props = defineProps({
   months: { type: Number, default: 3 },
   horizons: { type: Array, default: () => [3, 6, 12] },
   upcomingDays: { type: Number, default: 30 },
+  outlook: { type: Array, default: () => [] },
 })
+
+// The known figures alone while the estimate is switched off.
+const likely = row => (withTypical.value ? row.likely_net : row.likely_known)
+
+// A comparison for reading, not money, so a float percentage is fine.
+const versus = row => {
+  const average = Number(row.average_net)
+
+  if (average === 0) return null
+
+  const change = ((Number(likely(row)) - average) / Math.abs(average)) * 100
+
+  return {
+    label: `${change >= 0 ? '+' : ''}${change.toFixed(0)}%`,
+    class: change >= 0 ? 'text-positive' : 'text-negative',
+  }
+}
+
+const monthFormat = new Intl.DateTimeFormat('en', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+const monthName = month => {
+  const [year, number] = month.split('-').map(Number)
+
+  return monthFormat.format(new Date(Date.UTC(year, number - 1, 1)))
+}
 
 const money = useMoney()
 const formatDate = useCalendarDay()

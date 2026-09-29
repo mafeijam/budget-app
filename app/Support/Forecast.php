@@ -180,6 +180,102 @@ class Forecast
             ->all();
     }
 
+    /**
+     * Per currency: this month so far, what is known still to come before it ends, typical
+     * spending for the days left, and the likely net at month end beside the year's average.
+     *
+     * So far is CashFlow's month, which already counts a posted row dated later this month;
+     * to come is what it cannot see yet, pending rows and occurrences not written. A card
+     * charge is spending on its own date, and a statement payment is not spending at all,
+     * as in the cash flow report.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function monthOutlook(): array
+    {
+        $monthEnd = $this->today->copy()->endOfMonth()->toDateString();
+        $daysLeft = (int) $this->today->diffInDays($this->today->copy()->endOfMonth());
+        $daysInMonth = $this->today->daysInMonth;
+        $typical = $this->typicalSpending();
+        $zero = BigDecimal::zero();
+
+        $toCome = [];
+        $bump = function (string $ccy, string $kind, BigDecimal $amount) use (&$toCome, $zero) {
+            $toCome[$ccy][$kind] = ($toCome[$ccy][$kind] ?? $zero)->plus($amount);
+        };
+
+        $pending = Transaction::query()
+            ->with('account')
+            ->where('status', TransactionStatus::Pending->value)
+            // This month's only: posted, an earlier one counts in its own month.
+            ->whereBetween('date', [$this->today->copy()->startOfMonth()->toDateString(), $monthEnd])
+            ->whereHas('account', fn ($q) => $q->whereIn('type', [AccountType::Cash->value, AccountType::Card->value]))
+            ->get();
+
+        foreach ($pending as $row) {
+            $this->classifyToCome($row->account, $row->type, (string) ($row->meta?->meta['card_amount'] ?? $row->amount), $bump);
+        }
+
+        foreach (RecurringTransaction::query()->where('active', true)->with('account')->get() as $rule) {
+            foreach ($rule->dueThrough($this->today->copy()->endOfMonth()) as $date) {
+                $this->classifyToCome($rule->account, $rule->type, (string) ($rule->card_amount ?? $rule->amount), $bump);
+            }
+        }
+
+        $report = [];
+        $months = collect(CashFlow::lastMonths($this->today))->keyBy('ccy');
+
+        foreach ($months as $ccy => $section) {
+            $now = collect($section['months'])->last();
+            $income = BigDecimal::of($now['income']);
+            $spending = BigDecimal::of($now['spending']);
+
+            $comingIn = $toCome[$ccy]['income'] ?? $zero;
+            $comingOut = $toCome[$ccy]['spending'] ?? $zero;
+            $typicalRest = BigDecimal::of($typical[$ccy]['monthly'] ?? '0')
+                ->multipliedBy($daysLeft)
+                ->dividedBy($daysInMonth, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+
+            $known = $income->plus($comingIn)->minus($spending)->minus($comingOut);
+
+            $report[] = [
+                'ccy' => $ccy,
+                'month' => $now['month'],
+                'days_left' => $daysLeft,
+                'so_far' => ['income' => self::money($income), 'spending' => self::money($spending), 'net' => self::money($income->minus($spending))],
+                'to_come' => ['income' => self::money($comingIn), 'spending' => self::money($comingOut)],
+                'typical_rest' => self::money($typicalRest),
+                'likely_known' => self::money($known),
+                'likely_net' => self::money($known->minus($typicalRest)),
+                'average_net' => self::money(BigDecimal::of($section['totals']['net'])->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)),
+            ];
+        }
+
+        return $report;
+    }
+
+    /** Money in or spent, as the cash flow report reads it; anything else is neither. */
+    private function classifyToCome(?Account $account, string $type, string $amount, callable $bump): void
+    {
+        if ($account === null) {
+            return;
+        }
+
+        $sign = TransactionType::from($type)->movesBalanceOn(AccountType::from($account->type));
+
+        if ($account->type === AccountType::Card->value) {
+            if ($sign < 0) {
+                $bump($account->ccy, 'spending', BigDecimal::of($amount));
+            }
+
+            return;
+        }
+
+        if ($sign !== 0) {
+            $bump($account->ccy, $sign > 0 ? 'income' : 'spending', BigDecimal::of($amount));
+        }
+    }
+
     /** @return list<string> */
     public function warnings(): array
     {
