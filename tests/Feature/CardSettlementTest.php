@@ -20,11 +20,9 @@ use Tests\TestCase;
  * is where the money actually went. Both the same amount, both written together or
  * neither.
  *
- * The amount is computed here and never taken from the request. The one thing the
- * client does send is the figure the user was shown, and that is compared rather
- * than used: a settlement made against a figure that has since changed would record
- * a payment the user never agreed to, and the two-row write would then be internally
- * consistent and wrong.
+ * What is owed is computed here, and the figure the user was shown is compared with
+ * it rather than used, so a payment is never made against a figure that has moved. The
+ * user may pay part of it; the whole is the default and nothing above it is accepted.
  */
 class CardSettlementTest extends TestCase
 {
@@ -376,6 +374,63 @@ class CardSettlementTest extends TestCase
             Transaction::where('type', 'payment')->latest('id')->firstOrFail()->amount
         );
         $this->assertTrue(CardStatement::forAccount($this->card)->sole()->isSettled());
+    }
+
+    public function test_part_of_a_statement_can_be_paid_and_the_rest_stays_owing(): void
+    {
+        $charge = $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000', 'amount' => '50'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(['50.0000', '50.0000'], Transaction::whereIn('type', ['payment', 'withdraw'])
+            ->orderBy('id')->pluck('amount')->all());
+
+        $statement = CardStatement::forAccount($this->card)->sole();
+        $this->assertSame('70.0000', $statement->owed());
+        $this->assertFalse($statement->isSettled());
+
+        // Not paid yet, so no charge claims the payment.
+        $this->assertArrayNotHasKey('settled_by', $charge->fresh()->meta_data->getArrayCopy());
+    }
+
+    public function test_the_payment_that_clears_a_part_paid_statement_marks_its_charges(): void
+    {
+        $charge = $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000', 'amount' => '50'])->assertSessionHasNoErrors();
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '70.0000'])->assertSessionHasNoErrors();
+
+        $last = Transaction::where('type', 'payment')->latest('id')->firstOrFail();
+
+        $this->assertSame('70.0000', $last->amount);
+        $this->assertSame($last->id, (int) $charge->fresh()->meta_data['settled_by']);
+        $this->assertTrue(CardStatement::forAccount($this->card)->sole()->isSettled());
+    }
+
+    public function test_paying_more_than_a_statement_owes_is_refused(): void
+    {
+        $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000', 'amount' => '120.0001'])
+            ->assertSessionHasErrors('amount');
+
+        $this->assertDatabaseCount('transactions', 1);
+    }
+
+    public function test_deleting_an_earlier_part_payment_reopens_a_settled_statement(): void
+    {
+        $charge = $this->charge('2026-01-01', '120.0000');
+
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '120.0000', 'amount' => '50'])->assertSessionHasNoErrors();
+        $first = Transaction::where('type', 'payment')->firstOrFail();
+        $this->settle(['due_date' => self::PERIOD, 'owed' => '70.0000'])->assertSessionHasNoErrors();
+
+        $this->delete("/transactions/{$first->id}")->assertSessionHasNoErrors();
+
+        // The later payment marked it paid; it owes 50 again, so the mark goes too.
+        $this->assertSame('50.0000', CardStatement::forAccount($this->card)->sole()->owed());
+        $this->assertArrayNotHasKey('settled_by', $charge->fresh()->meta_data->getArrayCopy());
     }
 
     // ---------------------------------------------------------------------

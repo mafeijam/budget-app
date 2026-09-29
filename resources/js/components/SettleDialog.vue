@@ -4,7 +4,7 @@
       <q-card-section class="row items-start no-wrap">
         <q-icon name="credit_card" size="sm" color="grey-6" class="q-mr-sm q-mt-xs" />
         <div>
-          <div class="text-h6 text-grey-9 text-weight-bold">Settle {{ group.card?.name }}</div>
+          <div class="text-h6 text-grey-9 text-weight-bold">Pay {{ group.card?.name }}</div>
           <div v-if="period" class="text-caption text-grey-7">
             Statement due {{ formatDate(period.due_date) }} ·
             {{ count(period.charge_count, 'charge') }}
@@ -18,7 +18,7 @@
       </q-card-section>
 
       <q-card-section v-if="period" class="q-pt-none">
-        <!-- The one figure: what leaves the bank. The sum behind it is one quiet line. -->
+        <!-- The one figure: what the statement owes. The sum behind it is one quiet line. -->
         <div class="text-h4 text-weight-bold text-negative money">
           {{ money(period.owed) }}
           <span class="text-subtitle1 text-grey-7">{{ group.card.ccy }}</span>
@@ -29,6 +29,22 @@
 
         <!-- Duplicated, not extracted: FormContractTest reads FormTransaction.vue's text. -->
         <div class="row q-col-gutter-sm">
+          <q-input
+            v-model="amount"
+            class="col-12"
+            label="Pay"
+            filled
+            inputmode="decimal"
+            :suffix="group.card.ccy"
+            :hint="amountHint"
+            :error="!!amountError"
+            :error-message="amountError"
+          >
+            <template v-if="partial" #append>
+              <q-btn flat dense no-caps color="primary" label="Pay in full" @click="payInFull" />
+            </template>
+          </q-input>
+
           <q-select
             v-model="bankId"
             :options="options"
@@ -121,7 +137,9 @@
           padding="sm md"
           unelevated
           no-caps
-          :label="settling ? 'Settling' : `Settle ${money(period?.owed)}`"
+          :label="
+            settling ? 'Paying' : partial ? `Pay ${money(amount)}` : `Settle ${money(period?.owed)}`
+          "
           :loading="settling"
           :disable="!settleable"
           @click="confirm"
@@ -175,8 +193,48 @@ const money = useMoney()
 
 const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
+const amount = ref('')
+
+const amountError = ref(null)
+
+// Digits only, so the comparison stays on the decimal string rather than a float.
+const toCents = value => {
+  const match = String(value ?? '')
+    .trim()
+    .match(/^(\d+)(?:\.(\d{0,4}))?$/)
+
+  return match ? BigInt(match[1] + (match[2] ?? '').padEnd(4, '0')) : null
+}
+
+const owedCents = computed(() => toCents(props.period?.owed))
+
+const amountCents = computed(() => toCents(amount.value))
+
+const validAmount = computed(
+  () =>
+    amountCents.value !== null &&
+    amountCents.value > 0n &&
+    owedCents.value !== null &&
+    amountCents.value <= owedCents.value,
+)
+
+const partial = computed(() => validAmount.value && amountCents.value < owedCents.value)
+
+const amountHint = computed(() => {
+  if (amountCents.value === null) return 'An amount, to up to four places'
+  if (amountCents.value > (owedCents.value ?? 0n)) return 'More than the statement owes'
+  if (!partial.value) return 'Pays the statement in full'
+
+  const left = owedCents.value - amountCents.value
+
+  return `Leaves ${money(`${left / 10000n}.${String(left % 10000n).padStart(4, '0')}`)} owing`
+})
+
+const payInFull = () => (amount.value = twoPlaces(props.period?.owed ?? ''))
+
 const settleable = computed(
-  () => bankId.value !== null && !props.period?.pending_count && !settling.value,
+  () =>
+    bankId.value !== null && validAmount.value && !props.period?.pending_count && !settling.value,
 )
 
 const confirm = () => {
@@ -188,6 +246,7 @@ const confirm = () => {
     {
       due_date: props.period.due_date,
       owed: props.period.owed,
+      amount: amount.value,
       date: paidOn.value,
       settlement_account_id: bankId.value,
     },
@@ -199,13 +258,18 @@ const confirm = () => {
       onError: errors => {
         fieldError.value = errors.date ?? null
         bankError.value = errors.settlement_account_id ?? null
-        error.value = errors.due_date ?? errors.date ?? 'That statement could not be settled.'
+        amountError.value = errors.amount ?? null
+        error.value =
+          errors.due_date ??
+          errors.date ??
+          (errors.amount ? null : 'That statement could not be settled.')
       },
       onSuccess: () => {
         open.value = false
         error.value = null
         fieldError.value = null
         bankError.value = null
+        amountError.value = null
       },
       onFinish: () => (settling.value = false),
     },
@@ -226,6 +290,8 @@ watch(
 defineExpose({
   show: (period, bank, group) => {
     paidOn.value = period?.due_date ?? ''
+    amount.value = twoPlaces(period?.owed ?? '')
+    amountError.value = null
     // A card may name a bank in another currency; preselecting it would show a bare id.
     bankId.value = optionsFor(group?.card?.ccy).some(o => o.value === bank?.id) ? bank.id : null
     error.value = null

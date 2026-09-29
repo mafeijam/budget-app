@@ -519,6 +519,9 @@ class TransactionController extends Controller
             'due_date' => ['required', 'date_format:Y-m-d'],
             'owed' => ['required', 'decimal:0,'.TransactionMetaData::AMOUNT_SCALE],
 
+            // Part of what is owed; the whole of it when absent.
+            'amount' => ['nullable', 'decimal:0,'.TransactionMetaData::AMOUNT_SCALE, 'gt:0'],
+
             'date' => ['nullable', 'date_format:Y-m-d'],
 
             // Optional: the card's own link is used when it has one.
@@ -597,6 +600,20 @@ class TransactionController extends Controller
             ));
         }
 
+        $amount = BigDecimal::of($figures['amount'] ?? $owed)->toScale(TransactionMetaData::AMOUNT_SCALE);
+
+        if ($amount->isGreaterThan(BigDecimal::of($owed))) {
+            throw ValidationException::withMessages(['amount' => sprintf(
+                'That statement owes %s %s, so a payment of %s would pay more than it owes.',
+                $owed,
+                $account->ccy,
+                $amount
+            )]);
+        }
+
+        $clears = $amount->isEqualTo(BigDecimal::of($owed));
+        $amount = (string) $amount;
+
         $paidOn = $figures['date'] ?? $figures['due_date'];
 
         DB::beginTransaction();
@@ -619,7 +636,7 @@ class TransactionController extends Controller
                 'date' => $paidOn,
                 'type' => TransactionType::Payment->value,
                 'description' => sprintf('Statement %s', $figures['due_date']),
-                'amount' => $owed,
+                'amount' => $amount,
                 'ccy' => $account->ccy,
                 'status' => TransactionStatus::Posted->value,
             ]);
@@ -630,7 +647,7 @@ class TransactionController extends Controller
                 'date' => $paidOn,
                 'type' => TransactionType::Withdraw->value,
                 'description' => sprintf('Card payment [%s]', $account->name),
-                'amount' => $owed,
+                'amount' => $amount,
                 'ccy' => $account->ccy,
                 'status' => TransactionStatus::Posted->value,
             ]);
@@ -645,8 +662,9 @@ class TransactionController extends Controller
                 'meta' => ['paired_transaction_id' => $payment->id],
             ]);
 
-            // Merged: the bag also holds the due_date the statement groups on.
-            $covered = Transaction::query()
+            // Only the payment that clears the statement marks its charges paid. Merged: the
+            // bag also holds the due_date the statement groups on.
+            $covered = ! $clears ? collect() : Transaction::query()
                 ->with('meta')
                 ->where('account_id', $account->id)
                 ->where('type', TransactionType::Charge->value)
@@ -668,10 +686,21 @@ class TransactionController extends Controller
             return back()->with('message', 'error db...');
         }
 
+        if (! $clears) {
+            return back()->with('message', sprintf(
+                'Card statement [%s] part-paid: %s of %s %s, %s still owed',
+                $figures['due_date'],
+                $amount,
+                $owed,
+                $account->ccy,
+                (string) BigDecimal::of($owed)->minus($amount)
+            ));
+        }
+
         return back()->with('message', sprintf(
             'Card statement [%s] settled: %s %s',
             $figures['due_date'],
-            $owed,
+            $amount,
             $account->ccy
         ));
     }
@@ -796,13 +825,25 @@ class TransactionController extends Controller
             ->all();
     }
 
-    /** By the marker rather than the period, so a refiled charge is cleared too. */
+    /**
+     * By the marker, so a refiled charge is cleared too, and by the period, since removing
+     * an earlier part-payment reopens a statement a later payment marked paid.
+     */
     private function forgetSettlement(Transaction $payment): void
     {
+        $dueDate = $payment->meta?->meta['due_date'] ?? null;
+
         $bags = Meta::query()
             ->where('model_type', Transaction::class)
-            ->where('meta->settled_by', $payment->id)
-            ->get();
+            ->where(fn ($q) => $q
+                ->where('meta->settled_by', $payment->id)
+                ->when($dueDate !== null, fn ($q) => $q->orWhereIn('model_id', Transaction::query()
+                    ->select('id')
+                    ->where('account_id', $payment->account_id)
+                    ->where('type', TransactionType::Charge->value)
+                    ->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', $dueDate)))))
+            ->get()
+            ->filter(fn (Meta $bag) => isset($bag->meta['settled_by']));
 
         foreach ($bags as $bag) {
             $bag->update(['meta' => Arr::except($bag->meta->getArrayCopy(), 'settled_by')]);
