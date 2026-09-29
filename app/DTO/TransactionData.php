@@ -95,7 +95,9 @@ class TransactionData extends Data
     /** The row, its bag and its cash side. The caller owns the database transaction. */
     public function write(): Transaction
     {
-        $transaction = Transaction::create($this->except('meta_data')->toArray());
+        // Only the fillable columns, not trusting $fillable to drop the rest: a seeder runs
+        // unguarded, and account_name would reach an insert as a column that does not exist.
+        $transaction = Transaction::create(Arr::only($this->toArray(), (new Transaction)->getFillable()));
 
         // Nulls dropped, falsy kept: filter() would drop a fee of '0'.
         $meta = collect($this->meta_data?->all())->filter(fn ($value) => $value !== null);
