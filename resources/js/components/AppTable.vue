@@ -1,8 +1,16 @@
 <template>
   <div class="relative-position">
+    <!--
+      Two states per column, ascending and descending, because the third -- unsorted -- is a
+      request this table cannot make. getQuery writes sort only for a truthy sortBy, so null
+      sends nothing, the server re-applies its default, and syncPagination puts sortBy back:
+      on a column the server already orders by, and orders descending, every click was a
+      no-op and the column could not be flipped at all. Date, and Created At.
+    -->
     <q-table
       v-bind="$attrs"
       v-model:pagination="pagination"
+      binary-state-sort
       bordered
       flat
       :rows-per-page-options="[5, 10, 20]"
