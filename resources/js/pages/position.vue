@@ -3,23 +3,42 @@
     <div class="row items-center">
       <div class="text-h6 text-weight-medium">Positions</div>
       <q-space />
-      <q-toggle v-model="showClosed" label="Show sold out" color="primary" dense class="q-mr-md" />
-      <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
-      <div class="text-caption text-grey-7 q-mr-sm">
-        {{
-          pricesUpdatedAt
-            ? `Prices updated ${formatTime(pricesUpdatedAt)}`
-            : 'No prices fetched yet'
-        }}
+
+      <div class="app-toolbar row items-center no-wrap">
+        <q-toggle
+          v-model="showClosed"
+          label="Show sold out"
+          color="primary"
+          dense
+          class="q-px-sm"
+        />
+
+        <q-separator vertical inset class="q-mx-sm" />
+
+        <div class="row items-center no-wrap q-px-sm">
+          <q-icon name="schedule" size="xs" color="grey-6" class="q-mr-sm" />
+          <div class="column">
+            <span class="text-caption text-grey-6 app-toolbar__label">Prices updated</span>
+            <span class="text-body2 text-grey-9">
+              {{ pricesUpdatedAt ? whenUpdated(pricesUpdatedAt) : 'Never' }}
+            </span>
+          </div>
+          <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
+          <q-tooltip v-if="pricesUpdatedAt" :delay="500" :offset="[0, 6]">
+            {{ formatTime(pricesUpdatedAt) }}
+          </q-tooltip>
+        </div>
+
+        <q-btn
+          unelevated
+          no-caps
+          class="text-weight-bold app-btn q-ml-sm"
+          icon="refresh"
+          label="Fetch prices"
+          :loading="fetching"
+          @click="fetchPrices"
+        />
       </div>
-      <q-btn
-        unelevated
-        no-caps
-        class="text-weight-bold app-btn"
-        label="Fetch prices"
-        :loading="fetching"
-        @click="fetchPrices"
-      />
     </div>
 
     <div v-if="!brokerages.length" class="text-grey-6">
@@ -142,6 +161,23 @@ defineProps({
 const money = useMoney()
 const formatDate = useCalendarDay()
 const formatTime = useHongKongTime()
+
+// "Today, 12:26" in Hong Kong's day; the tooltip carries the full timestamp.
+const tz = usePage().props.tz
+const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+const clock = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+const shortDay = new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short' })
+
+const whenUpdated = value => {
+  const at = new Date(value)
+  const day = dayOf.format(at)
+  const today = dayOf.format(new Date())
+  const yesterday = dayOf.format(new Date(Date.now() - 86400000))
+
+  const name = day === today ? 'Today' : day === yesterday ? 'Yesterday' : shortDay.format(at)
+
+  return `${name}, ${clock.format(at)}`
+}
 
 const showClosed = ref(false)
 

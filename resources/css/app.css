@@ -327,3 +327,16 @@ body {
   font-size: 12px;
   pointer-events: none;
 }
+
+/* A page's controls held together on one surface rather than loose on the ground. */
+.app-toolbar {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 4px;
+  min-height: 48px;
+}
+
+.app-toolbar__label {
+  line-height: 1.1;
+}
