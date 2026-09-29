@@ -20,8 +20,11 @@
 
       <!-- Every filtered row, not just this page. -->
       <template v-if="totals.length" #bottom-left>
-        <div class="row items-baseline no-wrap q-gutter-x-md text-caption text-grey-7">
-          <template v-for="total in totals" :key="total.ccy">
+        <div class="row items-center no-wrap q-gutter-x-md text-caption text-grey-7 text-no-wrap">
+          <!-- One group per currency: nothing is converted, so HKD and USD never add up. -->
+          <template v-for="(total, i) in totals" :key="total.ccy">
+            <q-separator v-if="i > 0" vertical class="q-mx-sm" />
+            <q-badge outline color="grey-7" :label="total.ccy" />
             <span v-if="!isZero(total.in)">
               In <span class="money text-positive">+{{ formatMoney(total.in) }}</span>
             </span>
@@ -34,7 +37,6 @@
             <span class="text-body2 text-weight-medium text-grey-9">
               Net
               <span class="money" :class="netClass(total.net)">{{ formatMoney(total.net) }}</span>
-              {{ total.ccy }}
             </span>
           </template>
         </div>
