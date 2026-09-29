@@ -155,6 +155,14 @@ body {
   /* .q-btn is a column flex container, so a taller button's label rides at the top. */
   justify-content: center;
 }
+/*
+  Quasar sizes a button's icon at 24px beside 14px text, with a 12px gap, so the glyph
+  looms over the label and reads as sitting low. Sized to the label instead.
+*/
+.app-btn .q-icon.on-left {
+  font-size: 1.3em;
+  margin-right: 6px;
+}
 .app-btn--negative {
   background: var(--app-btn-negative-tint);
   color: var(--app-negative-ink);
