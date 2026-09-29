@@ -150,6 +150,40 @@ class NetWorthTest extends TestCase
         }
     }
 
+    public function test_a_projection_carries_known_cash_and_grows_the_stocks(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-01-02', '10000');
+        $this->buy('2026-02-01', '100', '40');
+        $this->price('0700.HK', '2026-09-10', '50', 'HKD');
+        $this->row($this->bank, 'withdraw', '2026-11-01', '1000');
+
+        $flat = (new NetWorth)->projection(3, today(), 0);
+
+        // Quarter ends ahead, not the one days away in today's month, then a year on.
+        $this->assertSame(['2026-12-31', '2027-03-31', '2027-06-30', '2027-09-15'], array_column($flat, 'date'));
+        $this->assertSame('10000.0000', $flat[0]['net_worth']);
+
+        $grown = (new NetWorth)->projection(3, today(), 8);
+
+        // A year at 8% on the 5000 the stocks are worth.
+        $this->assertSame('5400.0000', $grown[3]['value']);
+        $this->assertSame('10400.0000', $grown[3]['net_worth']);
+    }
+
+    public function test_the_projection_is_only_sent_when_asked_for(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page->where('projection', []));
+
+        $this->get('/net-worth?project=1&growth=5')->assertInertia(fn (Assert $page) => $page
+            ->where('growth', 5)
+            ->has('projection', 12)
+        );
+
+        $this->get('/net-worth?project=1&growth=7')->assertInertia(fn (Assert $page) => $page->where('growth', 0));
+    }
+
     private function row(Account $account, string $type, string $date, string $amount, array $extra = []): void
     {
         $this->post('/transactions', [

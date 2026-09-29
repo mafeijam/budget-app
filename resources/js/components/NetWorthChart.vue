@@ -37,6 +37,16 @@
           </text>
         </g>
 
+        <!-- The stretch ahead of today, so a projection never reads as the record. -->
+        <rect
+          v-if="ahead.length"
+          :x="x(points.length - 1)"
+          :y="top"
+          :width="width - right - x(points.length - 1)"
+          :height="bottom - top"
+          :fill="colours.ahead"
+        />
+
         <line
           v-if="hovered !== null"
           :x1="x(hovered)"
@@ -70,6 +80,35 @@
           stroke-linecap="round"
         />
 
+        <template v-if="ahead.length">
+          <polyline
+            :points="projected('value')"
+            fill="none"
+            :stroke="colours.value"
+            stroke-width="1.5"
+            stroke-dasharray="3 4"
+            stroke-opacity="0.6"
+          />
+          <polyline
+            :points="projected('figure')"
+            fill="none"
+            :stroke="colours.net_worth"
+            stroke-width="2"
+            stroke-dasharray="6 4"
+            stroke-linecap="round"
+          />
+          <circle
+            v-for="(point, j) in ahead"
+            :key="`ahead-${point.date}`"
+            :cx="x(points.length + j)"
+            :cy="y(point.numbers.figure)"
+            r="3"
+            fill="#ffffff"
+            :stroke="colours.net_worth"
+            stroke-width="1.5"
+          />
+        </template>
+
         <template v-for="(point, i) in points" :key="point.date">
           <circle
             :cx="x(i)"
@@ -79,16 +118,18 @@
             stroke="#ffffff"
             :stroke-width="i === selectedIndex ? 2 : 1"
           />
-          <text
-            v-if="labelled(i)"
-            :x="x(i)"
-            :y="height - 8"
-            text-anchor="middle"
-            class="cash-flow-chart__tick"
-          >
-            {{ point.short }}
-          </text>
         </template>
+
+        <text
+          v-for="tick in axis"
+          :key="`axis-${tick.i}`"
+          :x="x(tick.i)"
+          :y="height - 8"
+          text-anchor="middle"
+          class="cash-flow-chart__tick"
+        >
+          {{ tick.label }}
+        </text>
 
         <!-- Last, so a whole column is the hover target rather than the thin marks. -->
         <rect
@@ -104,10 +145,26 @@
           @mouseleave="hovered = null"
           @click="emit('select', point.date)"
         />
+        <rect
+          v-for="(point, j) in ahead"
+          :key="`hit-ahead-${point.date}`"
+          :x="x(points.length + j) - step / 2"
+          :y="top"
+          :width="step"
+          :height="bottom - top"
+          fill="transparent"
+          @mouseenter="hovered = points.length + j"
+          @mouseleave="hovered = null"
+        />
       </svg>
 
       <div v-if="hovered !== null" class="cash-flow-chart__tooltip" :style="tooltipStyle">
-        <div class="text-weight-bold q-mb-xs">{{ points[hovered].long }}</div>
+        <div class="text-weight-bold q-mb-xs">
+          {{ hoveredPoint.long }}
+          <span v-if="hovered >= points.length" class="text-grey-7 text-weight-regular">
+            · projected
+          </span>
+        </div>
         <div v-for="row in tooltipRows" :key="row.label" class="row no-wrap items-center">
           <span class="cash-flow-chart__swatch" :style="{ background: row.colour }" />
           <span class="q-mr-md">{{ row.label }}</span>
@@ -126,6 +183,9 @@ const props = defineProps({
   months: { type: Number, default: 1 },
   // The snapshot the cards show, marked on the chart.
   selected: { type: String, default: null },
+  // Points ahead of today, drawn dashed after the history.
+  projection: { type: Array, default: () => [] },
+  withTypical: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['select'])
@@ -141,6 +201,7 @@ const colours = {
   cost: '#e11d48',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
+  ahead: '#f8fafc',
 }
 
 const legend = [
@@ -211,6 +272,28 @@ const points = computed(() =>
   })),
 )
 
+const ahead = computed(() =>
+  props.projection.map(point => {
+    const figure = props.withTypical ? point.with_typical : point.net_worth
+
+    return {
+      ...point,
+      figure,
+      numbers: { figure: Number(figure), value: Number(point.value) },
+      short: (props.months === 12 ? yearDate : shortDate).format(asDate(point.date)),
+      long: longDate.format(asDate(point.date)),
+    }
+  }),
+)
+
+const total = computed(() => points.value.length + ahead.value.length)
+
+const hoveredPoint = computed(() =>
+  hovered.value < points.value.length
+    ? points.value[hovered.value]
+    : ahead.value[hovered.value - points.value.length],
+)
+
 const niceStep = raw => {
   const magnitude = 10 ** Math.floor(Math.log10(raw))
   const fraction = raw / magnitude
@@ -219,7 +302,7 @@ const niceStep = raw => {
 }
 
 const scale = computed(() => {
-  const values = points.value.flatMap(point => Object.values(point.numbers))
+  const values = [...points.value, ...ahead.value].flatMap(point => Object.values(point.numbers))
   const peak = Math.max(1, ...values)
   const tick = niceStep(peak / 4)
 
@@ -246,9 +329,26 @@ const y = value => {
   return top + ((high - Number(value)) / (high + low || 1)) * (bottom - top)
 }
 
-const step = computed(() => (width - left - right) / Math.max(points.value.length - 1, 1))
+const step = computed(() => (width - left - right) / Math.max(total.value - 1, 1))
 
-const x = i => (points.value.length === 1 ? (left + width - right) / 2 : left + i * step.value)
+const x = i => (total.value === 1 ? (left + width - right) / 2 : left + i * step.value)
+
+// From today's point on, so the dashed line carries on from the solid one.
+const projected = key => {
+  const last = points.value.at(-1)
+
+  if (!last) return ''
+
+  const start = key === 'figure' ? last.numbers.net_worth : last.numbers.value
+
+  return monotoneCurve(
+    [start, ...ahead.value.map(point => point.numbers[key])],
+    x(points.value.length - 1),
+    step.value,
+  )
+    .map(([px, value]) => `${px},${y(value)}`)
+    .join(' ')
+}
 
 // Samples per gap between two snapshots, enough for the curve to read as smooth.
 const curve = key =>
@@ -320,14 +420,22 @@ const gaps = computed(() => {
   return pieces
 })
 
-// About twelve labels at most, so a monthly history of years stays legible.
-const labelled = i => {
-  const every = Math.max(1, Math.ceil(points.value.length / 12))
+// About twelve labels at most over history and projection together, so a monthly
+// history of years stays legible. Today's point is always labelled.
+const axis = computed(() => {
+  const all = [...points.value, ...ahead.value]
+  const every = Math.max(1, Math.ceil(all.length / 12))
+  const today = points.value.length - 1
 
-  return (
-    i === points.value.length - 1 || (i % every === 0 && points.value.length - 1 - i >= every / 2)
-  )
-}
+  return all
+    .map((point, i) => ({ i, label: point.short }))
+    .filter(
+      ({ i }) =>
+        i === today ||
+        i === all.length - 1 ||
+        (i % every === 0 && Math.abs(i - today) >= every / 2 && all.length - 1 - i >= every / 2),
+    )
+})
 
 const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -335,6 +443,15 @@ const compact = value =>
 const label = computed(() => `Net worth, cash, stock value and stock cost, in ${props.base}`)
 
 const tooltipRows = computed(() => {
+  if (hovered.value >= points.value.length) {
+    const point = hoveredPoint.value
+
+    return [
+      { label: 'Net worth', value: money(point.figure), colour: colours.net_worth },
+      { label: 'Stock value', value: money(point.value), colour: colours.value },
+    ]
+  }
+
   const point = points.value[hovered.value]
 
   return legend.map(series => ({

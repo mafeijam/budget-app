@@ -58,8 +58,9 @@
                 "
                 :label="`${monthChange.up ? '+' : ''}${money(monthChange.amount)} on last month${monthChange.pct}`"
               />
-              <div v-if="growth" class="text-caption text-grey-7 q-mt-sm">
-                {{ growth.up ? '+' : '' }}{{ money(growth.amount) }}{{ growth.pct }} since
+              <div v-if="sinceGrowth" class="text-caption text-grey-7 q-mt-sm">
+                {{ sinceGrowth.up ? '+' : '' }}{{ money(sinceGrowth.amount)
+                }}{{ sinceGrowth.pct }} since
                 {{ monthLabel(since.date) }}
               </div>
             </q-card-section>
@@ -192,9 +193,36 @@
           <div class="text-subtitle1 text-weight-medium">Over time</div>
           <div class="text-caption text-grey-7">
             A snapshot at the end of each {{ periodName }}, and today's.
+            <template v-if="projecting">
+              Ahead, dashed: the forecast's known cash, stocks at {{ growth }}% a year{{
+                withTypical ? ', less typical spending' : ''
+              }}.
+            </template>
           </div>
         </div>
-        <div class="col-auto">
+        <div class="col-auto row items-center q-gutter-md">
+          <q-toggle
+            :model-value="projecting"
+            label="Project a year"
+            color="primary"
+            dense
+            @update:model-value="on => visit({ project: on })"
+          />
+          <template v-if="projecting">
+            <q-btn-toggle
+              :model-value="growth"
+              :options="growths.map(n => ({ label: `${n}%`, value: n }))"
+              no-caps
+              unelevated
+              dense
+              toggle-color="primary"
+              color="grey-2"
+              text-color="grey-8"
+              padding="xs sm"
+              @update:model-value="n => visit({ growth: n })"
+            />
+            <q-toggle v-model="withTypical" label="Typical spending" color="warning" dense />
+          </template>
           <q-btn-toggle
             :model-value="months"
             :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
@@ -219,6 +247,8 @@
           :base="base"
           :months="months"
           :selected="at ?? history.at(-1)?.date"
+          :projection="projection"
+          :with-typical="withTypical"
           @select="pick"
         />
         <div v-else class="text-grey-6">No transactions yet.</div>
@@ -237,13 +267,31 @@ const props = defineProps({
   months: { type: Number, default: 1 },
   periods: { type: Array, default: () => [1, 3, 6, 12] },
   at: { type: String, default: null },
+  projection: { type: Array, default: () => [] },
+  growth: { type: Number, default: 0 },
+  growths: { type: Array, default: () => [0, 5, 8] },
 })
 
+const projecting = computed(() => props.projection.length > 0)
+
+// Shared with the forecast page, so the estimate is on or off in both.
+const withTypical = useLocalStorage('forecast.typical', true)
+
 // The spacing and the picked snapshot, each off the URL at its default.
-const visit = ({ months = props.months, at = props.at }) =>
+const visit = ({
+  months = props.months,
+  at = props.at,
+  project = projecting.value,
+  growth = props.growth,
+}) =>
   router.get(
     '/net-worth',
-    { ...(months === 1 ? {} : { months }), ...(at ? { at } : {}) },
+    {
+      ...(months === 1 ? {} : { months }),
+      ...(at ? { at } : {}),
+      ...(project ? { project: 1 } : {}),
+      ...(project && growth ? { growth } : {}),
+    },
     { preserveScroll: true, replace: true },
   )
 
@@ -288,7 +336,7 @@ const change = against => {
 }
 
 const monthChange = computed(() => change(props.lastMonth))
-const growth = computed(() => change(props.since))
+const sinceGrowth = computed(() => change(props.since))
 
 const unrealisedPct = computed(() => percent(props.current.unrealised, props.current.cost))
 
