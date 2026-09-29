@@ -382,56 +382,6 @@ class Forecast
         }
     }
 
-    /**
-     * The known changes to net worth ahead, per currency: every cash movement except a
-     * card statement's payment, whose debt net worth already carries, and every pending
-     * card charge, which it does not carry yet.
-     *
-     * @return list<array{date: string, ccy: string, amount: BigDecimal}>
-     */
-    public function netWorthEvents(): array
-    {
-        $events = [];
-
-        foreach ($this->events as $event) {
-            if ($event['kind'] !== 'statement') {
-                $events[] = ['date' => $event['date'], 'ccy' => $this->cash[$event['account_id']]->ccy, 'amount' => $event['amount']];
-            }
-        }
-
-        $pending = Transaction::query()
-            ->with(['account', 'meta'])
-            ->where('status', TransactionStatus::Pending->value)
-            ->where('type', TransactionType::Charge->value)
-            ->where('date', '<=', $this->end->toDateString())
-            ->get();
-
-        foreach ($pending as $row) {
-            $events[] = [
-                'date' => max($row->date, $this->today->toDateString()),
-                'ccy' => $row->account->ccy,
-                'amount' => BigDecimal::of($row->meta?->meta['card_amount'] ?? $row->amount)->negated(),
-            ];
-        }
-
-        return $events;
-    }
-
-    /**
-     * Typical spending a day, per currency, as the projection lines take it off.
-     *
-     * @return array<string, BigDecimal>
-     */
-    public function typicalDaily(): array
-    {
-        return array_map(
-            fn (array $typical) => BigDecimal::of($typical['monthly'])
-                ->multipliedBy(12)
-                ->dividedBy(365, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp),
-            $this->typicalSpending()
-        );
-    }
-
     /** @return list<string> */
     public function warnings(?string $only = null): array
     {

@@ -16,8 +16,6 @@ class NetWorthController extends Controller
         // One of the offered spacings, or monthly: anything else is a hand-edited URL.
         $months = in_array((int) $r->input('months'), NetWorth::PERIODS, true) ? (int) $r->input('months') : 1;
 
-        $growth = in_array((int) $r->input('growth'), NetWorth::GROWTHS, true) ? (int) $r->input('growth') : 0;
-
         $worth = new NetWorth;
         $today = today();
 
@@ -44,12 +42,6 @@ class NetWorthController extends Controller
             'lastMonth' => $against($at->copy()->startOfMonth()->subDay()->toDateString()),
             'since' => $first === null ? null : $against(Carbon::parse($first)->endOfMonth()->toDateString()),
             'history' => $worth->history($months, $today),
-            // Off unless asked for, and at a return the page offers: a projection is a
-            // what-if, and the chart without one is the record.
-            'projection' => $r->boolean('project') ? $worth->projection($months, $today, $growth) : [],
-            'growth' => $growth,
-            'growths' => NetWorth::GROWTHS,
-            'projectionMonths' => NetWorth::PROJECTION_MONTHS,
             'at' => $at->isSameDay($today) ? null : $at->toDateString(),
             'months' => $months,
             'periods' => NetWorth::PERIODS,

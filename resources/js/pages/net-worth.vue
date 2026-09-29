@@ -193,36 +193,9 @@
           <div class="text-subtitle1 text-weight-medium">Over time</div>
           <div class="text-caption text-grey-7">
             A snapshot at the end of each {{ periodName }}, and today's.
-            <template v-if="projecting">
-              Ahead, dashed: the forecast's known cash, stocks at {{ growth }}% a year{{
-                withTypical ? ', less typical spending' : ''
-              }}.
-            </template>
           </div>
         </div>
         <div class="col-auto row items-center q-gutter-md">
-          <q-toggle
-            :model-value="projecting"
-            :label="`Project ${projectionMonths} months`"
-            color="primary"
-            dense
-            @update:model-value="on => visit({ project: on })"
-          />
-          <template v-if="projecting">
-            <q-btn-toggle
-              :model-value="growth"
-              :options="growths.map(n => ({ label: `${n}%`, value: n }))"
-              no-caps
-              unelevated
-              dense
-              toggle-color="primary"
-              color="grey-2"
-              text-color="grey-8"
-              padding="xs sm"
-              @update:model-value="n => visit({ growth: n })"
-            />
-            <q-toggle v-model="withTypical" label="Typical spending" color="warning" dense />
-          </template>
           <q-btn-toggle
             :model-value="months"
             :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
@@ -247,8 +220,6 @@
           :base="base"
           :months="months"
           :selected="at ?? history.at(-1)?.date"
-          :projection="projection"
-          :with-typical="withTypical"
           @select="pick"
         />
         <div v-else class="text-grey-6">No transactions yet.</div>
@@ -267,33 +238,15 @@ const props = defineProps({
   months: { type: Number, default: 1 },
   periods: { type: Array, default: () => [1, 3, 6, 12] },
   at: { type: String, default: null },
-  projection: { type: Array, default: () => [] },
-  growth: { type: Number, default: 0 },
-  growths: { type: Array, default: () => [0, 5, 8] },
-  projectionMonths: { type: Number, default: 3 },
 })
 
-const projecting = computed(() => props.projection.length > 0)
-
-const projectionMonths = computed(() => props.projectionMonths)
-
-// Shared with the forecast page, so the estimate is on or off in both.
-const withTypical = useLocalStorage('forecast.typical', true)
-
 // The spacing and the picked snapshot, each off the URL at its default.
-const visit = ({
-  months = props.months,
-  at = props.at,
-  project = projecting.value,
-  growth = props.growth,
-}) =>
+const visit = ({ months = props.months, at = props.at }) =>
   router.get(
     '/net-worth',
     {
       ...(months === 1 ? {} : { months }),
       ...(at ? { at } : {}),
-      ...(project ? { project: 1 } : {}),
-      ...(project && growth ? { growth } : {}),
     },
     { preserveScroll: true, replace: true },
   )

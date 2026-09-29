@@ -24,12 +24,6 @@ class NetWorth
     /** The point spacings offered, in months. */
     public const PERIODS = [1, 3, 6, 12];
 
-    /** How far a projection reaches, in months. */
-    public const PROJECTION_MONTHS = 3;
-
-    /** The yearly stock returns a projection may assume, in percent. */
-    public const GROWTHS = [0, 5, 8];
-
     /** @var Collection<int, Account> */
     private Collection $accounts;
 
@@ -167,83 +161,6 @@ class NetWorth
             'unpriced' => $unpriced,
             'unconverted' => array_keys($unconverted),
         ];
-    }
-
-    /**
-     * Net worth ahead, at the end of every $months-month period through PROJECTION_MONTHS
-     * months and then that horizon's last day: today's figures plus the forecast's known changes, with typical
-     * spending taken off in a second figure, and the stocks grown at $growth percent a
-     * year. Nothing converts at a rate but today's, which is the only one known.
-     *
-     * @return list<array<string, string>>
-     */
-    public function projection(int $months, Carbon $today, int $growth): array
-    {
-        $now = $this->on($today->toDateString());
-        $end = $today->copy()->addMonthsNoOverflow(self::PROJECTION_MONTHS);
-        $forecast = Forecast::for($today, self::PROJECTION_MONTHS);
-        $events = $forecast->netWorthEvents();
-        $daily = $forecast->typicalDaily();
-        $day = $today->toDateString();
-
-        $days = [];
-        $cursor = $today->copy()->startOfYear();
-
-        while ($cursor->copy()->addMonthsNoOverflow($months)->subDay()->toDateString() <= $day) {
-            $cursor->addMonthsNoOverflow($months);
-        }
-
-        for (; ; $cursor->addMonthsNoOverflow($months)) {
-            $point = $cursor->copy()->addMonthsNoOverflow($months)->subDay();
-
-            if ($point->greaterThan($end)) {
-                break;
-            }
-
-            // Not in today's own month: a period ending days away would sit on top of
-            // today's point.
-            if ($point->format('Y-m') === $today->format('Y-m')) {
-                continue;
-            }
-
-            $days[] = $point->toDateString();
-        }
-
-        if (end($days) !== $end->toDateString()) {
-            $days[] = $end->toDateString();
-        }
-
-        $cash = BigDecimal::of($now['cash'])->plus($now['cards']);
-        $value = BigDecimal::of($now['value']);
-        $points = [];
-
-        foreach ($days as $date) {
-            $known = $typical = $zero = BigDecimal::zero();
-            $elapsed = (int) $today->diffInDays(Carbon::parse($date));
-
-            foreach ($events as $event) {
-                if ($event['date'] <= $date) {
-                    $known = $known->plus($this->fx->toBase((string) $event['amount'], $event['ccy'], $day) ?? $zero);
-                }
-            }
-
-            foreach ($daily as $ccy => $perDay) {
-                $typical = $typical->plus($this->fx->toBase((string) $perDay->multipliedBy($elapsed), $ccy, $day) ?? $zero);
-            }
-
-            // Compounded on the year's fraction; a float only for the factor, not the money.
-            $factor = (string) round((1 + $growth / 100) ** ($elapsed / 365), 8);
-            $grown = $value->multipliedBy($factor)->toScale(4, RoundingMode::HalfUp);
-
-            $points[] = [
-                'date' => $date,
-                'net_worth' => (string) $cash->plus($known)->plus($grown)->toScale(4, RoundingMode::HalfUp),
-                'with_typical' => (string) $cash->plus($known)->minus($typical)->plus($grown)->toScale(4, RoundingMode::HalfUp),
-                'value' => (string) $grown,
-            ];
-        }
-
-        return $points;
     }
 
     /**
