@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\DTO\AccountData;
+use App\DTO\RecurringTransactionData;
 use App\DTO\TransactionData;
 use App\Enums\AccountType;
 use Illuminate\Http\Request;
@@ -104,6 +105,7 @@ class FormContractTest extends TestCase
         return [
             'account' => ['FormAccount.vue', AccountData::class],
             'transaction' => ['FormTransaction.vue', TransactionData::class],
+            'recurring' => ['FormRecurring.vue', RecurringTransactionData::class],
         ];
     }
 

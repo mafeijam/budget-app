@@ -76,6 +76,15 @@ enum TransactionType: string
         return $this->derivesAmount() || $this === self::Dividend;
     }
 
+    /**
+     * A trade's amount is decided by the day's price, and a dividend's cash side by what
+     * is held, so neither can be written ahead from a fixed figure.
+     */
+    public function canRecur(): bool
+    {
+        return ! $this->needsCashSide();
+    }
+
     /** Not a withdrawal: TradeCash and settle() write withdrawals with no category. */
     public function requiresCategory(): bool
     {

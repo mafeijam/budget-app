@@ -67,6 +67,7 @@ export function useDestroy(pagination) {
     '/transactions': 'transaction',
     '/accounts': 'account',
     '/categories': 'category',
+    '/recurring': 'recurring transaction',
   }
 
   // row.description for a transaction, row.name for an account or a category, and the
