@@ -137,6 +137,7 @@
           padding="sm md"
           unelevated
           no-caps
+          icon="payments"
           :label="
             settling ? 'Paying' : partial ? `Pay ${money(amount)}` : `Settle ${money(period?.owed)}`
           "

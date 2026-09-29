@@ -45,6 +45,7 @@
                 padding="sm md"
                 flat
                 no-caps
+                icon="restart_alt"
                 label="Reset"
                 @click="(form.reset(), form.clearErrors())"
               />
@@ -54,6 +55,7 @@
                 padding="sm md"
                 unelevated
                 no-caps
+                icon="check"
                 label="Submit"
                 :loading="form.processing"
                 :form="$page.props.meta.form"

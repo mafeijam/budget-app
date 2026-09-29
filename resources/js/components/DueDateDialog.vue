@@ -94,6 +94,7 @@
           padding="sm md"
           unelevated
           no-caps
+          icon="event"
           :label="saving ? 'Saving' : changed ? `Move to ${formatDate(stated)}` : 'Save due date'"
           :loading="saving"
           :disable="!saveable"
