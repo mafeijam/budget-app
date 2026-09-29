@@ -14,3 +14,7 @@ Artisan::command('run1', function () {
 // week back, so a missed day fills in on the next. Positions has a button to run it now.
 // Only runs if something calls schedule:run every minute -- see README.
 Schedule::command('prices:fetch')->dailyAt('06:30')->timezone('Asia/Hong_Kong');
+
+// Just after midnight in Hong Kong, the day today() turns over. A missed run catches up
+// on the next, and saving a rule records what is due at once.
+Schedule::command('recurring:record')->dailyAt('00:05')->timezone('Asia/Hong_Kong');

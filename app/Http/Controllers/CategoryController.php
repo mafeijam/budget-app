@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTO\CategoryData;
 use App\Models\Category;
+use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -60,10 +61,28 @@ class CategoryController extends Controller
             ->groupBy('category_id')
             ->pluck('n', 'category_id');
 
+        $recurring = RecurringTransaction::query()
+            ->whereIn('category_id', $categories->pluck('id'))
+            ->selectRaw('category_id, COUNT(*) AS n')
+            ->groupBy('category_id')
+            ->pluck('n', 'category_id');
+
         $refusals = [];
 
         foreach ($categories as $category) {
             $count = (int) ($counts[$category->id] ?? 0);
+            $repeats = (int) ($recurring[$category->id] ?? 0);
+
+            if ($count === 0 && $repeats > 0) {
+                $refusals[$category->id] = sprintf(
+                    'Category [%s] is used by %s recurring transaction%s and cannot be deleted. '
+                        .'Move %s to another category first.',
+                    $category->name,
+                    $repeats,
+                    $repeats === 1 ? '' : 's',
+                    $repeats === 1 ? 'it' : 'them'
+                );
+            }
 
             if ($count > 0) {
                 $refusals[$category->id] = sprintf(

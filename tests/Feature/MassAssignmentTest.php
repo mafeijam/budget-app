@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Category;
 use App\Models\Meta;
 use App\Models\Price;
+use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Models\TransactionTemplate;
 use App\Models\User;
@@ -33,9 +34,10 @@ class MassAssignmentTest extends TestCase
      * The models that own a table, and so have attributes a client could name.
      *
      * The second element of each entry lists the columns no client may set, beyond
-     * the `id` and timestamps every model shares. Only Meta has any: its morph
-     * columns are assigned by the relation rather than by a client, which is the
-     * whole reason they are absent from its allowlist. Carried here so the rule
+     * the `id` and timestamps every model shares. Meta's morph columns are assigned
+     * by the relation rather than by a client, which is the whole reason they are
+     * absent from its allowlist; a recurring transaction's last_recorded_on is
+     * moved only by RecurringPayments. Carried here so the rule
      * below reads as "every column nobody else owns" rather than pretending all
      * four tables are shaped alike.
      *
@@ -47,6 +49,7 @@ class MassAssignmentTest extends TestCase
         Category::class => ['table' => 'categories', 'not_client_set' => []],
         Meta::class => ['table' => 'meta', 'not_client_set' => ['model_id', 'model_type']],
         Price::class => ['table' => 'prices', 'not_client_set' => []],
+        RecurringTransaction::class => ['table' => 'recurring_transactions', 'not_client_set' => ['last_recorded_on']],
         Transaction::class => ['table' => 'transactions', 'not_client_set' => []],
         TransactionTemplate::class => ['table' => 'transaction_templates', 'not_client_set' => []],
     ];
