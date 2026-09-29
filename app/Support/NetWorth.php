@@ -200,7 +200,9 @@ class NetWorth
         }
 
         if ($limit !== null && count($points) > $limit) {
-            $points = array_slice($points, -$limit);
+            // From the front, because the list is newest first: slicing the tail kept the
+            // OLDEST months, so a six-month trend off a ten-year ledger drew 2016.
+            $points = array_slice($points, 0, $limit);
         }
 
         // Counted back from today, so newest first until here. Oldest first is the

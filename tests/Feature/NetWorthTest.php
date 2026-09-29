@@ -109,6 +109,28 @@ class NetWorthTest extends TestCase
         $this->assertSame(['2026-09-15'], array_column((new NetWorth)->history(12, today()), 'date'));
     }
 
+    public function test_a_limited_history_is_the_most_recent_periods(): void
+    {
+        // A ledger years deep, which is the only thing that can tell a limit from a
+        // slice. The two tests above run on a handful of months, where keeping the
+        // oldest few and the newest few look identical -- which is how a six-month
+        // trend came to draw 2016 off a ten-year ledger without a test noticing.
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        $this->assertSame(
+            ['2026-04-30', '2026-05-31', '2026-06-30', '2026-07-31', '2026-08-31', '2026-09-15'],
+            array_column((new NetWorth)->history(1, today(), 5), 'date')
+        );
+
+        // Oldest first, always: a caller plotting the series reads it in that order.
+        $dates = array_column((new NetWorth)->history(1, today(), 5), 'date');
+        $sorted = $dates;
+        sort($sorted);
+
+        $this->assertSame($sorted, $dates);
+    }
+
     public function test_the_page_takes_an_offered_spacing_and_ignores_any_other(): void
     {
         $this->row($this->bank, 'deposit', '2026-02-10', '100');
