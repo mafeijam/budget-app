@@ -18,6 +18,28 @@
         </TransactionFilters>
       </template>
 
+      <!-- Every filtered row, not just this page. -->
+      <template v-if="totals.length" #bottom-left>
+        <div class="row items-baseline no-wrap q-gutter-x-md text-caption text-grey-7">
+          <template v-for="total in totals" :key="total.ccy">
+            <span v-if="!isZero(total.in)">
+              In <span class="money text-positive">+{{ formatMoney(total.in) }}</span>
+            </span>
+            <span v-if="!isZero(total.out)">
+              Out <span class="money text-negative">−{{ formatMoney(total.out) }}</span>
+            </span>
+            <span v-if="!isZero(total.trades)">
+              Trades <span class="money text-grey-9">{{ formatMoney(total.trades) }}</span>
+            </span>
+            <span class="text-body2 text-weight-medium text-grey-9">
+              Net
+              <span class="money" :class="netClass(total.net)">{{ formatMoney(total.net) }}</span>
+              {{ total.ccy }}
+            </span>
+          </template>
+        </div>
+      </template>
+
       <template #body-cell-account="cell">
         <q-td :props="cell">
           {{ cell.value }}
@@ -73,6 +95,14 @@
 
 <script setup>
 const filterBar = ref(null)
+
+const totals = computed(() => usePage().props.totals ?? [])
+
+// On the decimal string, not a float.
+const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
+
+const netClass = value =>
+  isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'
 
 // The statement the table is filtered to, so its row in the panel reads as selected.
 const shownStatement = computed(() => {

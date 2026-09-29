@@ -364,3 +364,20 @@ body {
 .app-dialog--narrow {
   width: 600px;
 }
+
+/* Over the empty left of QTable's footer, which is centred on the same line. */
+.app-table__bottom-left {
+  position: absolute;
+  left: 16px;
+  bottom: 0;
+  height: 50px;
+  max-width: 55%;
+  display: flex;
+  align-items: center;
+}
+
+/* The dense footer's height, above the table's 1px border. */
+.q-table--dense ~ .app-table__bottom-left {
+  height: 33px;
+  bottom: 1px;
+}

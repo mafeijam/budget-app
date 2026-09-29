@@ -1,23 +1,33 @@
 <template>
-  <q-table
-    v-model:pagination="pagination"
-    bordered
-    flat
-    :rows-per-page-options="[5, 10, 20]"
-    :rows="rows"
-    :columns="sized"
-    wrap-cells
-    :table-style="tableStyle"
-    class="text-grey-8 sticky-table"
-    @request="onPageRequest"
-  >
-    <template v-for="(_, slot) of $slots" #[slot]="scope">
-      <slot :name="slot" v-bind="scope" />
-    </template>
-  </q-table>
+  <div class="relative-position">
+    <q-table
+      v-bind="$attrs"
+      v-model:pagination="pagination"
+      bordered
+      flat
+      :rows-per-page-options="[5, 10, 20]"
+      :rows="rows"
+      :columns="sized"
+      wrap-cells
+      :table-style="tableStyle"
+      class="text-grey-8 sticky-table"
+      @request="onPageRequest"
+    >
+      <template v-for="(_, slot) of $slots" #[slot]="scope">
+        <slot :name="slot" v-bind="scope" />
+      </template>
+    </q-table>
+
+    <!-- QTable has no slot here: its footer is one justify-end row, so this sits over its empty left. -->
+    <div v-if="$slots['bottom-left']" class="app-table__bottom-left">
+      <slot name="bottom-left" />
+    </div>
+  </div>
 </template>
 
 <script setup>
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
   columns: {
     type: Array,

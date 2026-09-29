@@ -196,44 +196,18 @@
     </q-select>
   </div>
 
-  <!--
-    Below the bar rather than in it, so nothing there moves when a filter is set. The chips
-    are what the closed panel is filtering by; the totals cover every filtered row.
-  -->
-  <div v-if="active" class="row full-width items-center no-wrap q-mt-sm q-gutter-x-sm">
+  <!-- Below the bar rather than in it, so nothing there moves when a filter is set. -->
+  <div v-if="shownChips.length" class="row full-width items-center q-mt-sm">
     <q-chip
       v-for="chip in shownChips"
       :key="chip.key"
       dense
       removable
       square
-      class="app-tint app-tint--info q-ma-none"
+      class="app-tint app-tint--info q-my-none q-ml-none q-mr-sm"
       :label="chip.label"
       @remove="chip.remove"
     />
-
-    <q-space />
-
-    <div
-      v-for="total in totals"
-      :key="total.ccy"
-      class="row items-baseline no-wrap q-gutter-x-md text-caption text-grey-7"
-    >
-      <span>{{ total.count }} {{ total.count === 1 ? 'row' : 'rows' }}</span>
-      <span v-if="!isZero(total.in)">
-        In <span class="money text-positive">+{{ money(total.in) }}</span>
-      </span>
-      <span v-if="!isZero(total.out)">
-        Out <span class="money text-negative">−{{ money(total.out) }}</span>
-      </span>
-      <span v-if="!isZero(total.trades)">
-        Trades <span class="money text-grey-9">{{ money(total.trades) }}</span>
-      </span>
-      <span class="text-body2 text-weight-medium text-grey-9">
-        Net <span class="money" :class="netClass(total.net)">{{ money(total.net) }}</span>
-        {{ total.ccy }}
-      </span>
-    </div>
   </div>
 </template>
 
@@ -358,16 +332,6 @@ const chips = computed(() => {
 })
 
 // The statement has no input in the panel, so its chip shows even while the panel is open.
-const totals = computed(() => page.props.totals ?? [])
-
-const money = useMoney()
-
-// On the decimal string, not a float.
-const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
-
-const netClass = value =>
-  isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'
-
 const shownChips = computed(() =>
   rowOpen.value ? chips.value.filter(chip => chip.key === 'due_date') : chips.value,
 )
