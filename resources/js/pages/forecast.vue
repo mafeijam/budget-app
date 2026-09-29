@@ -1,58 +1,68 @@
 <template>
   <div class="column no-wrap q-gutter-lg">
-    <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
     <div>
-      <div class="row items-end q-col-gutter-md">
-        <div class="col">
-          <div class="row items-center">
-            <div class="text-h6 text-weight-medium q-mr-md">Forecast</div>
-            <q-select
-              v-if="currencies.length > 1"
-              :model-value="ccy ?? ''"
-              :options="currencyOptions"
-              class="app-broker-select"
-              dense
-              outlined
-              emit-value
-              map-options
-              options-dense
-              @update:model-value="value => visit({ ccy: value || null })"
-            >
-              <template #prepend>
-                <q-icon name="payments" size="xs" color="grey-7" />
-              </template>
+      <div class="row items-center">
+        <div class="text-h6 text-weight-medium q-mr-md">Forecast</div>
+        <q-select
+          v-if="currencies.length > 1"
+          :model-value="ccy ?? ''"
+          :options="currencyOptions"
+          class="app-broker-select"
+          dense
+          outlined
+          emit-value
+          map-options
+          options-dense
+          @update:model-value="value => visit({ ccy: value || null })"
+        >
+          <template #prepend>
+            <q-icon name="payments" size="xs" color="grey-7" />
+          </template>
 
-              <template #option="scope">
-                <q-item v-bind="scope.itemProps">
-                  <q-item-section>
-                    {{ scope.opt.label }}
-                    <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-select>
-          </div>
-          <div class="text-caption text-grey-7">
-            Each cash account from today: rows dated ahead or still pending, recurring rules, and
-            card statements paid from their bank on the due date. Typical spending is an estimate
-            and shown apart.
-          </div>
-        </div>
-        <div class="col-auto row items-center q-gutter-md">
-          <q-toggle v-model="withTypical" label="Typical spending" color="warning" dense />
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>
+                {{ scope.opt.label }}
+                <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
+        <q-space />
+
+        <!-- The Positions page's toolbar, so the two pages' controls read alike. -->
+        <div class="app-toolbar row items-center no-wrap">
+          <q-toggle
+            v-model="withTypical"
+            label="Typical spending"
+            color="warning"
+            dense
+            class="q-px-sm"
+          />
+
+          <q-separator vertical inset class="q-mx-sm" />
+
+          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
           <q-btn-toggle
             :model-value="months"
             :options="horizons.map(n => ({ label: `${n} months`, value: n }))"
             no-caps
             unelevated
             dense
-            toggle-color="primary"
-            color="grey-2"
+            toggle-color="blue-1"
+            toggle-text-color="primary"
             text-color="grey-8"
             padding="xs md"
+            class="app-toolbar__toggle text-weight-bold"
             @update:model-value="choose"
           />
         </div>
+      </div>
+      <div class="text-caption text-grey-7 q-mt-xs">
+        Each cash account from today: rows dated ahead or still pending, recurring rules, and card
+        statements paid from their bank on the due date. Typical spending is an estimate and shown
+        apart.
       </div>
     </div>
 

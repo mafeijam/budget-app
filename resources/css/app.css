@@ -386,3 +386,12 @@ body {
 .app-statement-period > td {
   vertical-align: middle !important;
 }
+
+/* A segmented control inside the toolbar: its own background would box it in twice. */
+.app-toolbar__toggle {
+  box-shadow: none;
+}
+
+.app-toolbar__toggle .q-btn {
+  border-radius: 6px;
+}
