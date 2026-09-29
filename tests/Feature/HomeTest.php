@@ -229,6 +229,80 @@ class HomeTest extends TestCase
         );
     }
 
+    public function test_a_deferred_prop_asked_for_by_name_is_always_resolved(): void
+    {
+        $this->deposit('2026-01-01', '30000.0000');
+
+        $keys = array_keys($this->page()['onceProps'] ?? []);
+
+        // The rescue link in the page reloads the line on demand, and a once prop the client
+        // names explicitly is resolved whatever the browser remembers.
+        $this->assertArrayHasKey('trend', $this->page($this->asBrowser($keys, ['trend']))['props']);
+    }
+
+    /**
+     * The page as a browser would receive it: JSON for an Inertia request, and the embedded
+     * page for the first visit, which has to render the root template.
+     *
+     * @param  array<string, string>  $headers
+     * @return array{props: array<string, mixed>, onceProps?: array<string, mixed>}
+     */
+    private function page(array $headers = []): array
+    {
+        $content = $this->get('/', $headers)->assertOk()->getContent();
+
+        $json = json_decode($content, true);
+
+        if (is_array($json)) {
+            $this->assetVersion = $json['version'] ?? null;
+
+            return $json;
+        }
+
+        $this->assertSame(
+            1,
+            preg_match('/data-page="[^"]*"\s+type="application\/json">(\{.*?\})<\/script>/s', $content, $m),
+            'no Inertia page in the response'
+        );
+
+        $page = json_decode(html_entity_decode($m[1], ENT_QUOTES), true);
+
+        $this->assetVersion = $page['version'] ?? null;
+
+        return $page;
+    }
+
+    /**
+     * The headers a browser sends: an Inertia request, remembering the given once props.
+     *
+     * @param  list<string>  $keys
+     * @param  list<string>|null  $only
+     * @return array<string, string>
+     */
+    private function asBrowser(array $keys, ?array $only = null): array
+    {
+        $headers = [
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ];
+
+        // Without it the server answers 409 and the props under test never get built.
+        if ($this->assetVersion !== null) {
+            $headers['X-Inertia-Version'] = $this->assetVersion;
+        }
+
+        if ($keys !== []) {
+            $headers['X-Inertia-Except-Once-Props'] = implode(',', $keys);
+        }
+
+        if ($only !== null) {
+            $headers['X-Inertia-Partial-Component'] = 'index';
+            $headers['X-Inertia-Partial-Data'] = implode(',', $only);
+        }
+
+        return $headers;
+    }
+
     private function deposit(string $date, string $amount): void
     {
         $this->post('/transactions', [

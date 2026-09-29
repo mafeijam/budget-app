@@ -12,7 +12,9 @@ use App\Support\Fx;
 use App\Support\NetWorth;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Support\Header;
 
 class HomeController extends Controller
 {
@@ -31,8 +33,15 @@ class HomeController extends Controller
      */
     private const TREND_FIGURES = ['net_worth', 'cash', 'cards', 'value'];
 
-    public function index()
+    public function index(Request $request)
     {
+        // A partial reload for the deferred line still comes through here, and Inertia
+        // discards everything it does not want once the action has returned -- so the line
+        // cost a whole page plus a line. Only the line is built for it.
+        if (trim((string) $request->header(Header::PARTIAL_ONLY, '')) === 'trend') {
+            return inertia('index', ['trend' => $this->trend()]);
+        }
+
         // A closed account still holding money stays, or the total could not be
         // accounted for.
         $cashAccounts = Account::query()
@@ -136,15 +145,21 @@ class HomeController extends Controller
             //
             // rescued, because a trend that cannot be computed is a missing line and not a
             // broken page -- the headline figures are the page.
-            'trend' => Inertia::defer(
-                fn () => $worth->history(1, today(), self::TREND_MONTHS),
-                rescue: true
-            ),
+            'trend' => Inertia::defer(fn () => $this->trend(), rescue: true),
             'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
             'month' => $forecast->monthOutlook()[0] ?? null,
             'upcoming' => $upcoming->take(self::UPCOMING_SHOWN)->all(),
             'upcomingMore' => max(0, $upcoming->count() - self::UPCOMING_SHOWN),
             'upcomingDays' => self::UPCOMING_DAYS,
         ]);
+    }
+
+    /**
+     * A month end per figure, and today for the month still running, for the line under each
+     * headline card.
+     */
+    private function trend(): array
+    {
+        return (new NetWorth)->history(1, today(), self::TREND_MONTHS);
     }
 }
