@@ -14,6 +14,7 @@ enum Currency: string
     case Jpy = 'JPY';
     case Aud = 'AUD';
     case Twd = 'TWD';
+    case Krw = 'KRW';
 
     public function label(): string
     {
@@ -24,6 +25,7 @@ enum Currency: string
             self::Jpy => 'JPY — Japanese Yen',
             self::Aud => 'AUD — Australian Dollar',
             self::Twd => 'TWD — New Taiwan Dollar',
+            self::Krw => 'KRW — South Korean Won',
         };
     }
 }

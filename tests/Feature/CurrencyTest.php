@@ -67,7 +67,7 @@ class CurrencyTest extends TestCase
         //
         // Update this when adding a case, and check the fixtures: a currency
         // outside this set becomes unsaveable.
-        $this->assertCount(6, Currency::cases());
+        $this->assertCount(7, Currency::cases());
     }
 
     public function test_a_currency_outside_the_set_cannot_reach_the_column(): void
