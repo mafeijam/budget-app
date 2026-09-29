@@ -145,6 +145,28 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_a_fetch_on_a_past_day_fetches_what_was_held_up_to_it(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('sell', '2026-02-20', 'NVDA', '10', '120');
+
+        Http::fake(['query1.finance.yahoo.com/*' => Http::response(['chart' => ['result' => [[
+            'meta' => ['currency' => 'USD', 'exchangeTimezoneName' => 'America/New_York'],
+            'timestamp' => [Carbon::parse('2026-02-09 21:00', 'UTC')->timestamp],
+            'indicators' => ['quote' => [['close' => [110.0]]]],
+        ]], 'error' => null]])]);
+
+        // Sold out by today, but held on the day looked back on, so it is fetched to then.
+        $this->post('/prices/fetch', ['at' => '2026-02-10'])->assertSessionHasNoErrors();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/chart/NVDA')
+            && $request['period2'] === Carbon::parse('2026-02-12')->timestamp);
+        $this->assertSame('2026-02-09', Price::where('symbol', 'NVDA')->sole()->date);
+
+        $this->post('/prices/fetch', ['at' => '2026-03-07'])->assertSessionHasErrors('at');
+    }
+
     public function test_the_fetch_button_says_when_a_symbol_was_not_fetched(): void
     {
         $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');

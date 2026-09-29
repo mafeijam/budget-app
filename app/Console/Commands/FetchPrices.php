@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Services\YahooFinance;
 use App\Support\Fx;
 use App\Support\Positions;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use RuntimeException;
 
@@ -22,22 +23,35 @@ use RuntimeException;
  *
  * --history reaches back instead: every symbol ever traded from its first trade, and each
  * FX pair from the first transaction in that currency, for the net worth history.
+ *
+ * --at looks back from a past day instead of today: what was held then, over the days
+ * before it, for the Positions page's look-back.
  */
 class FetchPrices extends Command
 {
     protected $signature = 'prices:fetch
         {--days=7 : How many days back to fetch}
         {--history : Every symbol ever traded, from its first trade, and FX from the first transaction}
-        {--symbol=* : Only these symbols, rather than every one held}';
+        {--symbol=* : Only these symbols, rather than every one held}
+        {--at= : Fetch up to this past day (Y-m-d), for what was held then}';
 
     protected $description = 'Fetch closing prices and FX rates from Yahoo';
 
     public function handle(YahooFinance $yahoo): int
     {
-        $recent = today()->subDays((int) $this->option('days'))->toDateString();
+        $at = $this->option('at');
+
+        if ($at !== null && (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $at) || $at > today()->toDateString())) {
+            $this->error("--at must be a day no later than today, not [{$at}].");
+
+            return self::INVALID;
+        }
+
+        $to = $at ?? today()->toDateString();
+        $recent = Carbon::parse($to)->subDays((int) $this->option('days'))->toDateString();
         $history = (bool) $this->option('history');
 
-        $targets = $this->stockTargets($history, $recent);
+        $targets = $this->stockTargets($history, $recent, $to);
 
         if ($only = $this->option('symbol')) {
             $targets = array_intersect_key($targets, array_flip(array_map('strtoupper', $only)));
@@ -51,7 +65,6 @@ class FetchPrices extends Command
             return self::SUCCESS;
         }
 
-        $to = today()->toDateString();
         $failed = 0;
 
         foreach ($targets as $symbol => [$ccy, $from]) {
@@ -104,14 +117,14 @@ class FetchPrices extends Command
      *
      * @return array<string, array{0: string, 1: string}>
      */
-    private function stockTargets(bool $history, string $recent): array
+    private function stockTargets(bool $history, string $recent, string $to): array
     {
         $targets = [];
 
         $brokers = Account::query()->where('type', AccountType::Security->value)->get();
 
         foreach ($brokers as $broker) {
-            $trades = Positions::tradesOf($broker);
+            $trades = array_values(array_filter(Positions::tradesOf($broker), fn (array $trade) => $trade['date'] <= $to));
 
             foreach (Positions::fromTrades($trades) as $symbol => $position) {
                 if (! $history && ! $position['open']) {

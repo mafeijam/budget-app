@@ -146,10 +146,14 @@ class PositionController extends Controller
         ];
     }
 
-    /** Synchronous on purpose: there is no queue worker. */
-    public function fetch()
+    /** Synchronous on purpose: there is no queue worker. With `at`, up to that past day. */
+    public function fetch(Request $r)
     {
-        $status = Artisan::call('prices:fetch');
+        $at = $r->validate([
+            'at' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.today()->toDateString()],
+        ])['at'] ?? null;
+
+        $status = Artisan::call('prices:fetch', $at === null ? [] : ['--at' => $at]);
 
         $report = collect(preg_split('/\R/', trim(Artisan::output())))
             ->filter()

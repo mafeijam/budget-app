@@ -102,7 +102,15 @@
           label="Fetch prices"
           :loading="fetching"
           @click="fetchPrices"
-        />
+        >
+          <q-tooltip :delay="500" :offset="[0, 6]">
+            {{
+              at
+                ? `The week up to ${formatDate(at)}, for what was held then`
+                : 'The last week, for what is held'
+            }}
+          </q-tooltip>
+        </q-btn>
       </div>
     </div>
 
@@ -429,18 +437,14 @@ const $q = useQuasar()
 const fetching = ref(false)
 
 const fetchPrices = () => {
-  router.post(
-    '/prices/fetch',
-    {},
-    {
-      preserveScroll: true,
-      // The button's own spinner -- see plugins/quasar.js.
-      showProgress: false,
-      onStart: () => (fetching.value = true),
-      onSuccess: () => notifySuccess(),
-      onFinish: () => (fetching.value = false),
-    },
-  )
+  router.post('/prices/fetch', props.at ? { at: props.at } : {}, {
+    preserveScroll: true,
+    // The button's own spinner -- see plugins/quasar.js.
+    showProgress: false,
+    onStart: () => (fetching.value = true),
+    onSuccess: () => notifySuccess(),
+    onFinish: () => (fetching.value = false),
+  })
 }
 
 const savePrice = (broker, position, close) => {
