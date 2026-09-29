@@ -185,7 +185,20 @@ const step = computed(() => (width - left - right) / Math.max(props.points.lengt
 
 const x = i => left + i * step.value
 
-const line = key => numbers.value.map((n, i) => `${x(i)},${y(n[key])}`).join(' ')
+const curves = computed(() => ({
+  known: monotoneCurve(
+    numbers.value.map(n => n.known),
+    x(0),
+    step.value,
+  ),
+  typical: monotoneCurve(
+    numbers.value.map(n => n.typical),
+    x(0),
+    step.value,
+  ),
+}))
+
+const line = key => curves.value[key].map(([px, value]) => `${px},${y(value)}`).join(' ')
 
 // Down to the zero line, so a stretch below it fills below zero.
 const area = computed(() => {
