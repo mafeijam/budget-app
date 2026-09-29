@@ -76,6 +76,12 @@ const menus = computed(() => {
       to: () => to('/net-worth'),
     },
     {
+      label: 'Forecast',
+      active: active('forecast'),
+      icon: 'query_stats',
+      to: () => to('/forecast'),
+    },
+    {
       label: 'Cash flow',
       active: active('cash-flow'),
       icon: 'insights',
