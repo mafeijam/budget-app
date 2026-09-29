@@ -30,12 +30,9 @@ class PositionController extends Controller
             ->get();
 
         // Received dividends only, as a balance counts them: a pending one has not paid.
-        // A deposit on a brokerage is a dividend and nothing else, since deposit is the
-        // only type legal there that is not a trade. It moves no balance -- a securities
-        // account has none -- so this query is the only thing that reads it.
         $dividends = Transaction::query()
             ->whereIn('account_id', $brokers->pluck('id'))
-            ->where('type', TransactionType::Deposit->value)
+            ->where('type', TransactionType::Dividend->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
             ->get(['account_id', 'amount'])
             ->groupBy('account_id');

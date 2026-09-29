@@ -109,6 +109,7 @@ const typeIcons = {
   payment: 'task_alt',
   buy: 'trending_up',
   sell: 'trending_down',
+  dividend: 'savings',
 }
 
 // Posted and not yet posted are the brand's positive and warning, which is a real

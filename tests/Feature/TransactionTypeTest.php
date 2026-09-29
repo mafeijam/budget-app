@@ -105,73 +105,22 @@ class TransactionTypeTest extends TestCase
         }
     }
 
-    public function test_a_dividend_is_income_rather_than_a_trade(): void
+    public function test_a_dividend_is_a_brokerage_row_with_a_supplied_amount(): void
     {
-        // A dividend arrives as a fixed cash amount with no quantity or unit
-        // price, so it must stay client-supplied even though it lives on a
-        // securities account alongside the trades.
-        $this->assertTrue(TransactionType::Deposit->isAllowedFor(AccountType::Security));
-        $this->assertFalse(TransactionType::Deposit->derivesAmount());
+        $this->assertSame([AccountType::Security], TransactionType::Dividend->accountTypes());
+        $this->assertSame([AccountType::Cash], TransactionType::Deposit->accountTypes());
+        $this->assertFalse(TransactionType::Dividend->derivesAmount());
     }
 
-    public function test_a_cash_side_is_a_trade_or_a_dividend_on_a_brokerage(): void
+    public function test_a_cash_side_is_a_trade_or_a_dividend(): void
     {
-        // needsCashSide() is what decides whether a row is written beside another one, and
-        // it is the same answer the form is sent for which fields to show. Asserted across
-        // every type and every account type so a case added to the enum cannot arrive
-        // without a decision here -- and derived from the two named rules rather than
-        // restated, so the two methods cannot pass this and disagree with each other.
-        foreach (TransactionType::cases() as $type) {
-            foreach (AccountType::cases() as $accountType) {
-                $expected = $type->derivesAmount() || $type->isDividend($accountType);
-
-                $this->assertSame(
-                    $expected,
-                    $type->needsCashSide($accountType),
-                    "{$type->value} on a {$accountType->value} account disagrees with the "
-                        .'trades-and-dividends rule.'
-                );
-            }
-        }
-
-        // And the three that answer yes, by name, so the assertion above is not the only
-        // thing holding the shape.
         $this->assertSame(
-            ['buy', 'sell', 'deposit'],
+            ['buy', 'sell', 'dividend'],
             array_values(array_map(
                 fn (TransactionType $type) => $type->value,
-                array_filter(
-                    TransactionType::cases(),
-                    fn (TransactionType $type) => $type->needsCashSide(AccountType::Security)
-                )
+                array_filter(TransactionType::cases(), fn (TransactionType $type) => $type->needsCashSide())
             ))
         );
-
-        // A deposit on a bank is the same type and has no cash side: the account is what
-        // decides, which is why this takes one.
-        $this->assertFalse(TransactionType::Deposit->needsCashSide(AccountType::Cash));
-    }
-
-    public function test_only_a_deposit_on_a_brokerage_is_a_dividend(): void
-    {
-        // One case, and the reason this is a method rather than a comparison at each of its
-        // three callers: every one of them reached for `type === Deposit` to choose the noun
-        // in a message, and every one of them would have been wrong the same way -- a bank
-        // deposit is money arriving and not a dividend, and so is a dividend's own cash side.
-        foreach (TransactionType::cases() as $type) {
-            foreach (AccountType::cases() as $accountType) {
-                $this->assertSame(
-                    $type === TransactionType::Deposit && $accountType === AccountType::Security,
-                    $type->isDividend($accountType),
-                    "{$type->value} on a {$accountType->value} account disagrees with the "
-                        .'dividend rule.'
-                );
-            }
-        }
-
-        // A card has no deposit at all, so it cannot be asked; a cash one is the near miss.
-        $this->assertFalse(TransactionType::Deposit->isDividend(AccountType::Cash));
-        $this->assertFalse(TransactionType::Buy->isDividend(AccountType::Security));
     }
 
     public function test_only_a_charge_requires_a_category(): void
@@ -187,6 +136,7 @@ class TransactionTypeTest extends TestCase
             TransactionType::Payment,
             TransactionType::Buy,
             TransactionType::Sell,
+            TransactionType::Dividend,
         ] as $type) {
             $this->assertFalse(
                 $type->requiresCategory(),

@@ -156,7 +156,7 @@ class PositionControllerTest extends TestCase
             $this->post('/transactions', [
                 'account_id' => $this->broker->id,
                 'date' => '2026-03-01',
-                'type' => 'deposit',
+                'type' => 'dividend',
                 'description' => 'Dividend',
                 'amount' => $amount,
                 'ccy' => 'USD',
@@ -178,7 +178,7 @@ class PositionControllerTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->broker->id,
             'date' => '2026-03-01',
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => '12.5000',
             'ccy' => 'USD',

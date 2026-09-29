@@ -97,15 +97,14 @@ class TradeCashTest extends TestCase
 
     public function test_a_trade_edited_into_a_dividend_pays_in_rather_than_out(): void
     {
-        // The opposite of what this asserted when a dividend was a type of its own: a
-        // dividend pays money in, so the cash row does not vanish -- it changes direction.
-        // What must not happen is a second row appearing, or the pairing pointing at both.
+        // A dividend pays money in, so the cash row changes direction rather than
+        // vanishing, and no second row appears.
         $buy = $this->trade('buy', '2026-01-05', '1', '100');
 
         $this->put("/transactions/{$buy->id}", [
             'account_id' => $this->broker->id,
             'date' => '2026-01-05',
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => '3.0000',
             'ccy' => 'USD',
@@ -217,9 +216,6 @@ class TradeCashTest extends TestCase
 
     public function test_the_flag_is_refused_on_an_account_with_no_cash_side(): void
     {
-        // A bank deposit, which is the same type as a dividend and has no cash side to
-        // skip. A rule cannot refuse one and permit the other -- both are `deposit` -- so
-        // this is guardCashSide(), which has the account.
         $this->post('/transactions', [
             'account_id' => $this->bank->id,
             'date' => '2026-01-02',
@@ -229,9 +225,7 @@ class TradeCashTest extends TestCase
             'ccy' => 'USD',
             'meta_data' => ['no_cash' => true],
         ])->assertSessionHasErrors([
-            'meta_data.no_cash' => '[Bank USD] is a cash account, so a deposit has no cash side to '
-                .'skip. The flag is for a trade or a dividend on a brokerage, where the money may '
-                .'have moved outside these accounts.',
+            'meta_data.no_cash' => 'Only a buy, a sell or a dividend has a cash side to skip.',
         ]);
 
         $this->assertSame(0, Transaction::where('type', 'deposit')->where('description', 'Refund')->count());
@@ -244,7 +238,7 @@ class TradeCashTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->broker->id,
             'date' => '2026-01-05',
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => '312.4400',
             'ccy' => 'USD',
@@ -256,7 +250,7 @@ class TradeCashTest extends TestCase
 
         $dividend = Transaction::where('account_id', $this->broker->id)->firstOrFail();
 
-        $this->assertSame('deposit', $dividend->type);
+        $this->assertSame('dividend', $dividend->type);
         $this->assertSame('10000.0000', $this->balance());
     }
 
@@ -285,7 +279,7 @@ class TradeCashTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->broker->id,
             'date' => $date,
-            'type' => 'deposit',
+            'type' => 'dividend',
             'description' => 'Dividend',
             'amount' => $amount,
             'ccy' => 'USD',

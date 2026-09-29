@@ -90,7 +90,6 @@ class TransactionData extends Data
 
         $this->guardAccountType($account);
         $this->guardTradeCurrency($account);
-        $this->guardCashSide($account);
         $this->guardCardAmount($account);
         $this->deriveAmount();
         $this->deriveDueDate($account);
@@ -272,70 +271,6 @@ class TransactionData extends Data
         }
 
         $this->amount = $this->meta_data?->derivedAmount($this->type);
-    }
-
-    /**
-     * Settle what the cash side of a row on a brokerage needs, and refuse the flag where
-     * there is no cash side to skip.
-     *
-     * A deposit on a brokerage is a dividend, so it pays into the settlement account the
-     * way a sell does -- TransactionType::needsCashSide() draws that line, and
-     * TradeCash::sync() writes the pair. The symbol is what says which holding paid it,
-     * and without one the row is an amount arriving at a brokerage that is about no
-     * particular share, which is the one thing a brokerage row cannot be: Positions
-     * replays trades by symbol, and the dividends figure on the positions page is the
-     * only other reader of these rows.
-     *
-     * Refused rather than defaulted because a dividend under no symbol cannot be
-     * corrected afterwards by editing the row, and would be found only by noticing a total
-     * that is right by accident.
-     *
-     * The flag is refused off a brokerage entirely, which it cannot express as a rule:
-     * no_cash says a row's money side is not in these accounts, and a deposit on a bank has
-     * no cash side to skip. Permitting the trades would permit a bank deposit's flag --
-     * a claim nothing downstream would contradict, since there is no cash side to write --
-     * and refusing everything else would refuse a dividend's, which does have one.
-     */
-    private function guardCashSide(?Account $account): void
-    {
-        if ($account === null) {
-            return;
-        }
-
-        $onBrokerage = $account->type === AccountType::Security->value;
-
-        if ($this->meta_data?->no_cash === true && ! $onBrokerage) {
-            throw ValidationException::withMessages([
-                'meta_data.no_cash' => sprintf(
-                    '[%s] is a %s account, so a %s has no cash side to skip. The flag is for '
-                        .'a trade or a dividend on a brokerage, where the money may have moved '
-                        .'outside these accounts.',
-                    $account->name,
-                    $account->type,
-                    $this->type->value
-                ),
-            ]);
-        }
-
-        if (! $onBrokerage || ! $this->type->needsCashSide(AccountType::Security)) {
-            return;
-        }
-
-        // Trades are held to this by rules(): symbol is required for exactly them, and
-        // rules() can see the type. Only the dividend is left, and it needs the account
-        // to recognise at all.
-        if ($this->type->derivesAmount() || $this->meta_data?->symbol !== null) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'meta_data.symbol' => sprintf(
-                'A %s on [%s] is a dividend, so it needs the symbol of the holding that paid '
-                    .'it. Which share the money came from is the fact being recorded.',
-                $this->type->value,
-                $account->name
-            ),
-        ]);
     }
 
     /**
@@ -583,11 +518,6 @@ class TransactionData extends Data
             $cash = ['account_id' => 'account', 'type' => 'type', 'date' => 'date']
                 + Arr::except(self::FIGURES, ['account_id', 'type', 'meta_data.card_amount']);
 
-            // What the other row is called, so the refusal names it. A dividend is a
-            // deposit and not a trade, and telling a user to edit the trade when the row
-            // they are looking at is a dividend sends them to a picker that does not hold
-            // it. Asked of the account as well as the type, since a dividend's cash side is
-            // itself a deposit -- on a bank.
             $noun = TradeCash::isDividend($partner) ? 'dividend' : 'trade';
             $other = TradeCash::describe($partner);
             $words = Arr::join(array_values($cash), ', ', ' and ');

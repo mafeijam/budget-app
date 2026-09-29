@@ -100,7 +100,7 @@ class WithdrawTest extends TestCase
         $this->get('/transactions')->assertInertia(fn ($page) => $page
             ->where('typeOptions.cash', ['withdraw', 'deposit'])
             ->where('typeOptions.card', ['charge', 'payment'])
-            ->where('typeOptions.security', ['buy', 'sell', 'deposit'])
+            ->where('typeOptions.security', ['buy', 'sell', 'dividend'])
         );
     }
 

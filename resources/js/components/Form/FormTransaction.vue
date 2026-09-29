@@ -130,7 +130,7 @@
         <!--
           Accounts under a heading per kind, and the kind beside each name in the
           transactions table's tint. The type decides what the picker then offers -- a
-          brokerage has buy, sell and dividend where a bank has expense, income -- so a
+          brokerage has buy, sell and dividend where a bank has withdraw, deposit -- so a
           list of names alone makes the user pick an account and find out after.
 
           The currency captioned under the name, since it is the other half of what the
@@ -335,10 +335,7 @@
       />
 
       <!--
-        A symbol for anything that writes a cash side: a buy, a sell, and a dividend on
-        a brokerage. That last is a deposit, so without it here the form would offer a
-        dividend with nowhere to say which holding paid it, and the save would be refused
-        for a field that was never on screen.
+        A symbol for anything that writes a cash side: a buy, a sell and a dividend.
 
         The two conditions are separate rather than one nested template because the symbol
         and the flag follow the wider rule while quantity, price and fees follow the
@@ -552,24 +549,9 @@ const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).
 
 // Whether this row writes a row in a brokerage's settlement account: a trade, or a
 // dividend. Symbol and the cash-side flag are offered for those and nothing else.
-//
-// Keyed by account type, because needsCashSide() takes one -- a deposit qualifies on a
-// brokerage and not on a bank, so the same type shows different fields depending on where
-// it sits. Falls back to the derived list, so a page that has not sent the prop behaves as
-// it did before the flag existed rather than showing nothing.
-const cashSideTypesByAccount = computed(() => usePage().props.cashSideTypes ?? {})
+const writesCashSide = computed(() => (usePage().props.cashSideTypes ?? []).includes(form.type))
 
-const writesCashSide = computed(() => {
-  const type = chosenAccount.value?.type
-  const forAccount = type ? cashSideTypesByAccount.value[type] : null
-
-  return (forAccount ?? usePage().props.derivesAmountTypes ?? []).includes(form.type)
-})
-
-// A dividend and not a trade: the one row that writes a cash side while carrying no
-// quantity, because nothing was bought or sold. It is the case the symbol is picked for,
-// since a dividend is money received on a holding already owned and a buy is for
-// something not held yet.
+// The one row with a cash side and no quantity. Its symbol is picked from the holdings.
 const isDividend = computed(() => writesCashSide.value && !derivesAmount.value)
 
 // Only what the chosen account accepts, because the pairing is what makes a type legal
@@ -915,8 +897,7 @@ watch(
 
     if (derivesAmount.value) form.amount = null
 
-    // Off anything with no cash side at all, rather than off anything that is not a
-    // trade: a dividend writes one too and may be back-dated the same way a position is.
+    // Off anything with no cash side, which a dividend has too.
     if (!writesCashSide.value) form.meta_data.no_cash = null
   },
 )

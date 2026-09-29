@@ -100,7 +100,6 @@ class TransactionMetaDataTest extends TestCase
             'deposit' => ['deposit'],
             'charge' => ['charge'],
             'payment' => ['payment'],
-            'deposit' => ['deposit'],
         ];
     }
 
@@ -115,14 +114,11 @@ class TransactionMetaDataTest extends TestCase
         }
     }
 
-    public function test_a_dividend_needs_no_trade_fields_though_it_lives_on_the_same_account(): void
+    public function test_a_dividend_needs_a_symbol_but_no_quantity_or_price(): void
     {
-        // The reason this is worth a test: a dividend is recorded on a
-        // securities account alongside the trades, so a rule keyed on the
-        // account type rather than the transaction type would demand a symbol
-        // and a unit price for it.
-        $this->assertFalse($this->rejects('symbol', ['symbol' => null], ['type' => 'deposit']));
-        $this->assertFalse($this->rejects('quantity', ['quantity' => null], ['type' => 'deposit']));
+        $this->assertTrue($this->rejects('symbol', ['symbol' => null], ['type' => 'dividend']));
+        $this->assertFalse($this->rejects('quantity', ['quantity' => null], ['type' => 'dividend']));
+        $this->assertFalse($this->rejects('unit_price', ['unit_price' => null], ['type' => 'dividend']));
     }
 
     public function test_fees_are_optional_on_a_trade(): void
@@ -157,15 +153,25 @@ class TransactionMetaDataTest extends TestCase
         $rules = TransactionMetaData::rules();
 
         foreach (TransactionType::cases() as $type) {
-            $needsTradeFields = $type->derivesAmount();
+            $this->assertSame(
+                $type->needsCashSide(),
+                $this->rejects('symbol', ['symbol' => null], ['type' => $type->value]),
+                "symbol required for {$type->value} disagrees with needsCashSide()."
+            );
 
-            foreach (['symbol', 'quantity', 'unit_price'] as $field) {
+            foreach (['quantity', 'unit_price'] as $field) {
                 $this->assertSame(
-                    $needsTradeFields,
+                    $type->derivesAmount(),
                     $this->rejects($field, [$field => null], ['type' => $type->value]),
                     "{$field} required for {$type->value} disagrees with derivesAmount()."
                 );
             }
+
+            $this->assertSame(
+                ! $type->needsCashSide(),
+                $this->rejects('no_cash', ['no_cash' => true], ['type' => $type->value]),
+                "no_cash refused for {$type->value} disagrees with needsCashSide()."
+            );
 
             foreach (['due_date', 'card_amount'] as $field) {
                 $this->assertFalse(
@@ -173,21 +179,7 @@ class TransactionMetaDataTest extends TestCase
                     "{$field} is not required for any type, so {$type->value} must not demand it."
                 );
             }
-
-            // no_cash is NOT checked here any more, and its absence is the assertion: the
-            // flag used to be prohibited on every type but the two trades, which is a
-            // question about the type. It is a question about the *account* -- a deposit
-            // on a brokerage has a cash side to skip and a deposit on a bank does not,
-            // and they are the same type -- so no rule can express it and
-            // TransactionData::guardCashSide() does.
         }
-
-        $this->assertArrayNotHasKey(
-            'no_cash',
-            $rules,
-            'no_cash is decided by the account, so it belongs in a guard and not in a rule '
-                .'that can only see the type.'
-        );
 
         // And the four keys that do exist, so a field cannot be added to the DTO
         // without this test noticing that the loop above no longer covers it.
@@ -225,9 +217,8 @@ class TransactionMetaDataTest extends TestCase
         //
         // This is a whitelist rather than a lookup, so a rule new to this bag
         // has to be added here deliberately -- which is the point. `date_format`
-        // arrived with due_date; the rest predate it. `prohibited_unless` was here
-        // with no_cash and left with it, since that flag moved to a guard.
-        $supported = ['nullable', 'required_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
+        // arrived with due_date; the rest predate it.
+        $supported = ['nullable', 'required_unless', 'prohibited_unless', 'max', 'decimal', 'gt', 'min', 'date_format'];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {
@@ -279,7 +270,7 @@ class TransactionMetaDataTest extends TestCase
             TransactionType::Deposit,
             TransactionType::Charge,
             TransactionType::Payment,
-            TransactionType::Deposit,
+            TransactionType::Dividend,
         ] as $type) {
             $this->assertNull(
                 $this->meta()->derivedAmount($type),

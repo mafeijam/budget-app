@@ -121,7 +121,7 @@ class DevTransactionSeederTest extends TestCase
 
         $broker = Account::where('name', 'Dev Brokerage')->firstOrFail();
 
-        $dividend = Transaction::where('type', TransactionType::Deposit->value)
+        $dividend = Transaction::where('type', TransactionType::Dividend->value)
             ->where('account_id', $broker->id)
             ->firstOrFail();
 
@@ -151,9 +151,7 @@ class DevTransactionSeederTest extends TestCase
     {
         $this->seed(DevTransactionSeeder::class);
 
-        $dividend = Transaction::where('type', TransactionType::Deposit->value)
-            ->whereHas('account', fn ($query) => $query->where('type', AccountType::Security->value))
-            ->firstOrFail();
+        $dividend = Transaction::where('type', TransactionType::Dividend->value)->firstOrFail();
 
         $cash = Transaction::with('meta')->findOrFail($dividend->meta->meta['paired_transaction_id']);
 

@@ -10,15 +10,14 @@ namespace App\Enums;
  */
 enum TransactionType: string
 {
+    // Declaration order is the form picker's order.
     case Withdraw = 'withdraw';
+    case Deposit = 'deposit';
     case Charge = 'charge';
     case Payment = 'payment';
     case Buy = 'buy';
     case Sell = 'sell';
-
-    // Last because declaration order is the form picker's order: declared beside
-    // Withdraw, it would come before buy and sell on a brokerage.
-    case Deposit = 'deposit';
+    case Dividend = 'dividend';
 
     /**
      * The account types this transaction type is legal on.
@@ -28,10 +27,9 @@ enum TransactionType: string
     public function accountTypes(): array
     {
         return match ($this) {
-            self::Withdraw => [AccountType::Cash],
-            self::Deposit => [AccountType::Cash, AccountType::Security],
+            self::Withdraw, self::Deposit => [AccountType::Cash],
             self::Charge, self::Payment => [AccountType::Card],
-            self::Buy, self::Sell => [AccountType::Security],
+            self::Buy, self::Sell, self::Dividend => [AccountType::Security],
         };
     }
 
@@ -55,14 +53,14 @@ enum TransactionType: string
                 self::Withdraw => -1,
 
                 // Unreachable, but named rather than defaulted so a new case fails loudly.
-                self::Charge, self::Payment, self::Buy, self::Sell => 0,
+                self::Charge, self::Payment, self::Buy, self::Sell, self::Dividend => 0,
             },
 
             AccountType::Card => match ($this) {
                 self::Charge => -1,
                 self::Payment => 1,
 
-                self::Withdraw, self::Deposit, self::Buy, self::Sell => 0,
+                self::Withdraw, self::Deposit, self::Buy, self::Sell, self::Dividend => 0,
             },
 
             AccountType::Security => 0,
@@ -92,17 +90,9 @@ enum TransactionType: string
      * Whether recording one writes a paired row in the settlement account: a trade
      * or a dividend. Here so the form and TradeCash read the same answer.
      */
-    public function needsCashSide(AccountType $accountType): bool
+    public function needsCashSide(): bool
     {
-        return $this->derivesAmount() || $this->isDividend($accountType);
-    }
-
-    /**
-     * A deposit on a brokerage.
-     */
-    public function isDividend(AccountType $accountType): bool
-    {
-        return $this === self::Deposit && $accountType === AccountType::Security;
+        return $this->derivesAmount() || $this === self::Dividend;
     }
 
     /**

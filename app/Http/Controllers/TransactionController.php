@@ -363,29 +363,18 @@ class TransactionController extends Controller
             ->all();
 
         // Which types the server derives an amount for, and which write a row in a
-        // brokerage's settlement account. Both keyed by account type and both sent rather
-        // than restated in the browser: the form decides which fields to show, disable and
-        // clear from them, and a hand-written list is a second copy of the enum method
-        // behind them -- free to drift, and the drift is silent because a field that is
-        // shown for a type nothing derives is merely a field the save ignores.
-        //
-        // Two props rather than one because they are two different questions. The first
-        // does not depend on the account type at all, and is keyed by it only so the form
-        // can read both the same way.
+        // brokerage's settlement account. Sent rather than restated in the browser, where a
+        // second copy of the enum could drift silently.
         $derivesAmountTypes = collect(TransactionType::cases())
             ->filter(fn (TransactionType $type) => $type->derivesAmount())
             ->map(fn (TransactionType $type) => $type->value)
             ->values()
             ->all();
 
-        $cashSideTypes = collect(AccountType::cases())
-            ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => collect(TransactionType::cases())
-                    ->filter(fn (TransactionType $type) => $type->needsCashSide($accountType))
-                    ->map(fn (TransactionType $type) => $type->value)
-                    ->values()
-                    ->all(),
-            ])
+        $cashSideTypes = collect(TransactionType::cases())
+            ->filter(fn (TransactionType $type) => $type->needsCashSide())
+            ->map(fn (TransactionType $type) => $type->value)
+            ->values()
             ->all();
 
         // What each brokerage holds, for the dividend's symbol picker: a dividend is money
@@ -630,13 +619,8 @@ class TransactionController extends Controller
 
         $data->keepLinksOf($transaction);
 
-        // What it was, for TradeCash: a buy edited into a dividend still has a cash side
-        // but a buy edited into an expense has none, and a dividend moved off a brokerage
-        // must have the cash row it left behind taken off with it. Both halves, because
-        // neither the old type nor the old account says it alone -- a deposit wanted a
-        // cash side on a brokerage and not on a bank.
+        // For TradeCash: a buy edited into a bank withdrawal leaves a cash row to remove.
         $wasType = $transaction->type;
-        $wasAccountId = $transaction->account_id;
 
         // The bag is replaced rather than added, or a corrected charge would sit
         // beside the one it replaced.
@@ -662,7 +646,7 @@ class TransactionController extends Controller
 
             // The cash side follows the corrected trade: its amount, date and status,
             // and its bank if the trade moved brokerage.
-            TradeCash::sync($transaction, $wasType, $wasAccountId);
+            TradeCash::sync($transaction, $wasType);
 
             DB::commit();
         } catch (Exception $e) {
@@ -1344,16 +1328,7 @@ class TransactionController extends Controller
                 'amount' => $other->amount,
                 'ccy' => $other->ccy,
                 'account_name' => $other->account?->name,
-                // What the pair is, so the delete confirmation names it: a trade and its
-                // cash, a dividend and its cash, or the two halves of a card settlement.
-                // A dividend named a trade would send the user to a picker holding only
-                // buys and sells.
-                //
-                // Either half, and through the enum rather than by comparing the type: a
-                // dividend's cash side is a deposit on a bank, the same type as the
-                // dividend itself, so what identifies the pair is a deposit on a
-                // *brokerage* -- which is also the only thing separating it from a card
-                // settlement, whose halves are a payment and a withdrawal.
+                // What the pair is, so the delete confirmation names it.
                 'kind' => match (true) {
                     TradeCash::isDividend($other), TradeCash::isDividend($row) => 'dividend',
                     TradeCash::hasCashSide($other), TradeCash::hasCashSide($row) => 'trade',
