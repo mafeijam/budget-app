@@ -5,12 +5,21 @@ namespace App\Http\Controllers;
 use App\Enums\AccountType;
 use App\Models\Account;
 use App\Support\AccountBalance;
+use App\Support\Attention;
 use App\Support\CardStatement;
+use App\Support\Forecast;
+use App\Support\Fx;
+use App\Support\NetWorth;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
 
 class HomeController extends Controller
 {
+    /** How far ahead Coming up looks, in days, and how many rows it lists. */
+    private const UPCOMING_DAYS = 14;
+
+    private const UPCOMING_SHOWN = 6;
+
     public function index()
     {
         // A closed account still holding money stays, or the total could not be
@@ -64,6 +73,41 @@ class HomeController extends Controller
             ->filter(fn (array $broker) => $broker['status'] === 'active' || $broker['open'] > 0)
             ->values();
 
-        return inertia('index', compact('cash', 'brokerages', 'statements'));
+        $today = today();
+        $day = $today->toDateString();
+
+        // The net worth page's figures for today, and its change since last month's end.
+        $worth = new NetWorth;
+        $now = $worth->on($day);
+        $then = $worth->on($today->copy()->startOfMonth()->subDay()->toDateString());
+
+        $forecast = Forecast::for($today, 3);
+        $until = $today->copy()->addDays(self::UPCOMING_DAYS)->toDateString();
+        $upcoming = collect($forecast->upcoming())->filter(fn (array $event) => $event['date'] <= $until)->values();
+
+        // Owed in the base currency at today's rate, beside the section heading.
+        $fx = Fx::for($statements->pluck('card.ccy')->all());
+        $owed = $statements->reduce(
+            fn (BigDecimal $total, array $statement) => $total->plus($fx->toBase($statement['owed'], $statement['card']['ccy'], $day) ?? BigDecimal::zero()),
+            BigDecimal::zero()
+        );
+
+        return inertia('index', [
+            'cash' => $cash,
+            'brokerages' => $brokerages,
+            'statements' => $statements,
+            'base' => Fx::BASE->value,
+            'headline' => [
+                ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
+                'last_month' => $then['net_worth'],
+                'change' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth']),
+                'owed' => (string) $owed->toScale(4),
+            ],
+            'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
+            'month' => $forecast->monthOutlook()[0] ?? null,
+            'upcoming' => $upcoming->take(self::UPCOMING_SHOWN)->all(),
+            'upcomingMore' => max(0, $upcoming->count() - self::UPCOMING_SHOWN),
+            'upcomingDays' => self::UPCOMING_DAYS,
+        ]);
     }
 }

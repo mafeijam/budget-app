@@ -1,0 +1,117 @@
+<?php
+
+namespace App\Support;
+
+use App\Enums\AccountType;
+use App\Enums\TransactionStatus;
+use App\Models\Price;
+use App\Models\RecurringTransaction;
+use App\Models\Transaction;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
+use Carbon\Carbon;
+
+/**
+ * What the Home page asks to be dealt with, worst first. Each item names where it is
+ * fixed, so the list is a set of links rather than a report.
+ */
+class Attention
+{
+    /** Prices older than this, in days, while shares are held, are called stale. */
+    public const STALE_PRICES_DAYS = 3;
+
+    /**
+     * @param  iterable<array<string, mixed>>  $cash  Home's cash accounts, with balance
+     * @param  iterable<array<string, mixed>>  $statements  Home's unsettled statements
+     * @return list<array{level: string, icon: string, message: string, link: array{path: string, data?: array<string, mixed>, broker?: int}}>
+     */
+    public static function items(Carbon $today, iterable $cash, iterable $statements, Forecast $forecast, bool $holdsShares): array
+    {
+        $day = $today->toDateString();
+        $items = [];
+
+        foreach ($statements as $statement) {
+            if ($statement['due_date'] < $day) {
+                $items[] = self::item('negative', 'credit_card_off',
+                    "{$statement['card']['name']}: ".self::money($statement['owed'])." {$statement['card']['ccy']} was due on {$statement['due_date']}",
+                    '/transactions', ['filter' => ['account_id' => $statement['card']['id'], 'due_date' => $statement['due_date']]]);
+            }
+        }
+
+        $belowZero = [];
+
+        foreach ($cash as $account) {
+            if (BigDecimal::of($account['balance'])->isNegative()) {
+                $belowZero[$account['id']] = true;
+                $items[] = self::item('negative', 'trending_down',
+                    "{$account['name']} is below zero: ".self::money($account['balance'])." {$account['ccy']}",
+                    '/transactions', ['filter' => ['account_id' => $account['id']]]);
+            }
+        }
+
+        // Only an account above zero today: one below it is named just above.
+        foreach ($forecast->projection() as $section) {
+            foreach ($section['accounts'] as $account) {
+                if (! isset($belowZero[$account['id']]) && BigDecimal::of($account['native']['lowest'])->isNegative()) {
+                    $items[] = self::item('warning', 'query_stats',
+                        "{$account['name']} is forecast to go below zero on {$account['lowest']['date']}",
+                        '/forecast');
+                }
+            }
+        }
+
+        foreach ($forecast->warnings() as $warning) {
+            $items[] = self::item('warning', 'warning_amber', $warning, '/forecast');
+        }
+
+        $pending = Transaction::query()
+            ->where('status', TransactionStatus::Pending->value)
+            ->where('date', '<=', $day)
+            ->whereHas('account', fn ($q) => $q->where('type', '!=', AccountType::Security->value))
+            ->count();
+
+        if ($pending > 0) {
+            $items[] = self::item('warning', 'pending_actions',
+                $pending === 1 ? '1 pending transaction is due and not posted yet' : "{$pending} pending transactions are due and not posted yet",
+                '/transactions', ['filter' => ['status' => TransactionStatus::Pending->value, 'date_to' => $day]]);
+        }
+
+        // Recorded up to a refused occurrence and stopped there; see RecurringPayments.
+        foreach (RecurringTransaction::query()->where('active', true)->orderBy('description')->get() as $rule) {
+            $next = $rule->nextDate();
+
+            if ($next !== null && $next < $day) {
+                $items[] = self::item('warning', 'event_repeat',
+                    "Recurring [{$rule->description}] has not been recorded since {$next}", '/recurring');
+            }
+        }
+
+        if ($holdsShares) {
+            $latest = Price::where('source', 'yahoo')->max('updated_at');
+            $age = $latest === null ? null : (int) Carbon::parse($latest)->startOfDay()->diffInDays($today);
+
+            if ($age === null || $age > self::STALE_PRICES_DAYS) {
+                $items[] = self::item('warning', 'update',
+                    $age === null ? 'Prices have never been fetched' : "Prices were last fetched {$age} days ago",
+                    '/positions');
+            }
+        }
+
+        return $items;
+    }
+
+    /** For reading, as the page's money formatter shows it: grouped, two places. */
+    private static function money(string $amount): string
+    {
+        $value = BigDecimal::of($amount)->toScale(2, RoundingMode::HalfUp);
+        [$whole, $cents] = explode('.', (string) $value->abs());
+
+        return ($value->isNegative() ? '-' : '').strrev(implode(',', str_split(strrev($whole), 3))).'.'.$cents;
+    }
+
+    /** @return array{level: string, icon: string, message: string, link: array<string, mixed>} */
+    private static function item(string $level, string $icon, string $message, string $path, array $data = []): array
+    {
+        return ['level' => $level, 'icon' => $icon, 'message' => $message, 'link' => ['path' => $path, ...($data === [] ? [] : ['data' => $data])]];
+    }
+}

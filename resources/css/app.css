@@ -148,6 +148,37 @@ body {
   app-btn opens something (Add), --positive commits it (Submit, Settle), --negative
   destroys it (Delete). No hover rules: Quasar already darkens a button on hover.
 */
+/* Home: four headline figures across, two on a phone. */
+.app-home-headline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1023px) {
+  .app-home-headline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.app-home-link {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.app-home-link:hover {
+  border-color: var(--app-muted);
+}
+
+/* A statement past its due date, told apart from one due next week at a glance. */
+.app-home-card--overdue {
+  border-left: 3px solid var(--q-negative);
+}
+
+.app-home-attention__icon {
+  min-width: 32px;
+}
+
 .q-item__label.app-nav-heading {
   padding: 20px 16px 6px;
   font-size: 11px;
