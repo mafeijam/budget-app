@@ -134,13 +134,7 @@ const hint = computed(() =>
     : "What the card's statement day and term make of it",
 )
 
-const money = value => {
-  if (value === null || value === undefined) return ''
-
-  const [whole, places = ''] = String(value).split('.')
-
-  return `${whole}.${places.padEnd(4, '0').slice(0, 2)}`
-}
+const money = useMoney()
 
 const dateMenu = ref(null)
 
