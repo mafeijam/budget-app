@@ -71,18 +71,17 @@
       No brokerage account yet. Add one on Accounts, then record buys and sells on Transactions.
     </div>
 
-    <q-card v-if="broker" :key="broker.id" flat bordered>
+    <q-card v-if="view" :key="view.key" flat bordered>
       <q-card-section class="row items-center q-gutter-sm q-pb-sm">
-        <q-icon name="show_chart" size="sm" color="grey-6" />
-        <div class="text-subtitle1 text-weight-medium">{{ broker.name }}</div>
-        <q-badge outline color="grey-7" :label="broker.ccy" />
-        <div v-if="broker.settles_into" class="text-caption text-grey-7">
-          Settles into {{ broker.settles_into }}
-        </div>
+        <q-icon :name="view.all ? 'stacked_line_chart' : 'show_chart'" size="sm" color="grey-6" />
+        <div class="text-subtitle1 text-weight-medium">{{ view.title }}</div>
+        <q-badge v-for="ccy in view.currencies" :key="ccy" outline color="grey-7" :label="ccy" />
+        <div v-if="view.caption" class="text-caption text-grey-7">{{ view.caption }}</div>
       </q-card-section>
 
-      <div class="app-figures">
-        <div v-for="figure in figures(broker)" :key="figure.label">
+      <!-- One row per currency: a total across two would add HKD to USD. -->
+      <div v-for="row in view.figureRows" :key="row.ccy" class="app-figures">
+        <div v-for="figure in figures(row.totals, row.prefix)" :key="figure.label">
           <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
           <div class="text-h6 text-weight-bold money" :class="figure.class">
             {{ figure.value }}
@@ -92,10 +91,11 @@
 
       <q-separator />
 
-      <q-markup-table v-if="shown(broker).length" flat dense>
+      <q-markup-table v-if="view.rows.length" flat dense>
         <thead>
           <tr class="text-grey-7">
             <th class="text-left">Symbol</th>
+            <th v-if="view.all" class="text-left">Brokerage</th>
             <th class="text-right">Quantity</th>
             <th class="text-right">Average cost</th>
             <th class="text-right">Cost</th>
@@ -110,8 +110,8 @@
         </thead>
         <tbody>
           <tr
-            v-for="position in shown(broker)"
-            :key="position.symbol"
+            v-for="{ owner, position } in view.rows"
+            :key="`${owner.id}-${position.symbol}`"
             :class="{ 'text-grey-6': !position.open }"
           >
             <td class="text-weight-medium">
@@ -122,6 +122,17 @@
                 text-color="grey-8"
                 class="q-ml-sm"
                 label="sold out"
+              />
+            </td>
+            <td v-if="view.all" class="text-grey-8">
+              {{ owner.name }}
+              <!-- The row's figures are in this, and two currencies share the table. -->
+              <q-badge
+                v-if="view.currencies.length > 1"
+                outline
+                color="grey-6"
+                class="q-ml-xs"
+                :label="owner.ccy"
               />
             </td>
             <td class="text-right">{{ quantity(position.quantity) }}</td>
@@ -144,7 +155,7 @@
                 :model-value="position.price"
                 buttons
                 label-set="Save"
-                @save="value => savePrice(broker, position, value)"
+                @save="value => savePrice(owner, position, value)"
               >
                 <q-input
                   v-model="scope.value"
@@ -152,7 +163,7 @@
                   step="0.0001"
                   dense
                   autofocus
-                  :label="`${position.symbol} today, ${broker.ccy}`"
+                  :label="`${position.symbol} today, ${owner.ccy}`"
                   @keyup.enter="scope.set"
                 />
               </q-popup-edit>
@@ -174,7 +185,7 @@
       </q-markup-table>
 
       <q-card-section v-else class="text-grey-6">
-        {{ broker.positions.length ? 'Everything here has been sold.' : 'No trades yet.' }}
+        {{ view.traded ? 'Everything here has been sold.' : 'No trades yet.' }}
       </q-card-section>
     </q-card>
   </div>
@@ -183,6 +194,7 @@
 <script setup>
 const props = defineProps({
   brokerages: { type: Array, default: Array },
+  totals: { type: Array, default: Array },
   pricesUpdatedAt: { type: String, default: null },
 })
 
@@ -209,24 +221,75 @@ const whenUpdated = value => {
 
 const showClosed = ref(false)
 
-// One brokerage at a time, remembered per browser so a Fetch prices reload keeps it.
+// 0 is All. Remembered per browser, so a Fetch prices reload keeps the choice.
 const brokerId = useStorage('positions.broker', 0)
 
-const broker = computed(
-  () => props.brokerages.find(b => b.id === brokerId.value) ?? props.brokerages[0] ?? null,
+// With one brokerage there is no dropdown and nothing to total, so it is shown itself.
+const broker = computed(() =>
+  props.brokerages.length === 1
+    ? props.brokerages[0]
+    : (props.brokerages.find(b => b.id === brokerId.value) ?? null),
 )
 
-const brokerOptions = computed(() =>
-  props.brokerages.map(b => ({
+// A stored id that no longer names a brokerage falls back to All rather than to nothing.
+watchEffect(() => {
+  if (props.brokerages.length > 1 && brokerId.value !== 0 && !broker.value) brokerId.value = 0
+})
+
+const totalsCaption = computed(() =>
+  props.totals.map(total => `${money(total.market_value)} ${total.ccy}`).join(' · '),
+)
+
+const brokerOptions = computed(() => [
+  { label: 'All brokerages', value: 0, caption: totalsCaption.value },
+  ...props.brokerages.map(b => ({
     label: b.name,
     value: b.id,
     caption: `${money(b.market_value)} ${b.ccy}`,
   })),
-)
+])
 
-// A stored id that no longer names a brokerage falls back to the first rather than to nothing.
-watchEffect(() => {
-  if (broker.value && broker.value.id !== brokerId.value) brokerId.value = broker.value.id
+const rowsOf = b => shown(b).map(position => ({ owner: b, position }))
+
+// Same symbol at two brokerages stays two rows: each has its own cost basis.
+const view = computed(() => {
+  if (broker.value) {
+    return {
+      key: broker.value.id,
+      all: false,
+      title: broker.value.name,
+      currencies: [broker.value.ccy],
+      caption: broker.value.settles_into ? `Settles into ${broker.value.settles_into}` : '',
+      figureRows: [{ ccy: broker.value.ccy, totals: broker.value, prefix: '' }],
+      rows: rowsOf(broker.value),
+      traded: broker.value.positions.length > 0,
+    }
+  }
+
+  if (!props.brokerages.length) return null
+
+  const several = props.totals.length > 1
+
+  return {
+    key: 'all',
+    all: true,
+    title: 'All brokerages',
+    currencies: props.totals.map(total => total.ccy),
+    caption: `${props.brokerages.length} brokerages`,
+    figureRows: props.totals.map(total => ({
+      ccy: total.ccy,
+      totals: total,
+      prefix: several ? `${total.ccy} ` : '',
+    })),
+    rows: props.brokerages
+      .flatMap(rowsOf)
+      .sort(
+        (a, b) =>
+          a.position.symbol.localeCompare(b.position.symbol) ||
+          a.owner.name.localeCompare(b.owner.name),
+      ),
+    traded: props.brokerages.some(b => b.positions.length > 0),
+  }
 })
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
@@ -275,16 +338,20 @@ const signClass = value => {
   return /[1-9]/.test(String(value)) ? 'text-positive' : ''
 }
 
-const figures = broker => [
+const figures = (broker, prefix = '') => [
   {
-    label: broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value',
+    label: `${prefix}${broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value'}`,
     value: money(broker.market_value),
     class: 'text-grey-9',
   },
-  { label: 'Unrealised', value: money(broker.unrealised), class: signClass(broker.unrealised) },
-  { label: 'Cost held', value: money(broker.open_cost), class: 'text-grey-9' },
-  { label: 'Realised', value: money(broker.realised), class: signClass(broker.realised) },
-  { label: 'Fees', value: money(broker.fees), class: 'text-grey-9' },
-  { label: 'Dividends', value: money(broker.dividends), class: 'text-grey-9' },
+  {
+    label: `${prefix}Unrealised`,
+    value: money(broker.unrealised),
+    class: signClass(broker.unrealised),
+  },
+  { label: `${prefix}Cost held`, value: money(broker.open_cost), class: 'text-grey-9' },
+  { label: `${prefix}Realised`, value: money(broker.realised), class: signClass(broker.realised) },
+  { label: `${prefix}Fees`, value: money(broker.fees), class: 'text-grey-9' },
+  { label: `${prefix}Dividends`, value: money(broker.dividends), class: 'text-grey-9' },
 ]
 </script>

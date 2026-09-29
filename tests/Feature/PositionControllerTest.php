@@ -205,14 +205,39 @@ class PositionControllerTest extends TestCase
         );
     }
 
-    private function trade(string $type, string $date, string $symbol, string $quantity, string $price): void
+    public function test_the_all_view_totals_each_currency_on_its_own(): void
     {
+        $second = Account::create(['name' => 'Broker USD 2', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $second->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $hkBank = Account::create(['name' => 'Bank HKD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $hk = Account::create(['name' => 'Broker HKD', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $hk->meta()->create(['meta' => ['settlement_account_id' => $hkBank->id]]);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', 'NVDA', '5', '120', $second);
+        $this->trade('buy', '2026-01-05', '0700.HK', '100', '400', $hk);
+
+        // Two USD brokerages add up; the HKD one is never added to them.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->has('totals', 2)
+            ->where('totals', fn ($totals) => $totals->pluck('open_cost', 'ccy')->all() === [
+                'HKD' => '40000.0000',
+                'USD' => '1600.0000',
+            ])
+        );
+    }
+
+    private function trade(string $type, string $date, string $symbol, string $quantity, string $price, ?Account $broker = null): void
+    {
+        $broker ??= $this->broker;
+
         $this->post('/transactions', [
-            'account_id' => $this->broker->id,
+            'account_id' => $broker->id,
             'date' => $date,
             'type' => $type,
             'description' => "{$type} {$symbol}",
-            'ccy' => 'USD',
+            'ccy' => $broker->ccy,
             'meta_data' => ['symbol' => $symbol, 'quantity' => $quantity, 'unit_price' => $price],
         ])->assertSessionHasNoErrors();
     }

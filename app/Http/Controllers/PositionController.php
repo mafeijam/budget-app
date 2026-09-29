@@ -56,12 +56,33 @@ class PositionController extends Controller
             ->filter(fn (array $b) => $b['status'] === 'active' || collect($b['positions'])->contains('open', true))
             ->values();
 
+        // Per currency, for the All view: nothing here converts HKD into USD.
+        $totals = $brokerages
+            ->groupBy('ccy')
+            ->map(function ($group, string $ccy) {
+                $sum = fn (string $key) => (string) $group
+                    ->reduce(fn (BigDecimal $total, array $b) => $total->plus($b[$key]), BigDecimal::zero())
+                    ->toScale(4);
+
+                return [
+                    'ccy' => $ccy,
+                    'market_value' => $sum('market_value'),
+                    'unrealised' => $sum('unrealised'),
+                    'open_cost' => $sum('open_cost'),
+                    'realised' => $sum('realised'),
+                    'fees' => $sum('fees'),
+                    'dividends' => $sum('dividends'),
+                    'unpriced' => $group->sum('unpriced'),
+                ];
+            })
+            ->values();
+
         // ISO 8601 with offset: max() returns a bare 'Y-m-d H:i:s', which new Date()
         // reads as browser-local time, or rejects in Safari.
         $latest = Price::where('source', 'yahoo')->max('updated_at');
         $pricesUpdatedAt = $latest === null ? null : Carbon::parse($latest)->toIso8601String();
 
-        return inertia('position', compact('brokerages', 'pricesUpdatedAt'));
+        return inertia('position', compact('brokerages', 'totals', 'pricesUpdatedAt'));
     }
 
     /** Synchronous on purpose: there is no queue worker. */
