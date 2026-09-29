@@ -51,6 +51,7 @@ DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTransactionSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevRecurringSeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevHistorySeeder
 DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevTradingSeeder
+DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevUsdTradingSeeder
 ```
 
 Order matters; each throws a message naming what is missing. They refuse a
