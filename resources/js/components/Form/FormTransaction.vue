@@ -41,19 +41,22 @@
                   @click="applyTemplate(template)"
                 >
                   <q-item-section>
-                    <!-- A recurring rule has no row behind it, so the icon says where the
-                         figure came from: it is read off the rule, and deleting it would
-                         delete the rule rather than a template. -->
-                    <q-icon
-                      v-if="template.derived"
-                      name="autorenew"
-                      size="xs"
-                      color="grey-6"
-                      class="q-mr-xs"
-                    >
-                      <q-tooltip :delay="500" :offset="[0, 6]">From a recurring rule</q-tooltip>
-                    </q-icon>
-                    {{ template.name }}
+                    <!-- A row, or the icon and the name sit on two lines: a bare icon beside
+                         text in a section wraps, and the name is what identifies the
+                         template. The repeat icon says where the figure came from -- it is
+                         read off a recurring rule, and there is no row to delete or edit. -->
+                    <div class="row items-center no-wrap">
+                      <q-icon
+                        v-if="template.derived"
+                        name="autorenew"
+                        size="xs"
+                        color="grey-6"
+                        class="q-mr-xs"
+                      >
+                        <q-tooltip :delay="500" :offset="[0, 6]">From a recurring rule</q-tooltip>
+                      </q-icon>
+                      <span class="ellipsis">{{ template.name }}</span>
+                    </div>
                   </q-item-section>
                   <q-item-section v-if="template.id" side>
                     <q-btn
