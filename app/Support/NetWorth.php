@@ -24,6 +24,9 @@ class NetWorth
     /** The point spacings offered, in months. */
     public const PERIODS = [1, 3, 6, 12];
 
+    /** How far a projection reaches, in months. */
+    public const PROJECTION_MONTHS = 3;
+
     /** The yearly stock returns a projection may assume, in percent. */
     public const GROWTHS = [0, 5, 8];
 
@@ -167,8 +170,8 @@ class NetWorth
     }
 
     /**
-     * Net worth ahead, at the end of every $months-month period for a year and then the
-     * year's last day: today's figures plus the forecast's known changes, with typical
+     * Net worth ahead, at the end of every $months-month period through PROJECTION_MONTHS
+     * months and then that horizon's last day: today's figures plus the forecast's known changes, with typical
      * spending taken off in a second figure, and the stocks grown at $growth percent a
      * year. Nothing converts at a rate but today's, which is the only one known.
      *
@@ -177,8 +180,8 @@ class NetWorth
     public function projection(int $months, Carbon $today, int $growth): array
     {
         $now = $this->on($today->toDateString());
-        $end = $today->copy()->addYear();
-        $forecast = Forecast::for($today, 12);
+        $end = $today->copy()->addMonthsNoOverflow(self::PROJECTION_MONTHS);
+        $forecast = Forecast::for($today, self::PROJECTION_MONTHS);
         $events = $forecast->netWorthEvents();
         $daily = $forecast->typicalDaily();
         $day = $today->toDateString();

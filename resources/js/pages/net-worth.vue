@@ -203,7 +203,7 @@
         <div class="col-auto row items-center q-gutter-md">
           <q-toggle
             :model-value="projecting"
-            label="Project a year"
+            :label="`Project ${projectionMonths} months`"
             color="primary"
             dense
             @update:model-value="on => visit({ project: on })"
@@ -270,9 +270,12 @@ const props = defineProps({
   projection: { type: Array, default: () => [] },
   growth: { type: Number, default: 0 },
   growths: { type: Array, default: () => [0, 5, 8] },
+  projectionMonths: { type: Number, default: 3 },
 })
 
 const projecting = computed(() => props.projection.length > 0)
+
+const projectionMonths = computed(() => props.projectionMonths)
 
 // Shared with the forecast page, so the estimate is on or off in both.
 const withTypical = useLocalStorage('forecast.typical', true)

@@ -49,6 +49,7 @@ class NetWorthController extends Controller
             'projection' => $r->boolean('project') ? $worth->projection($months, $today, $growth) : [],
             'growth' => $growth,
             'growths' => NetWorth::GROWTHS,
+            'projectionMonths' => NetWorth::PROJECTION_MONTHS,
             'at' => $at->isSameDay($today) ? null : $at->toDateString(),
             'months' => $months,
             'periods' => NetWorth::PERIODS,
