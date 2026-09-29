@@ -164,13 +164,20 @@ class NetWorth
     }
 
     /**
-     * A snapshot at the end of every $months-month period since the first transaction, and
-     * today's for the period still running. Periods count from January, so a 12-month
-     * history is year ends and a 3-month one quarter ends.
+     * A snapshot at the end of every $months-month period back from today, and today's for
+     * the period still running. Periods count from January, so a 12-month history is year
+     * ends and a 3-month one quarter ends.
+     *
+     * Counted back from today rather than forward from the first transaction, because each
+     * point is a full recomputation: walking the whole ledger answers a question about the
+     * last few months in proportion to how old the data is, and discards all but the points
+     * asked for. The first transaction is still the floor, so a ledger six weeks old does not
+     * gain a run of empty months before it. $limit bounds the period ends, not the points,
+     * so the caller keeps the most recent.
      *
      * @return list<array<string, string>>
      */
-    public function history(int $months, Carbon $today): array
+    public function history(int $months, Carbon $today, ?int $limit = null): array
     {
         $first = Transaction::query()->min('date');
 
@@ -179,24 +186,28 @@ class NetWorth
         }
 
         $points = [];
-        $end = Carbon::parse($first)->startOfYear();
+        $todayString = $today->toDateString();
+        $cursor = $today->copy()->startOfYear();
 
-        // The first period end on or after the first transaction.
-        while ($end->copy()->addMonthsNoOverflow($months)->subDay()->toDateString() < $first) {
-            $end->addMonthsNoOverflow($months);
+        // The last period end at or before today, so the count ends on a period boundary
+        // rather than drifting by however many months into the year today falls.
+        while ($cursor->copy()->addMonthsNoOverflow($months)->subDay()->toDateString() < $todayString) {
+            $cursor->addMonthsNoOverflow($months);
         }
 
-        for ($cursor = $end; ; $cursor = $cursor->copy()->addMonthsNoOverflow($months)) {
-            $day = $cursor->copy()->addMonthsNoOverflow($months)->subDay()->toDateString();
-
-            if ($day >= $today->toDateString()) {
-                break;
-            }
-
-            $points[] = $day;
+        for (; $cursor->copy()->subDay()->toDateString() >= $first; $cursor = $cursor->copy()->subMonthsNoOverflow($months)) {
+            $points[] = $cursor->copy()->subDay()->toDateString();
         }
 
-        $points[] = $today->toDateString();
+        if ($limit !== null && count($points) > $limit) {
+            $points = array_slice($points, -$limit);
+        }
+
+        // Counted back from today, so newest first until here. Oldest first is the
+        // contract: a caller reading the series plots or compares it in that order.
+        $points = array_reverse($points);
+
+        $points[] = $todayString;
 
         return array_map(function (string $day) {
             $snapshot = $this->on($day);

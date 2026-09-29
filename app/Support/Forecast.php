@@ -47,6 +47,19 @@ class Forecast
     /** @var list<array{ccy: string, message: string}> */
     private array $warnings = [];
 
+    /**
+     * The last twelve months' cash flow, read once.
+     *
+     * Both typicalSpending() and monthOutlook() need it, for the same $today, and it is a
+     * full scan of a year of rows -- so calling it twice is half a second of the page
+     * waiting for an answer it already has. Memoised rather than passed as an argument
+     * because the two callers are unrelated, and a parameter would tie them together for
+     * the sake of a cache.
+     *
+     * @var list<array<string, mixed>>|null
+     */
+    private ?array $lastMonths = null;
+
     private Fx $fx;
 
     public function __construct(private Carbon $today, private Carbon $end)
@@ -287,7 +300,7 @@ class Forecast
         }
 
         $report = [];
-        $months = collect(CashFlow::lastMonths($this->today))->keyBy('ccy');
+        $months = collect($this->lastMonths())->keyBy('ccy');
 
         foreach ($months as $ccy => $section) {
             $now = collect($section['months'])->last();
@@ -480,14 +493,23 @@ class Forecast
                     continue;
                 }
 
-                $pending = CardStatement::rowsInPeriod($card, $statement->dueDate)
-                    ->filter(fn (Transaction $row) => $row->status === TransactionStatus::Pending->value
-                        && $row->type === TransactionType::Charge->value)
-                    ->reduce(fn (BigDecimal $sum, Transaction $row) => $sum->plus(
-                        $row->meta?->meta['card_amount'] ?? $row->amount
-                    ), BigDecimal::zero());
+                $owed = BigDecimal::of($statement->owed());
 
-                $owed = BigDecimal::of($statement->owed())->plus($pending);
+                // Only fetched when the aggregate says there is something to fetch.
+                // rowsInPeriod() is two queries, and a settled period's pending total is
+                // always zero, so asking for it on all of them is a query per statement
+                // that can only return nothing -- a cost that reads as a slow page once
+                // the ledger holds years of statements rather than a season of them.
+                if ($statement->pendingCount > 0) {
+                    $owed = $owed->plus(
+                        CardStatement::rowsInPeriod($card, $statement->dueDate)
+                            ->filter(fn (Transaction $row) => $row->status === TransactionStatus::Pending->value
+                                && $row->type === TransactionType::Charge->value)
+                            ->reduce(fn (BigDecimal $sum, Transaction $row) => $sum->plus(
+                                $row->meta?->meta['card_amount'] ?? $row->amount
+                            ), BigDecimal::zero())
+                    );
+                }
 
                 if (! $owed->isPositive()) {
                     continue;
@@ -540,6 +562,12 @@ class Forecast
     // Typical spending
     // ---------------------------------------------------------------------
 
+    /** @return list<array<string, mixed>> */
+    private function lastMonths(): array
+    {
+        return $this->lastMonths ??= CashFlow::lastMonths($this->today);
+    }
+
     /**
      * Per currency: the last twelve months' average spending, less the monthly share of
      * the active rules that spend, so rent recorded by a rule is not counted twice. Never
@@ -572,7 +600,7 @@ class Forecast
 
         $typical = [];
 
-        foreach (CashFlow::lastMonths($this->today) as $section) {
+        foreach ($this->lastMonths() as $section) {
             $average = BigDecimal::of($section['totals']['spending'])
                 ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
             $covered = $recurring[$section['ccy']] ?? BigDecimal::zero();

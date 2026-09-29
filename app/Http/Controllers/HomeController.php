@@ -106,8 +106,9 @@ class HomeController extends Controller
                 'change' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth']),
                 'owed' => (string) $owed->toScale(4),
             ],
-            // Month ends and today's, for each headline card's line.
-            'trend' => array_slice($worth->history(1, $today), -(self::TREND_MONTHS + 1)),
+            // Month ends and today's, for each headline card's line. Bounded here rather
+            // than sliced afterwards, since every point is a full recomputation.
+            'trend' => $worth->history(1, $today, self::TREND_MONTHS),
             'attention' => Attention::items($today, $cash, $statements, $forecast, $brokerages->sum('open') > 0),
             'month' => $forecast->monthOutlook()[0] ?? null,
             'upcoming' => $upcoming->take(self::UPCOMING_SHOWN)->all(),
