@@ -1,5 +1,111 @@
 <template>
-  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
+  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="closeForm">
+    <!-- Out of the form body: a template fills the fields, it is not one of them. -->
+    <template #header>
+      <q-btn
+        v-if="!target"
+        flat
+        no-caps
+        padding="xs sm"
+        color="grey-8"
+        icon="bookmarks"
+        icon-right="expand_more"
+        label="Templates"
+        class="text-weight-medium"
+      >
+        <q-menu anchor="bottom right" self="top right" :offset="[0, 6]" @show="templateSearch = ''">
+          <div class="app-template-menu">
+            <q-input
+              v-model="templateSearch"
+              class="q-pa-sm"
+              dense
+              outlined
+              autofocus
+              clearable
+              placeholder="Search templates"
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+
+            <q-list dense class="q-pb-sm">
+              <template v-for="group in templateGroups" :key="group.account">
+                <q-item-label header class="q-pt-sm q-pb-xs">{{ group.account }}</q-item-label>
+                <q-item
+                  v-for="template in group.templates"
+                  :key="template.id"
+                  v-close-popup
+                  clickable
+                  class="app-template-item"
+                  @click="applyTemplate(template)"
+                >
+                  <q-item-section>{{ template.name }}</q-item-section>
+                  <q-item-section side>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      icon="delete"
+                      color="negative"
+                      class="app-template-delete"
+                      @click.stop="destroyTemplate(template)"
+                    >
+                      <q-tooltip :delay="500" :offset="[0, 6]">Delete this template</q-tooltip>
+                    </q-btn>
+                  </q-item-section>
+                </q-item>
+              </template>
+
+              <q-item v-if="!templateGroups.length">
+                <q-item-section class="text-grey">
+                  {{ templates.length ? 'No template matches' : 'No templates saved yet' }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </div>
+        </q-menu>
+      </q-btn>
+    </template>
+
+    <template #subheader>
+      <q-chip
+        v-if="loadedTemplate && !target"
+        dense
+        removable
+        icon="bookmark"
+        class="app-tint app-tint--muted q-mx-none q-mb-none"
+        :label="`From template: ${loadedTemplate.name}`"
+        @remove="loadedTemplate = null"
+      />
+    </template>
+
+    <template #actions-start>
+      <q-btn
+        flat
+        no-caps
+        padding="sm md"
+        color="grey-8"
+        icon="bookmark_add"
+        label="Save as template"
+        :disable="!canTemplate"
+        @click="saveTemplate"
+      />
+
+      <q-btn
+        v-if="loadedTemplate && !target"
+        flat
+        no-caps
+        padding="sm md"
+        color="grey-8"
+        icon="save"
+        :label="`Update ${loadedTemplate.name}`"
+        :disable="!form.isDirty"
+        @click="updateTemplate"
+      />
+    </template>
+
     <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
       <!-- Wrapped, or the gutter offsets the tinted banner from the fields. -->
       <div v-if="lock" class="col-12">
@@ -9,75 +115,6 @@
           </template>
           {{ lock.message }}
         </q-banner>
-      </div>
-
-      <q-select
-        v-model="templateChoice"
-        :options="shownTemplates"
-        class="col-6"
-        label="Template"
-        placeholder="Fill the form from a saved one"
-        filled
-        emit-value
-        map-options
-        filterable
-        input-debounce="0"
-        :disable="!!target"
-        @filter="filterTemplates"
-        @update:model-value="applyTemplate"
-      >
-        <template #no-option>
-          <q-item>
-            <q-item-section class="text-grey"> No templates saved yet </q-item-section>
-          </q-item>
-        </template>
-
-        <template #option="scope">
-          <q-item v-bind="scope.itemProps">
-            <q-item-section>
-              {{ scope.opt.label }}
-              <q-item-label caption>{{ scope.opt.account_name }}</q-item-label>
-            </q-item-section>
-
-            <q-item-section side>
-              <q-btn
-                flat
-                dense
-                round
-                icon="delete"
-                color="negative"
-                @click.stop="destroyTemplate(scope.opt)"
-              >
-                <q-tooltip :delay="500" :offset="[0, 6]">Delete this template</q-tooltip>
-              </q-btn>
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
-
-      <div class="col-6 row items-center q-gutter-sm">
-        <q-btn
-          class="text-weight-bold app-btn"
-          unelevated
-          no-caps
-          padding="sm md"
-          icon="bookmark_add"
-          label="Save as template"
-          :disable="!canTemplate"
-          @click="saveTemplate"
-        />
-
-        <q-btn
-          v-if="loadedTemplate"
-          class="text-weight-bold app-btn"
-          unelevated
-          no-caps
-          padding="sm md"
-          icon="save"
-          :label="`Update ${loadedTemplate.name}`"
-          :disable="!form.isDirty"
-          @click="updateTemplate"
-        />
       </div>
 
       <q-select
@@ -439,22 +476,31 @@ const title = computed(() => {
 
 const templates = computed(() => usePage().props.templates ?? [])
 
-const templateOptions = computed(() =>
-  templates.value.map(template => ({ ...template, label: template.name })),
-)
+const templateSearch = ref('')
+
+// QList has no groups, so the account names are headers between runs of templates.
+const templateGroups = computed(() => {
+  const needle = (templateSearch.value ?? '').toLowerCase()
+  const groups = new Map()
+
+  for (const template of templates.value) {
+    const account = template.account_name ?? ''
+
+    if (needle && !`${template.name} ${account}`.toLowerCase().includes(needle)) continue
+
+    if (!groups.has(account)) groups.set(account, [])
+    groups.get(account).push(template)
+  }
+
+  return [...groups].map(([account, list]) => ({ account, templates: list }))
+})
 
 const shownDescriptions = ref([])
-
-const shownTemplates = ref([])
 
 const shownSymbols = ref([])
 
 const filterDescriptions = filterInto(shownDescriptions, descriptionHints, (description, needle) =>
   description.toLowerCase().includes(needle),
-)
-
-const filterTemplates = filterInto(shownTemplates, templateOptions, (template, needle) =>
-  template.label.toLowerCase().includes(needle),
 )
 
 const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
@@ -484,10 +530,14 @@ watch(
   },
 )
 
-const templateChoice = ref(null)
-
 // Not cleared by a Reset: Update is disabled on a clean form, so it cannot misfire.
 const loadedTemplate = ref(null)
+
+// Cleared on close, or the chip would name a template over a blank form next time.
+const closeForm = () => {
+  loadedTemplate.value = null
+  resetEdit()
+}
 
 // Checked here because the prompt closes before the request runs, so a server refusal
 // would land nowhere visible.
@@ -547,7 +597,6 @@ const applyTemplate = template => {
   form.clearErrors()
 
   loadedTemplate.value = template
-  templateChoice.value = null
 }
 
 const updateTemplate = () =>

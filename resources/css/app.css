@@ -433,3 +433,21 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: #d4d4d8;
 }
+
+/* The template menu's delete buttons show on the row being pointed at, not on every row. */
+.app-template-menu {
+  width: 300px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+@media (hover: hover) {
+  .app-template-item .app-template-delete {
+    opacity: 0;
+  }
+
+  .app-template-item:hover .app-template-delete,
+  .app-template-item:focus-within .app-template-delete {
+    opacity: 1;
+  }
+}

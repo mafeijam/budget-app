@@ -9,12 +9,15 @@
   >
     <q-card flat class="card-form-dialog">
       <q-card-section>
-        <div class="row justify-between items-center">
+        <div class="row items-center no-wrap q-gutter-x-sm">
           <div class="text-h6 text-grey-9 text-weight-bold">
             {{ title }}
           </div>
+          <q-space />
+          <slot name="header" />
           <q-btn flat round color="grey-6" icon="close" @click="dialog = false" />
         </div>
+        <slot name="subheader" />
       </q-card-section>
 
       <q-card-section class="scroll" :class="{ 'card-form-height': fullHeight }">
@@ -32,7 +35,8 @@
       <q-card-actions class="q-pa-md">
         <slot name="actions">
           <div class="col-12">
-            <div class="row">
+            <div class="row items-center">
+              <slot name="actions-start" />
               <q-space />
               <q-btn
                 v-if="form.isDirty"
