@@ -459,6 +459,25 @@ class TransactionFilterTest extends TestCase
         );
     }
 
+    public function test_it_filters_to_one_statement_by_its_due_date(): void
+    {
+        // The next period, so a card's other statement is what the filter leaves out.
+        $this->post('/transactions', $this->chargePayload(['date' => '2026-01-28', 'description' => 'Later']))
+            ->assertSessionHasNoErrors();
+
+        $due = Transaction::where('description', 'Books')->firstOrFail()->meta->meta['due_date'];
+
+        $this->assertListed(
+            ['filter' => ['account_id' => $this->card->id, 'due_date' => $due]],
+            ['Books', 'Coffee, tea']
+        );
+    }
+
+    public function test_a_malformed_due_date_filters_nothing(): void
+    {
+        $this->assertListed(['filter' => ['due_date' => '2026-2-9']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+    }
+
     /** The descriptions listed for a query, newest day first. */
     private function assertListed(array $query, array $descriptions): void
     {

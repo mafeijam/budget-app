@@ -34,7 +34,11 @@
               </div>
             </th>
           </tr>
-          <tr v-for="period in group.periods" :key="`${group.card.id}-${period.due_date}`">
+          <tr
+            v-for="period in group.periods"
+            :key="`${group.card.id}-${period.due_date}`"
+            :class="{ 'bg-blue-1': isShown(group, period) }"
+          >
             <td class="text-grey-8">{{ covers(period) }}</td>
             <td>
               <div class="row items-center no-wrap">
@@ -52,6 +56,19 @@
                   round
                   size="sm"
                   class="q-ml-xs"
+                  :color="isShown(group, period) ? 'primary' : 'grey-6'"
+                  icon="filter_list"
+                  @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
+                >
+                  <q-tooltip :delay="500" :offset="[0, 6]">
+                    Show this statement's transactions
+                  </q-tooltip>
+                </q-btn>
+                <q-btn
+                  dense
+                  flat
+                  round
+                  size="sm"
                   color="grey-6"
                   icon="edit_calendar"
                   :disable="!correctable(period)"
@@ -116,7 +133,13 @@
 const props = defineProps({
   groups: { type: Array, default: Array },
   banks: { type: Object, default: () => ({}) },
+  shown: { type: Object, default: null },
 })
+
+const emit = defineEmits(['filter'])
+
+const isShown = (group, period) =>
+  props.shown?.cardId === group.card.id && props.shown?.dueDate === period.due_date
 
 const formatDate = useCalendarDay()
 

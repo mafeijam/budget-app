@@ -30,9 +30,9 @@
     </div>
 
     <!-- What the closed panel is filtering by, each removable on its own. -->
-    <div v-if="!rowOpen && chips.length" class="col-auto row items-center q-gutter-xs q-mr-md">
+    <div v-if="shownChips.length" class="col-auto row items-center q-gutter-xs q-mr-md">
       <q-chip
-        v-for="chip in chips"
+        v-for="chip in shownChips"
         :key="chip.key"
         dense
         removable
@@ -261,6 +261,7 @@ const filters = reactive({
   symbol: list(seeded.symbol),
   date_from: seeded.date_from ?? null,
   date_to: seeded.date_to ?? null,
+  due_date: seeded.due_date ?? null,
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
   unpaid: seeded.unpaid ?? '',
 })
@@ -313,13 +314,27 @@ const chips = computed(() => {
       remove: () => (filters[key] = []),
     }))
 
-  return filters.date_from
+  const due = filters.due_date
     ? [
-        { key: 'date', label: `Date: ${rangeLabel.value}`, remove: () => (range.value = null) },
-        ...picked,
+        {
+          key: 'due_date',
+          label: `Statement due ${filters.due_date}`,
+          remove: () => (filters.due_date = null),
+        },
       ]
-    : picked
+    : []
+
+  const dated = filters.date_from
+    ? [{ key: 'date', label: `Date: ${rangeLabel.value}`, remove: () => (range.value = null) }]
+    : []
+
+  return [...due, ...dated, ...picked]
 })
+
+// The statement has no input in the panel, so its chip shows even while the panel is open.
+const shownChips = computed(() =>
+  rowOpen.value ? chips.value.filter(chip => chip.key === 'due_date') : chips.value,
+)
 
 const apply = () => {
   const { sort, dir, per_page: perPage } = page.props.params ?? {}
@@ -353,9 +368,18 @@ const clear = () => {
     symbol: [],
     date_from: null,
     date_to: null,
+    due_date: null,
     unpaid: '',
   })
 }
+
+// The statement panel's quick filter: that card's statement and nothing else.
+const showStatement = (cardId, dueDate) => {
+  clear()
+  Object.assign(filters, { account_id: [cardId], due_date: dueDate })
+}
+
+defineExpose({ showStatement, clear })
 
 watch(filters, apply, { deep: true })
 </script>

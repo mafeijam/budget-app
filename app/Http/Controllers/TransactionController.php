@@ -134,6 +134,11 @@ class TransactionController extends Controller
                 AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '<=', $value)
                     : $q),
+                // One statement: its charges, and the payments naming it. Pair with account_id,
+                // since a due date is only unique within one card.
+                AllowedFilter::callback('due_date', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', $value))
+                    : $q),
                 AllowedFilter::callback('unpaid', function (Builder $q, $value) use ($unpaid) {
                     // Off unless explicitly on: a stale filter[unpaid]=0 must not empty the list.
                     if (! in_array((string) $value, ['1', 'true'], true)) {

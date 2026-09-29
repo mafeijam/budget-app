@@ -2,11 +2,16 @@
   <div class="column no-wrap q-gutter-md">
     <FormTransaction :options="options" />
 
-    <CardStatements :groups="statements" :banks="cardBanks" />
+    <CardStatements
+      :groups="statements"
+      :banks="cardBanks"
+      :shown="shownStatement"
+      @filter="filterStatement"
+    />
 
     <AppTable :rows="data.data" :columns="columns" title="Transaction" dense>
       <template #top>
-        <TransactionFilters title="Transactions">
+        <TransactionFilters ref="filterBar" title="Transactions">
           <template #actions>
             <CreateBtn />
           </template>
@@ -62,6 +67,21 @@
 </template>
 
 <script setup>
+const filterBar = ref(null)
+
+// The statement the table is filtered to, so its row in the panel reads as selected.
+const shownStatement = computed(() => {
+  const filter = usePage().props.params?.filter ?? {}
+
+  return filter.due_date ? { cardId: Number(filter.account_id), dueDate: filter.due_date } : null
+})
+
+// A second click on the statement already shown clears it.
+const filterStatement = ({ cardId, dueDate }) =>
+  shownStatement.value?.cardId === cardId && shownStatement.value?.dueDate === dueDate
+    ? filterBar.value?.clear()
+    : filterBar.value?.showStatement(cardId, dueDate)
+
 const props = defineProps({
   ...hasTableProps,
   // Not in hasTableProps; without it the form's account select is silently empty.
