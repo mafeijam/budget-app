@@ -38,16 +38,6 @@
         </g>
 
         <line
-          v-if="selectedIndex !== null"
-          :x1="x(selectedIndex)"
-          :x2="x(selectedIndex)"
-          :y1="top"
-          :y2="bottom"
-          :stroke="colours.net_worth"
-          stroke-width="1.5"
-        />
-
-        <line
           v-if="hovered !== null"
           :x1="x(hovered)"
           :x2="x(hovered)"
@@ -58,7 +48,7 @@
         />
 
         <!-- Fills first, so the lines and dots sit on top of them. -->
-        <path :d="area('value')" :fill="colours.value" fill-opacity="0.08" />
+        <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
         <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
         <path
           v-for="(piece, i) in gaps"
@@ -84,10 +74,10 @@
           <circle
             :cx="x(i)"
             :cy="y(point.net_worth)"
-            r="3"
+            :r="i === selectedIndex ? 6 : 3"
             :fill="colours.net_worth"
             stroke="#ffffff"
-            stroke-width="1"
+            :stroke-width="i === selectedIndex ? 2 : 1"
           />
           <text
             v-if="labelled(i)"
