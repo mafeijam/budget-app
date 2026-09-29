@@ -147,11 +147,9 @@ const props = defineProps({
 
 // Narrowed to the card's currency by the controller, not here: a second copy of
 // guardSettledFrom()'s rule would drift from it.
-const options = computed(() => {
-  const byCcy = usePage().props.settlementOptionsByCcy ?? {}
+const optionsFor = ccy => (usePage().props.settlementOptionsByCcy ?? {})[ccy] ?? []
 
-  return byCcy[props.group?.card?.ccy] ?? []
-})
+const options = computed(() => optionsFor(props.group?.card?.ccy))
 
 const noBankMessage = computed(() => `No cash account in ${props.group?.card?.ccy} to pay from`)
 
@@ -253,12 +251,13 @@ watch(
   },
 )
 
-// Period and bank are passed in: the props they fill have not updated yet in this tick.
+// All three passed in: the props they fill have not updated yet in this tick, so reading
+// options here would check the bank against the previous card's currency, or none.
 defineExpose({
-  show: (period, bank) => {
+  show: (period, bank, group) => {
     paidOn.value = period?.due_date ?? ''
     // A card may name a bank in another currency; preselecting it would show a bare id.
-    bankId.value = options.value.some(o => o.value === bank?.id) ? bank.id : null
+    bankId.value = optionsFor(group?.card?.ccy).some(o => o.value === bank?.id) ? bank.id : null
     error.value = null
     fieldError.value = null
     bankError.value = null

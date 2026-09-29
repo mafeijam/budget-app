@@ -170,7 +170,7 @@ const openSettle = (group, period) => {
   const bank = props.banks[group.card.id] ?? null
 
   chosen.value = { group, period, bank }
-  dialog.value?.show(period, bank)
+  dialog.value?.show(period, bank, group)
 }
 
 const openCorrect = (group, period) => {
