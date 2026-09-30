@@ -11,7 +11,7 @@
         <span
           class="cash-flow-chart__swatch"
           :style="{ background: colours.previousFill, outline: `1px solid ${colours.previous}` }"
-        />Same month, {{ year - 1 }}
+        />Previous
       </div>
     </div>
 
@@ -111,7 +111,12 @@
         </div>
         <div v-if="!tooltipRows.length" class="text-grey-6">Nothing paid</div>
         <div class="row no-wrap items-center q-mt-xs text-grey-7">
-          <span class="q-mr-md">{{ year - 1 }}</span>
+          <span class="q-mr-md">Total</span>
+          <q-space />
+          <span class="money">{{ monthTotal.expected > 0 ? '~' : '' }}{{ monthTotal.value }}</span>
+        </div>
+        <div class="row no-wrap items-center text-grey-7">
+          <span class="q-mr-md">Previous</span>
           <q-space />
           <span class="money">{{ money(previousMonths[hovered]) }}</span>
         </div>
@@ -249,6 +254,15 @@ const tooltipRows = computed(() => {
         colour: colours.expectedEdge,
       })),
   ]
+})
+
+// The hovered month's own total, so it sits above the same month a year earlier and the
+// two read against each other. It is the rows above added up, expected among them; a
+// paid-only total would read short of the figures directly above it.
+const monthTotal = computed(() => {
+  const month = stacks.value[hovered.value]
+
+  return { expected: month.expected, value: money((month.paid + month.expected).toFixed(2)) }
 })
 
 // Flipped to the left of the band past the middle, so it never runs off the card.
