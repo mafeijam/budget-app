@@ -424,6 +424,55 @@ class SettledStatementTest extends TestCase
         $this->assertDatabaseMissing('transactions', ['id' => $charge->id]);
     }
 
+    public function test_a_period_holding_only_a_pending_charge_is_not_a_closed_bill(): void
+    {
+        // The same trap from the other side: a charge that does not count yet leaves the
+        // period owing nothing, and isSettled() only asks what is owed. Nothing has been paid
+        // and the statement has not been issued, so there is no bill to be a record of, and
+        // the way out it offers -- delete the payment that settled it -- names a payment that
+        // does not exist. The charge is the user's own row, still being entered.
+        $charge = $this->storedCharge();
+        $this->put("/transactions/{$charge->id}", $this->chargePayload(['status' => 'pending']))
+            ->assertSessionHasNoErrors();
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('editLocks', fn ($locks) => ! $locks->has($charge->id))
+            ->where('refusals', fn ($refusals) => ! $refusals->has($charge->id))
+        );
+
+        // Postable, and posting it is what makes the period a bill: 120.0000 owed, which the
+        // panel now has a reason to show.
+        $this->put("/transactions/{$charge->id}", $this->chargePayload(['status' => 'posted']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('posted', $charge->fresh()->status);
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('statements', fn ($groups) => collect($groups)
+                ->flatMap(fn (array $group) => $group['periods'])
+                ->contains(fn (array $period) => $period['due_date'] === self::PERIOD
+                    && $period['owed'] === '120.0000'))
+        );
+
+        $this->delete("/transactions/{$charge->id}")->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('transactions', ['id' => $charge->id]);
+    }
+
+    public function test_a_new_charge_may_join_a_period_that_has_not_been_issued(): void
+    {
+        // The same period, before anything in it posts: a bill that has not been issued can
+        // still take a charge, and refusing one for "the statement has been settled" is the
+        // same wrong answer arriving at the door of a new row.
+        $this->storedCharge();
+        $this->put('/transactions/'.Transaction::latest('id')->value('id'), $this->chargePayload(['status' => 'pending']))
+            ->assertSessionHasNoErrors();
+
+        $this->post('/transactions', $this->chargePayload(['date' => '2026-01-20', 'description' => 'Books']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('transactions', ['description' => 'Books']);
+    }
+
     // ---------------------------------------------------------------------
     // What the page says before anyone tries
     // ---------------------------------------------------------------------

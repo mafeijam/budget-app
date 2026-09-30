@@ -182,6 +182,24 @@ class CardStatement
         return BigDecimal::of($this->owed())->isEqualTo(BigDecimal::zero());
     }
 
+    /**
+     * A bill that is closed to changes: settled, and with nothing in it still to post.
+     *
+     * The second half is what isSettled() cannot be asked. It only asks whether anything is
+     * owed, so a period holding one pending charge answers yes -- and rightly so, since the
+     * panel skips a bill that has not been issued and the unpaid filter has nothing to hand
+     * back. But a charge is not frozen over a payment nobody has made, and the remedy a
+     * closed period gives is to delete that payment, which is not there to delete.
+     *
+     * Not isSettled() plus "a payment was made" either: a partly paid statement is still
+     * being worked on, and it is a payment against it that keeps it so.
+     */
+    public function isClosed(): bool
+    {
+        return $this->pendingCount === 0
+            && BigDecimal::of($this->owed())->isEqualTo(BigDecimal::zero());
+    }
+
     /** Why a period cannot be settled: it would reopen once the pending charge posted. */
     public function hasPendingActivity(): bool
     {
@@ -233,7 +251,7 @@ class CardStatement
         }
 
         // The panel does not offer this, so only a stale page or a hand-made request gets here.
-        if ($statement->isSettled()) {
+        if ($statement->isClosed()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so its due date cannot be changed. '
                     .'It is the record of a bill that has been paid.',

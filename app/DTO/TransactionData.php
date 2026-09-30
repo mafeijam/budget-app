@@ -366,7 +366,7 @@ class TransactionData extends Data
         $fields = array_keys($figures);
         $words = Arr::join(array_values($figures), ', ', ' and ');
 
-        if ($dueDate !== null && $cardPeriods?->firstWhere('dueDate', $dueDate)?->isSettled()) {
+        if ($dueDate !== null && $cardPeriods?->firstWhere('dueDate', $dueDate)?->isClosed()) {
             if ($isCharge) {
                 $figures = array_slice($figures, 0, 2) + ['date' => 'date'] + array_slice($figures, 2);
                 $fields = array_keys($figures);
@@ -555,7 +555,7 @@ class TransactionData extends Data
             return;
         }
 
-        if (CardStatement::forAccount($account)->firstWhere('dueDate', $dueDate)?->isSettled()) {
+        if (CardStatement::forAccount($account)->firstWhere('dueDate', $dueDate)?->isClosed()) {
             throw ValidationException::withMessages([
                 'date' => sprintf(
                     'The statement due %s has been settled, so this charge cannot be added to it. '
@@ -615,7 +615,7 @@ class TransactionData extends Data
 
         $refuse = fn (string $message) => throw ValidationException::withMessages(['date' => $message]);
 
-        if ($leaving !== null && $leavingPeriod?->isSettled()) {
+        if ($leaving !== null && $leavingPeriod?->isClosed()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so this charge cannot be moved out of it. '
                     .'Delete the payment that settled it, move the charge, and settle it again.',
@@ -623,7 +623,7 @@ class TransactionData extends Data
             ));
         }
 
-        if ($statements->firstWhere('dueDate', $dueDate)?->isSettled()) {
+        if ($statements->firstWhere('dueDate', $dueDate)?->isClosed()) {
             $refuse(sprintf(
                 'The statement due %s has been settled, so this charge cannot be moved into it. '
                     .'Choose a date in a period that is still open.',
