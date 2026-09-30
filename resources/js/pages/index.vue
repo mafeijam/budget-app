@@ -39,59 +39,82 @@
 
           <!-- What the figure is made of: the accounts, statements or brokerages behind it. -->
           <div v-if="figure.items.length" class="app-home-list">
-            <div
-              v-for="item in figure.items"
-              :key="item.key"
-              class="app-home-list__row"
-              :class="{ 'app-home-list__row--overdue': item.overdue, 'cursor-pointer': item.open }"
-              @click="item.open?.()"
+            <!--
+              A template for every card's rows, so the grouping below cannot become a second
+              copy of a row that has to be kept in step with this one.
+            -->
+            <template
+              v-for="group in figure.groups ?? [{ ccy: null, items: figure.items }]"
+              :key="group.ccy ?? 'all'"
             >
-              <div class="app-home-list__name">
-                <div class="row items-center no-wrap">
-                  <span class="text-body2 text-weight-medium text-grey-9 ellipsis">
-                    {{ item.name }}
-                  </span>
-                  <q-badge v-if="item.badge" v-bind="item.badge" class="q-ml-xs" />
-                </div>
-                <div
-                  v-for="line in item.lines"
-                  :key="line.text"
-                  class="text-caption ellipsis"
-                  :class="line.class ?? 'text-grey-6'"
-                >
-                  {{ line.text }}
-                </div>
+              <!-- Only where there is something to tell apart: a header over one currency
+                   says the currency the rows beneath it already show. -->
+              <div v-if="figure.groups?.length > 1" class="app-home-list__group">
+                <span>{{ group.ccy }}</span>
+                <span class="money">{{ money(group.total) }}</span>
               </div>
-              <div class="app-home-list__figures text-right">
-                <!-- Held in another currency: that money beside the base figure the card sums,
-                     on its line, so a foreign row is no taller than the rest -- or under it
-                     when the row has a line of its own, whose name would lose the width. -->
-                <div class="row items-baseline no-wrap justify-end">
-                  <span
-                    v-if="item.native && !item.lines?.length"
-                    class="text-caption text-grey-6 money q-mr-sm"
+
+              <div
+                v-for="item in group.items"
+                :key="item.key"
+                class="app-home-list__row"
+                :class="{
+                  'app-home-list__row--overdue': item.overdue,
+                  'cursor-pointer': item.open,
+                }"
+                @click="item.open?.()"
+              >
+                <div class="app-home-list__name">
+                  <div class="row items-center no-wrap">
+                    <span class="text-body2 text-weight-medium text-grey-9 ellipsis">
+                      {{ item.name }}
+                    </span>
+                    <q-badge v-if="item.badge" v-bind="item.badge" class="q-ml-xs" />
+                  </div>
+                  <div
+                    v-for="line in item.lines"
+                    :key="line.text"
+                    class="text-caption ellipsis"
+                    :class="line.class ?? 'text-grey-6'"
+                  >
+                    {{ line.text }}
+                  </div>
+                </div>
+                <div class="app-home-list__figures text-right">
+                  <!-- Held in another currency: that money beside the base figure the card sums,
+                       on its line, so a foreign row is no taller than the rest -- or under it
+                       when the row has a line of its own, whose name would lose the width. -->
+                  <div class="row items-baseline no-wrap justify-end">
+                    <span
+                      v-if="item.native && !item.lines?.length"
+                      class="text-caption text-grey-6 money q-mr-sm"
+                    >
+                      {{ item.ccy }} {{ item.native }}
+                    </span>
+                    <span class="text-body2 text-weight-bold money" :class="item.valueClass">
+                      {{ item.value }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="item.native && item.lines?.length"
+                    class="text-caption text-grey-6 money"
                   >
                     {{ item.ccy }} {{ item.native }}
-                  </span>
-                  <span class="text-body2 text-weight-bold money" :class="item.valueClass">
-                    {{ item.value }}
-                  </span>
-                </div>
-                <div
-                  v-if="item.native && item.lines?.length"
-                  class="text-caption text-grey-6 money"
-                >
-                  {{ item.ccy }} {{ item.native }}
-                </div>
-                <!-- Only when it is not the base: then the figure is not the card's currency. -->
-                <div
-                  v-if="!item.native && item.ccy && item.ccy !== base"
-                  class="text-caption text-grey-6"
-                >
-                  {{ item.ccy }}
+                  </div>
+                  <!-- Only when it is not the base: then the figure is not the card's currency.
+                       Under its group's header that is already said, so it is the group that
+                       carries it now and this only speaks for a card left ungrouped. -->
+                  <div
+                    v-if="
+                      figure.groups?.length < 2 && !item.native && item.ccy && item.ccy !== base
+                    "
+                    class="text-caption text-grey-6"
+                  >
+                    {{ item.ccy }}
+                  </div>
                 </div>
               </div>
-            </div>
+            </template>
             <div v-if="figure.more" class="app-home-list__more text-caption text-grey-6">
               {{ figure.more }}
             </div>
@@ -426,6 +449,7 @@ const headlineFigures = computed(() => {
       class: negative(h.cash) ? 'text-negative' : 'text-positive',
       ...onLastMonth('cash'),
       items: held,
+      groups: grouped(held),
       more: emptyCash ? `+${emptyCash} empty` : null,
       empty: 'No cash account yet.',
     },
@@ -438,6 +462,7 @@ const headlineFigures = computed(() => {
       // The same note as the others: the unrealised gain is on each brokerage's row.
       ...onLastMonth('value'),
       items: brokerItems.value.filter(item => !item.empty),
+      groups: grouped(brokerItems.value.filter(item => !item.empty)),
     },
     {
       label: 'Cards owe',
@@ -723,6 +748,9 @@ const cashItems = computed(() =>
     key: account.id,
     name: account.name,
     ccy: account.ccy,
+    // The figure as it is shown, kept as a decimal string so the group's total is added as
+    // money rather than as a float.
+    total: account.base ?? account.balance,
     value: money(account.base ?? account.balance),
     native: account.base ? money(account.balance) : null,
     valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
@@ -742,6 +770,8 @@ const brokerItems = computed(() =>
       key: broker.id,
       name: broker.name,
       ccy: broker.ccy,
+      // As shown, as a decimal string, for the group's total.
+      total: broker.market_value_base ?? broker.market_value,
       value: money(broker.market_value_base ?? broker.market_value),
       native: broker.market_value_base ? money(broker.market_value) : null,
       valueClass: 'text-grey-9',
@@ -759,6 +789,37 @@ const brokerItems = computed(() =>
     }
   }),
 )
+
+// The rows of a card under their currency, so a card holding money in two of them says so
+// rather than leaving the reader to notice which rows carry a second figure. The base
+// currency first, since it is the currency the card's own figure is in, then the others in
+// the order they arrive.
+//
+// The group total is the sum of the figures already shown on its rows, which are all in the
+// base currency -- a USD account's bold figure is its HKD worth and the USD sits beside it as
+// the native. So the total is what adds up to the card, which is the arithmetic a reader
+// would do, and not a USD figure the card nowhere claims to be in. Adding the native figures
+// instead would answer a different question: how much there is in dollars.
+const grouped = items => {
+  const groups = []
+  const byCcy = new Map()
+
+  for (const item of items) {
+    const existing = byCcy.get(item.ccy)
+
+    if (existing) {
+      existing.items.push(item)
+      existing.total = plus(existing.total, item.total)
+      continue
+    }
+
+    const group = { ccy: item.ccy, total: item.total, items: [item] }
+    byCcy.set(item.ccy, group)
+    groups.push(group)
+  }
+
+  return groups.sort((a, b) => (a.ccy === props.base ? -1 : b.ccy === props.base ? 1 : 0))
+}
 
 // One row a card, whatever number of its statements are open: what it owes in all, from
 // the statement strings added exactly. Overdue if any of them is, and a line only for what
