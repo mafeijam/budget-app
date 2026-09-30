@@ -60,14 +60,14 @@
             {{ bankLine(group) }}
           </div>
 
-          <div class="text-body2 text-grey-7 q-mt-xs money">
+          <div class="text-caption text-grey-7 q-mt-xs money">
             {{ count(period.charge_count, 'charge') }} · {{ money(period.charged) }}
             <!-- Paid only once something is, since it is almost always nothing. -->
             <template v-if="!isZero(period.paid)">
               · {{ money(period.paid) }} paid, {{ count(period.payment_count, 'payment') }}
             </template>
           </div>
-          <div class="text-body2 text-grey-6">{{ covers(period) }}</div>
+          <div class="text-caption text-grey-6">{{ covers(period) }}</div>
 
           <!-- A pending row means the owed total is not final yet. -->
           <q-badge
@@ -118,11 +118,9 @@
               unelevated
               dense
               no-caps
-              :color="settleable(group, period) ? 'positive' : 'grey-4'"
-              :text-color="settleable(group, period) ? 'white' : 'grey-7'"
               icon="payments"
               label="Settle"
-              class="q-px-sm"
+              class="app-btn app-btn--positive text-weight-bold q-px-sm"
               :disable="!settleable(group, period)"
               @click="openSettle(group, period)"
             >
