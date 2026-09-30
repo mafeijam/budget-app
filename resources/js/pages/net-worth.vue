@@ -99,7 +99,7 @@
     <div>
       <div class="row q-col-gutter-md">
         <div class="col-12 col-md-5">
-          <q-card flat bordered class="full-height">
+          <q-card flat bordered class="app-worth-card full-height">
             <q-card-section class="row items-center q-pb-sm">
               <q-icon name="account_balance" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Cash</div>
@@ -107,18 +107,37 @@
               <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
             </q-card-section>
             <q-separator />
-            <div v-for="account in accountsOf('cash')" :key="account.id" class="app-worth-row">
-              <span class="text-grey-9 ellipsis">{{ account.name }}</span>
-              <div class="text-right">
-                <div class="money text-weight-medium">
-                  {{ money(account.base ?? account.balance) }}
-                </div>
-                <!-- In the base currency first, as every figure here is; its own money under it. -->
-                <div v-if="account.ccy !== base" class="text-caption text-grey-6 money">
-                  {{ account.ccy }} {{ money(account.balance) }}
+            <template v-for="group in cashGroups" :key="group.ccy">
+              <div v-if="group.headed" class="app-worth-row app-worth-row--group">
+                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                <span class="row items-baseline no-wrap">
+                  <span v-if="group.native" class="text-caption text-grey-6 money q-mr-sm">
+                    {{ money(group.native) }}
+                  </span>
+                  <span class="text-caption text-weight-medium text-grey-8 money">
+                    {{ money(group.total) }}
+                  </span>
+                </span>
+              </div>
+
+              <div v-for="account in group.items" :key="account.id" class="app-worth-row">
+                <span class="text-grey-9 ellipsis">{{ account.name }}</span>
+                <div class="text-right">
+                  <div class="money text-weight-medium">
+                    {{ money(account.base ?? account.balance) }}
+                  </div>
+                  <!-- In the base currency first, as every figure here is; its own money under
+                       it. A group heading already names the currency, so this is for the rows
+                       it does not reach. -->
+                  <div
+                    v-if="!group.headed && account.ccy !== base"
+                    class="text-caption text-grey-6 money"
+                  >
+                    {{ account.ccy }} {{ money(account.balance) }}
+                  </div>
                 </div>
               </div>
-            </div>
+            </template>
             <div v-if="!isZero(current.cards)" class="app-worth-row app-worth-row--total">
               <span class="text-grey-8">Cards owe</span>
               <span class="money text-weight-medium text-negative">{{ money(current.cards) }}</span>
@@ -127,7 +146,7 @@
         </div>
 
         <div class="col-12 col-md-7">
-          <q-card flat bordered class="full-height">
+          <q-card flat bordered class="app-worth-card full-height">
             <q-card-section class="row items-center q-pb-sm">
               <q-icon name="show_chart" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Stocks</div>
@@ -152,27 +171,56 @@
               <span class="text-right">Cost</span>
               <span class="text-right">Unrealised</span>
             </div>
-            <div v-for="broker in current.brokerages" :key="broker.id" class="app-worth-stocks">
-              <span class="text-grey-9 ellipsis">{{ broker.name }}</span>
-              <div class="text-right money">
-                <div class="text-weight-medium">{{ money(broker.value_base ?? broker.value) }}</div>
-                <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
-                  {{ broker.ccy }} {{ money(broker.value) }}
+            <!--
+              A currency's own sum is a row like the All brokerages one under it, carrying the
+              three figures it adds, rather than a heading over its rows: this is a four column
+              table and a heading would leave three cells empty. The native sits under the
+              value it belongs to, as it does on a brokerage's own row.
+            -->
+            <template v-for="group in brokerageGroups" :key="group.ccy">
+              <div v-for="broker in group.items" :key="broker.id" class="app-worth-stocks">
+                <span class="text-grey-9 ellipsis">{{ broker.name }}</span>
+                <div class="text-right money">
+                  <div class="text-weight-medium">
+                    {{ money(broker.value_base ?? broker.value) }}
+                  </div>
+                  <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
+                    {{ broker.ccy }} {{ money(broker.value) }}
+                  </div>
+                </div>
+                <div class="text-right money text-grey-8">
+                  <div>{{ money(broker.cost_base ?? broker.cost) }}</div>
+                  <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
+                    {{ broker.ccy }} {{ money(broker.cost) }}
+                  </div>
+                </div>
+                <div class="text-right money" :class="signClass(gain(broker))">
+                  <div class="text-weight-medium">{{ money(gain(broker)) }}</div>
+                  <div class="text-caption">
+                    {{ percent(gain(broker), broker.cost_base ?? broker.cost) }}
+                  </div>
                 </div>
               </div>
-              <div class="text-right money text-grey-8">
-                <div>{{ money(broker.cost_base ?? broker.cost) }}</div>
-                <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
-                  {{ broker.ccy }} {{ money(broker.cost) }}
-                </div>
+
+              <div v-if="group.headed" class="app-worth-stocks app-worth-stocks--subtotal">
+                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                <span class="text-right money text-weight-medium text-grey-8">
+                  {{ money(group.total) }}
+                  <div v-if="group.native" class="text-caption text-grey-6 money">
+                    {{ group.ccy }} {{ money(group.native) }}
+                  </div>
+                </span>
+                <span class="text-right money text-weight-medium text-grey-8">
+                  {{ money(group.cost) }}
+                </span>
+                <span
+                  class="text-right money text-weight-medium"
+                  :class="signClass(group.unrealised)"
+                >
+                  {{ money(group.unrealised) }}
+                </span>
               </div>
-              <div class="text-right money" :class="signClass(gain(broker))">
-                <div class="text-weight-medium">{{ money(gain(broker)) }}</div>
-                <div class="text-caption">
-                  {{ percent(gain(broker), broker.cost_base ?? broker.cost) }}
-                </div>
-              </div>
-            </div>
+            </template>
             <div class="app-worth-stocks app-worth-stocks--total">
               <span class="text-grey-8">All brokerages</span>
               <span class="text-right money text-weight-bold">{{ money(current.value) }}</span>
@@ -282,6 +330,41 @@ const figure = (value, signed = false) =>
   `${signed && up(value) && !isZero(value) ? '+' : ''}${props.base} ${money(value)}`
 
 const accountsOf = type => props.current.accounts.filter(account => account.type === type)
+
+// A cash account's row, spread so the markup keeps reading the payload's own fields, with
+// the two figures its group adds. The native needs the currency test as well as the base
+// one -- this payload gives every account a base figure, base currency included, where the
+// home page's leaves it null, so testing `base` alone would make the HKD group total itself
+// twice over.
+const cashItems = computed(() =>
+  accountsOf('cash')
+    .map(account => ({
+      ...account,
+      total: account.base ?? account.balance,
+      nativeTotal: account.ccy !== props.base && account.base ? account.balance : null,
+    }))
+    .sort(byAmountDescending),
+)
+
+const cashGroups = computed(() => groupedByCurrency(cashItems.value, props.base))
+
+// A brokerage carries three figures, so its group sums three. `total` is the market value,
+// which is what the group heading leads with; cost and the gain are summed alongside.
+const brokerageItems = computed(() =>
+  props.current.brokerages.map(broker => ({
+    ...broker,
+    total: broker.value_base ?? broker.value,
+    nativeTotal: broker.ccy !== props.base && broker.value_base ? broker.value : null,
+  })),
+)
+
+const brokerageGroups = computed(() =>
+  groupedByCurrency(brokerageItems.value, props.base).map(group => ({
+    ...group,
+    cost: group.items.reduce((sum, item) => plus(sum, item.cost_base ?? item.cost), '0'),
+    unrealised: group.items.reduce((sum, item) => plus(sum, gain(item)), '0'),
+  })),
+)
 
 // Shares and percentages are for reading, not money, so floats are fine here.
 const percent = (part, whole) =>

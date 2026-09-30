@@ -11,6 +11,7 @@ declare global {
   const EffectScope: typeof import('vue').EffectScope
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
+  const byAmountDescending: typeof import('./resources/js/composables/money.js').byAmountDescending
   const computed: typeof import('vue').computed
   const computedAsync: typeof import('@vueuse/core').computedAsync
   const computedEager: typeof import('@vueuse/core').computedEager
@@ -42,6 +43,7 @@ declare global {
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const groupedByCurrency: typeof import('./resources/js/composables/money.js').groupedByCurrency
   const h: typeof import('vue').h
   const hasTableProps: typeof import('./resources/js/composables/props.js').hasTableProps
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
@@ -55,6 +57,7 @@ declare global {
   const isShallow: typeof import('vue').isShallow
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
+  const minus: typeof import('./resources/js/composables/money.js').minus
   const monotoneCurve: typeof import('./resources/js/composables/curve.js').monotoneCurve
   const neutral: typeof import('./resources/js/composables/palette.js').neutral
   const nextTick: typeof import('vue').nextTick
@@ -80,6 +83,7 @@ declare global {
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
   const palette: typeof import('./resources/js/composables/palette.js').palette
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
+  const plus: typeof import('./resources/js/composables/money.js').plus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
   const reactify: typeof import('@vueuse/core').reactify

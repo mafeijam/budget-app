@@ -456,7 +456,7 @@ const headlineFigures = computed(() => {
       class: negative(h.cash) ? 'text-negative' : 'text-positive',
       ...onLastMonth('cash'),
       items: held,
-      groups: grouped(held),
+      groups: groupedByCurrency(held, props.base),
       more: emptyCash ? `+${emptyCash} empty` : null,
       empty: 'No cash account yet.',
     },
@@ -469,7 +469,10 @@ const headlineFigures = computed(() => {
       // The same note as the others: the unrealised gain is on each brokerage's row.
       ...onLastMonth('value'),
       items: brokerItems.value.filter(item => !item.empty),
-      groups: grouped(brokerItems.value.filter(item => !item.empty)),
+      groups: groupedByCurrency(
+        brokerItems.value.filter(item => !item.empty),
+        props.base,
+      ),
     },
     {
       label: 'Cards owe',
@@ -541,23 +544,6 @@ const movement = computed(() => {
 
 // Decimal strings added and taken away exactly: BigInt at four places, so a change shown is
 // the difference of the two figures and not a float's rounding of it.
-const scaled = value => {
-  const [, sign, whole, fraction = ''] = String(value ?? '0').match(/^(-?)(\d*)\.?(\d*)$/) ?? []
-  const units = BigInt((whole || '0') + fraction.padEnd(4, '0').slice(0, 4))
-
-  return sign ? -units : units
-}
-
-const fromUnits = units => {
-  const digits = (units < 0n ? -units : units).toString().padStart(5, '0')
-
-  return `${units < 0n ? '-' : ''}${digits.slice(0, -4)}.${digits.slice(-4)}`
-}
-
-const plus = (a, b) => fromUnits(scaled(a) + scaled(b))
-
-const minus = (a, b) => fromUnits(scaled(a) - scaled(b))
-
 const monthFormat = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' })
 
 const monthName = month => {
@@ -751,22 +737,27 @@ const openBroker = id => {
 }
 
 const cashItems = computed(() =>
-  props.cash.map(account => ({
-    key: account.id,
-    name: account.name,
-    ccy: account.ccy,
-    // The figure as it is shown, and the native behind it, both as decimal strings: the
-    // group's totals are added from these, and a formatted figure carries its thousands
-    // separators into the sum.
-    total: account.base ?? account.balance,
-    nativeTotal: account.base ? account.balance : null,
-    value: money(account.base ?? account.balance),
-    native: account.base ? money(account.balance) : null,
-    valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
-    empty: isZero(account.balance),
-    lines: account.status !== 'active' ? [{ text: `${account.status}, still holding money` }] : [],
-    open: () => router.visit('/transactions', { data: { filter: { account_id: account.id } } }),
-  })),
+  props.cash
+    .map(account => ({
+      key: account.id,
+      name: account.name,
+      ccy: account.ccy,
+      // The figure as it is shown, and the native behind it, both as decimal strings: the
+      // group's totals are added from these, and a formatted figure carries its thousands
+      // separators into the sum.
+      total: account.base ?? account.balance,
+      nativeTotal: account.base ? account.balance : null,
+      value: money(account.base ?? account.balance),
+      native: account.base ? money(account.balance) : null,
+      valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
+      empty: isZero(account.balance),
+      lines:
+        account.status !== 'active' ? [{ text: `${account.status}, still holding money` }] : [],
+      open: () => router.visit('/transactions', { data: { filter: { account_id: account.id } } }),
+    }))
+    // Largest first, on the figure the row shows, and on money rather than on the string:
+    // sorting the formatted values would put 9,000.00 above 180,000.00.
+    .sort(byAmountDescending),
 )
 
 const brokerItems = computed(() =>
@@ -799,57 +790,6 @@ const brokerItems = computed(() =>
     }
   }),
 )
-
-// The rows of a card under their currency, so a card holding money in two of them says so
-// rather than leaving the reader to notice which rows carry a second figure. The base
-// currency first, since it is the currency the card's own figure is in, then the others in
-// the order they arrive.
-//
-// A group is headed only where a heading does work: the card must hold more than one
-// currency, and the group must have more than one row. A group of one has nothing to be
-// separated from and its total is the row's own figure, already on screen.
-//
-// The base total is the sum of the figures already on the rows, all of which are in the
-// base currency -- a USD account's bold figure is its HKD worth and the dollars sit beside
-// it as the native. So it is what adds up to the card's own figure, and it leads the
-// heading for that reason. The native beside it answers the other question, how much there
-// is in dollars, and only where every row of the group has one: a partial native total is
-// not a subtotal of anything.
-const grouped = items => {
-  const groups = []
-  const byCcy = new Map()
-
-  for (const item of items) {
-    const existing = byCcy.get(item.ccy)
-
-    if (existing) {
-      existing.items.push(item)
-      existing.total = plus(existing.total, item.total)
-      existing.native = item.nativeTotal ? plus(existing.native, item.nativeTotal) : null
-      existing.allNative = existing.allNative && item.nativeTotal !== null
-      continue
-    }
-
-    const group = {
-      ccy: item.ccy,
-      total: item.total,
-      native: item.nativeTotal,
-      allNative: item.nativeTotal !== null,
-      items: [item],
-    }
-    byCcy.set(item.ccy, group)
-    groups.push(group)
-  }
-
-  const sorted = groups.sort((a, b) => (a.ccy === props.base ? -1 : b.ccy === props.base ? 1 : 0))
-
-  for (const group of sorted) {
-    group.headed = sorted.length > 1 && group.items.length > 1
-    group.native = group.allNative ? group.native : null
-  }
-
-  return sorted
-}
 
 // One row a card, whatever number of its statements are open: what it owes in all, from
 // the statement strings added exactly. Overdue if any of them is, and a line only for what

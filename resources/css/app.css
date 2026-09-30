@@ -1194,6 +1194,15 @@ body {
   border-radius: 2px;
 }
 
+/* A card whose foot is a total row. The card is stretched to match the column beside it, and
+   without this the total sits wherever the rows above it happen to end -- leaving the card's
+   own rounded bottom showing beneath it as a band of empty white, which is what made the
+   tinted strip look as though it were falling out of the card. */
+.app-worth-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .app-worth-row {
   display: flex;
   justify-content: space-between;
@@ -1206,6 +1215,16 @@ body {
 .app-worth-row--total {
   border-bottom: 0;
   background: #f8fafc;
+  margin-top: auto;
+}
+
+/* A currency's heading over its rows, on the list of one-figure rows rather than over the
+   table of three. No rule of its own: the border the last row above already drew is the one
+   that separates this run from what came before. */
+.app-worth-row--group {
+  align-items: baseline;
+  padding-top: 10px;
+  border-bottom: 0;
 }
 
 .app-worth-stocks {
@@ -1222,9 +1241,17 @@ body {
   padding-bottom: 6px;
 }
 
+/* A currency's sum across the three figures, in the form the All brokerages row under it
+   already takes. A heading over these rows would leave three of the four cells empty. */
+.app-worth-stocks--subtotal {
+  align-items: baseline;
+  border-bottom: 0;
+}
+
 .app-worth-stocks--total {
   border-bottom: 0;
   background: #f8fafc;
+  margin-top: auto;
 }
 
 /* A type's heading in the account filter's list, set off from the rows it names. */
