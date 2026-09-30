@@ -1107,3 +1107,69 @@ body {
 .app-home-list__more {
   padding: 6px 16px;
 }
+
+/* The net worth page's cards: the split as a bar, and the rows behind each figure. */
+.app-worth-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.app-worth-bar__part {
+  flex-basis: 0;
+  min-width: 2px;
+}
+
+.app-worth-bar__part:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.app-worth-bar__part:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.app-worth-parts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.app-worth-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.app-worth-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-worth-row--total {
+  border-bottom: 0;
+  background: #f8fafc;
+}
+
+.app-worth-stocks {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-worth-stocks--head {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.app-worth-stocks--total {
+  border-bottom: 0;
+  background: #f8fafc;
+}

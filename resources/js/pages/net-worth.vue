@@ -42,146 +42,150 @@
       </div>
     </div>
 
-    <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
-    <div>
-      <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-6 col-md">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-caption text-grey-7">Net worth</div>
-              <div class="text-h5 text-weight-bold money">{{ figure(current.net_worth) }}</div>
+    <!-- The total and what it is made of, then the money and the stocks behind it. -->
+    <q-card flat bordered>
+      <q-card-section>
+        <div class="row items-start q-col-gutter-lg">
+          <div class="col-12 col-md-5">
+            <div class="text-caption text-grey-7">Net worth</div>
+            <div class="text-h4 text-weight-bold money">{{ figure(current.net_worth) }}</div>
+            <div class="row items-center q-gutter-sm q-mt-xs">
               <q-badge
                 v-if="monthChange"
-                class="q-mt-sm"
                 :class="
                   monthChange.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'
                 "
                 :label="`${monthChange.up ? '+' : ''}${money(monthChange.amount)} on last month${monthChange.pct}`"
               />
-              <div v-if="sinceGrowth" class="text-caption text-grey-7 q-mt-sm">
+              <span v-if="sinceGrowth" class="text-caption text-grey-7">
                 {{ sinceGrowth.up ? '+' : '' }}{{ money(sinceGrowth.amount)
-                }}{{ sinceGrowth.pct }} since
-                {{ monthLabel(since.date) }}
+                }}{{ sinceGrowth.pct }} since {{ monthLabel(since.date) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- What holds it up and what pulls it down, each as its share of the total. -->
+          <div class="col-12 col-md-7">
+            <div class="app-worth-bar">
+              <div
+                v-for="part in parts.filter(p => p.gross > 0)"
+                :key="part.key"
+                class="app-worth-bar__part"
+                :style="{ flexGrow: part.gross, background: part.colour }"
+              >
+                <q-tooltip :offset="[0, 6]">
+                  {{ part.label }} {{ figure(part.value) }} · {{ share(part.value) }}
+                </q-tooltip>
               </div>
+            </div>
+            <div class="app-worth-parts q-mt-sm">
+              <div v-for="part in parts" :key="part.key">
+                <div class="row items-center no-wrap text-caption text-grey-7">
+                  <span class="app-worth-swatch q-mr-xs" :style="{ background: part.colour }" />
+                  {{ part.label }}
+                </div>
+                <div class="text-subtitle1 text-weight-bold money" :class="part.class">
+                  {{ figure(part.value) }}
+                </div>
+                <div class="text-caption text-grey-6">{{ share(part.value) }} of net worth</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
+    <div>
+      <div class="row q-col-gutter-md">
+        <div class="col-12 col-md-5">
+          <q-card flat bordered class="full-height">
+            <q-card-section class="row items-center q-pb-sm">
+              <q-icon name="account_balance" size="sm" color="grey-7" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-medium">Cash</div>
+              <q-space />
+              <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
             </q-card-section>
+            <q-separator />
+            <div v-for="account in accountsOf('cash')" :key="account.id" class="app-worth-row">
+              <span class="text-grey-9 ellipsis">{{ account.name }}</span>
+              <div class="text-right">
+                <div class="money text-weight-medium">
+                  {{ money(account.base ?? account.balance) }}
+                </div>
+                <!-- In the base currency first, as every figure here is; its own money under it. -->
+                <div v-if="account.ccy !== base" class="text-caption text-grey-6 money">
+                  {{ account.ccy }} {{ money(account.balance) }}
+                </div>
+              </div>
+            </div>
+            <div v-if="!isZero(current.cards)" class="app-worth-row app-worth-row--total">
+              <span class="text-grey-8">Cards owe</span>
+              <span class="money text-weight-medium text-negative">{{ money(current.cards) }}</span>
+            </div>
           </q-card>
         </div>
 
-        <div class="col-12 col-sm-6 col-md">
+        <div class="col-12 col-md-7">
           <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-caption text-grey-7">Cash</div>
-              <div class="text-h5 text-weight-bold text-positive money">
-                {{ figure(current.cash) }}
-              </div>
+            <q-card-section class="row items-center q-pb-sm">
+              <q-icon name="show_chart" size="sm" color="grey-7" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-medium">Stocks</div>
+              <q-space />
               <q-badge
-                class="q-mt-sm app-tint app-tint--positive"
-                :label="`${share(current.cash)} of net worth`"
+                v-if="unrealisedPct"
+                class="q-mr-sm"
+                :class="
+                  up(current.unrealised)
+                    ? 'app-tint app-tint--positive'
+                    : 'app-tint app-tint--negative'
+                "
+                :label="unrealisedPct"
               />
-              <div class="q-mt-sm">
-                <div
-                  v-for="account in accountsOf('cash')"
-                  :key="account.id"
-                  class="row no-wrap text-caption"
-                >
-                  <span class="text-grey-7 ellipsis q-mr-sm">{{ account.name }}</span>
-                  <q-space />
-                  <span class="money">{{ money(account.base ?? account.balance) }}</span>
-                </div>
-                <div v-if="!isZero(current.cards)" class="row no-wrap text-caption q-mt-xs">
-                  <span class="text-grey-7">Cards owe</span>
-                  <q-space />
-                  <span class="money text-negative">{{ money(current.cards) }}</span>
-                </div>
-              </div>
+              <div class="money text-weight-bold text-primary">{{ figure(current.value) }}</div>
             </q-card-section>
-          </q-card>
-        </div>
-
-        <div class="col-12 col-sm-6 col-md">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-caption text-grey-7">Stock market value</div>
-              <div class="text-h5 text-weight-bold text-primary money">
-                {{ figure(current.value) }}
-              </div>
-              <q-badge
-                class="q-mt-sm app-tint app-tint--info"
-                :label="`${share(current.value)} of net worth`"
-              />
-              <div class="q-mt-sm">
-                <div
-                  v-for="broker in current.brokerages"
-                  :key="broker.id"
-                  class="row no-wrap text-caption"
-                >
-                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                  <q-space />
-                  <span class="money">
-                    {{ money(broker.value_base ?? broker.value) }}
-                    <q-tooltip v-if="broker.ccy !== base" :delay="300" :offset="[0, 6]">
-                      {{ money(broker.value) }} {{ broker.ccy }}
-                    </q-tooltip>
-                  </span>
+            <q-separator />
+            <!-- Value, cost and the gain between them, a row a brokerage and the sum under. -->
+            <div class="app-worth-stocks app-worth-stocks--head text-caption text-grey-7">
+              <span>Brokerage</span>
+              <span class="text-right">Market value</span>
+              <span class="text-right">Cost</span>
+              <span class="text-right">Unrealised</span>
+            </div>
+            <div v-for="broker in current.brokerages" :key="broker.id" class="app-worth-stocks">
+              <span class="text-grey-9 ellipsis">{{ broker.name }}</span>
+              <div class="text-right money">
+                <div class="text-weight-medium">{{ money(broker.value_base ?? broker.value) }}</div>
+                <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
+                  {{ broker.ccy }} {{ money(broker.value) }}
                 </div>
               </div>
-            </q-card-section>
-          </q-card>
-        </div>
-
-        <div class="col-12 col-sm-6 col-md">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="text-caption text-grey-7">Stock cost</div>
-              <div class="text-h5 text-weight-bold money">{{ figure(current.cost) }}</div>
-              <div class="q-mt-sm">
-                <div
-                  v-for="broker in current.brokerages"
-                  :key="broker.id"
-                  class="row no-wrap text-caption"
-                >
-                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                  <q-space />
-                  <span class="money">{{ money(broker.cost_base ?? broker.cost) }}</span>
+              <div class="text-right money text-grey-8">
+                <div>{{ money(broker.cost_base ?? broker.cost) }}</div>
+                <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
+                  {{ broker.ccy }} {{ money(broker.cost) }}
                 </div>
               </div>
-            </q-card-section>
-          </q-card>
-        </div>
-
-        <div class="col-12 col-sm-6 col-md">
-          <q-card flat bordered class="full-height">
-            <q-card-section>
-              <div class="row items-center">
-                <div class="text-caption text-grey-7">Unrealised P&amp;L</div>
-                <q-space />
-                <q-badge
-                  v-if="unrealisedPct"
-                  :class="
-                    up(current.unrealised)
-                      ? 'app-tint app-tint--positive'
-                      : 'app-tint app-tint--negative'
-                  "
-                  :label="unrealisedPct"
-                />
-              </div>
-              <div class="text-h5 text-weight-bold money" :class="signClass(current.unrealised)">
-                {{ figure(current.unrealised, true) }}
-              </div>
-              <div class="q-mt-sm">
-                <div
-                  v-for="broker in current.brokerages"
-                  :key="broker.id"
-                  class="row no-wrap text-caption"
-                >
-                  <span class="text-grey-7 ellipsis q-mr-sm">{{ broker.name }}</span>
-                  <q-space />
-                  <span class="money" :class="signClass(gain(broker))">{{
-                    money(gain(broker))
-                  }}</span>
+              <div class="text-right money" :class="signClass(gain(broker))">
+                <div class="text-weight-medium">{{ money(gain(broker)) }}</div>
+                <div class="text-caption">
+                  {{ percent(gain(broker), broker.cost_base ?? broker.cost) }}
                 </div>
               </div>
-            </q-card-section>
+            </div>
+            <div class="app-worth-stocks app-worth-stocks--total">
+              <span class="text-grey-8">All brokerages</span>
+              <span class="text-right money text-weight-bold">{{ money(current.value) }}</span>
+              <span class="text-right money text-weight-bold text-grey-8">
+                {{ money(current.cost) }}
+              </span>
+              <span
+                class="text-right money text-weight-bold"
+                :class="signClass(current.unrealised)"
+              >
+                {{ money(current.unrealised) }}
+              </span>
+            </div>
           </q-card>
         </div>
       </div>
@@ -300,6 +304,36 @@ const sinceGrowth = computed(() => change(props.since))
 const unrealisedPct = computed(() => percent(props.current.unrealised, props.current.cost))
 
 const gain = broker => broker.unrealised_base ?? broker.unrealised
+
+// The parts of net worth with the chart's colours; the bar is drawn from the parts that
+// hold it up, since a debt has no width to give, and every part is named with its share.
+const parts = computed(() =>
+  [
+    {
+      key: 'cash',
+      label: 'Cash',
+      value: props.current.cash,
+      colour: '#059669',
+      class: 'text-positive',
+    },
+    {
+      key: 'value',
+      label: 'Stocks',
+      value: props.current.value,
+      colour: '#2563eb',
+      class: 'text-primary',
+    },
+    {
+      key: 'cards',
+      label: 'Cards owe',
+      value: props.current.cards,
+      colour: '#e11d48',
+      class: 'text-negative',
+    },
+  ]
+    .filter(part => !isZero(part.value))
+    .map(part => ({ ...part, gross: Math.max(Number(part.value), 0) })),
+)
 
 const dayFormat = new Intl.DateTimeFormat('en', {
   day: 'numeric',
