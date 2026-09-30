@@ -6,9 +6,7 @@
       :groups="statements"
       :banks="cardBanks"
       :shown="shownStatement"
-      :shown-month="shownMonth"
       @filter="filterStatement"
-      @filter-month="filterMonth"
     />
 
     <AppTable :rows="data.data" :columns="columns" title="Transaction" dense>
@@ -161,12 +159,6 @@ const shownStatement = computed(() => {
 
   return filter.due_date ? { cardId: Number(filter.account_id), dueDate: filter.due_date } : null
 })
-
-const shownMonth = computed(() => usePage().props.params?.filter?.due_month ?? null)
-
-// A second click on the month already shown clears it, as a statement's does.
-const filterMonth = month =>
-  shownMonth.value === month ? filterBar.value?.clear() : filterBar.value?.showDueMonth(month)
 
 // A second click on the statement already shown clears it.
 const filterStatement = ({ cardId, dueDate }) =>

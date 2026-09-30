@@ -1068,31 +1068,6 @@ body {
   min-width: 0;
 }
 
-/* The statement panel's month shortcuts: a pill each, filled while it is the filter. */
-.app-month-chip {
-  background: #f1f5f9;
-  color: #334155;
-  border-radius: 999px;
-  padding: 2px 12px;
-  font-size: 13px;
-}
-
-.app-month-chip--on {
-  background: var(--q-primary);
-  color: #fff;
-}
-
-.app-month-chip__count {
-  margin-left: 6px;
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #b91c1c;
-  font-size: 11px;
-  font-weight: 700;
-}
-
 /* The transactions filter bar: a white search, and the open filters on a soft panel. */
 .app-filter-search .q-field__control {
   background: var(--app-surface);
@@ -1667,4 +1642,14 @@ body {
 /* Two cards side by side on the home page: their four figures two by two. */
 .app-outlook--pairs {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Compact statements: a short row a card, more of them across. */
+.app-statement-tiles--compact {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+}
+
+.app-statement-tiles--compact .app-statement-tile {
+  padding: 8px 12px;
 }

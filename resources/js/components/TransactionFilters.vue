@@ -592,13 +592,7 @@ const showStatement = (cardId, dueDate) => {
   Object.assign(filters, { account_id: [cardId], due_date: dueDate })
 }
 
-// The statement panel's month shortcut: every card's statements due that month.
-const showDueMonth = month => {
-  clear()
-  filters.due_month = [month]
-}
-
-defineExpose({ showStatement, showDueMonth, clear })
+defineExpose({ showStatement, clear })
 
 watch(filters, apply, { deep: true })
 </script>

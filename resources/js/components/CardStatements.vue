@@ -5,35 +5,27 @@
       <div class="text-h6 text-weight-medium">Card statements</div>
       <div class="text-caption text-grey-6 q-ml-sm">{{ tiles.length }} still owing</div>
       <q-space />
-      <!-- Every card's statements due in a month, as one list below. -->
-      <div class="row items-center q-gutter-xs">
-        <span class="text-caption text-grey-7 q-mr-xs">Due in</span>
-        <q-btn
-          v-for="month in months"
-          :key="month.month"
-          dense
-          unelevated
-          no-caps
-          class="app-month-chip"
-          :class="{ 'app-month-chip--on': shownMonth === month.month }"
-          @click="emit('filter-month', month.month)"
-        >
-          {{ month.label }}
-          <span v-if="month.owing" class="app-month-chip__count">{{ month.owing }}</span>
-          <q-tooltip :delay="500" :offset="[0, 6]">
-            {{
-              shownMonth === month.month
-                ? 'Show every transaction'
-                : `Every card's statement due in ${month.label}${month.owing ? `, ${month.owing} still owing` : ''}`
-            }}
-          </q-tooltip>
-        </q-btn>
-      </div>
+      <!-- The tiles cut to what is paid from them, remembered per browser. -->
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="grey-8"
+        :icon="compact ? 'unfold_more' : 'unfold_less'"
+        :label="compact ? 'Expand' : 'Compact'"
+        @click="compact = !compact"
+      >
+        <q-tooltip :delay="500" :offset="[0, 6]">
+          {{
+            compact ? 'Show each statement in full' : 'Only the card, when, how much, and Settle'
+          }}
+        </q-tooltip>
+      </q-btn>
     </q-card-section>
 
     <!-- A tile per statement still owing, across every card, soonest due first. -->
     <q-card-section class="q-pt-none">
-      <div class="app-statement-tiles">
+      <div class="app-statement-tiles" :class="{ 'app-statement-tiles--compact': compact }">
         <div
           v-for="{ group, period } in tiles"
           :key="`${group.card.id}-${period.due_date}`"
@@ -43,86 +35,37 @@
             'app-statement-tile--late': period.days_until_due < 0,
           }"
         >
-          <div class="row items-center no-wrap">
-            <span class="text-subtitle2 text-weight-bold text-grey-9 ellipsis">
-              {{ group.card.name }}
-            </span>
-            <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
-            <q-space />
-            <q-badge v-bind="dueBadge(period)" />
-          </div>
-
-          <div class="text-h5 text-weight-bold money q-mt-sm" :class="owedClass(period)">
-            {{ money(period.owed) }}
-          </div>
-          <div class="text-body2 text-grey-8">
-            due <span class="text-weight-bold">{{ formatDate(period.due_date) }}</span> ·
-            {{ bankLine(group) }}
-          </div>
-
-          <div class="text-caption text-grey-7 q-mt-xs money">
-            {{ count(period.charge_count, 'charge') }} · {{ money(period.charged) }}
-            <!-- Paid only once something is, since it is almost always nothing. -->
-            <template v-if="!isZero(period.paid)">
-              · {{ money(period.paid) }} paid, {{ count(period.payment_count, 'payment') }}
-            </template>
-          </div>
-          <div class="text-caption text-grey-6">{{ covers(period) }}</div>
-
-          <!-- A pending row means the owed total is not final yet. -->
-          <q-badge
-            v-if="period.pending_count"
-            class="q-mt-xs app-tint app-tint--warning"
-            :label="`${period.pending_count} not yet posted`"
-          />
-
-          <div class="app-statement-tile__spacer" />
-
-          <!-- Every action on the statement, labelled, along the tile's foot. -->
-          <div class="row items-center no-wrap app-statement-tile__actions">
-            <q-btn
-              flat
-              dense
-              no-caps
-              :color="isShown(group, period) ? 'primary' : 'grey-8'"
-              icon="filter_list"
-              :label="isShown(group, period) ? 'Showing' : 'Transactions'"
-              @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
-            >
-              <q-tooltip :delay="500" :offset="[0, 6]">
-                {{
-                  isShown(group, period)
-                    ? 'Show every transaction'
-                    : "Show this statement's transactions"
-                }}
-              </q-tooltip>
-            </q-btn>
-            <q-btn
-              flat
-              dense
-              round
-              color="grey-7"
-              icon="edit_calendar"
-              :disable="!correctable(period)"
-              @click="openCorrect(group, period)"
-            >
-              <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
-                {{ correctionBlocked(period) }}
-              </q-tooltip>
-              <q-tooltip v-else :delay="500" :offset="[0, 6]">
-                Correct this statement's due date
-              </q-tooltip>
-            </q-btn>
-            <q-space />
+          <!-- Compact: the card and its due day, what it owes, and Settle. The full tile
+               below is untouched, only not drawn. -->
+          <!-- The tile itself filters to its statement, as the full tile's Transactions
+               does; Settle is stopped so paying does not also filter. -->
+          <div
+            v-if="compact"
+            class="row items-center no-wrap cursor-pointer"
+            @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
+          >
+            <div class="col" style="min-width: 0">
+              <div class="text-subtitle2 text-weight-bold text-grey-9 ellipsis">
+                {{ group.card.name }}
+              </div>
+              <div class="text-caption text-grey-7">
+                due <span class="text-weight-bold">{{ formatDate(period.due_date) }}</span>
+              </div>
+            </div>
+            <div class="text-subtitle1 text-weight-bold money q-mx-sm" :class="owedClass(period)">
+              {{ money(period.owed) }}
+            </div>
+            <!-- The icon alone here: the tooltip names it, and the row has little room. -->
             <q-btn
               unelevated
               dense
-              no-caps
+              size="sm"
+              padding="4px 6px"
               icon="payments"
-              label="Settle"
-              class="app-btn app-btn--positive text-weight-bold q-px-sm"
+              class="app-btn app-btn--positive"
+              :aria-label="`Settle ${group.card.name}`"
               :disable="!settleable(group, period)"
-              @click="openSettle(group, period)"
+              @click.stop="openSettle(group, period)"
             >
               <q-tooltip :delay="500" :offset="[0, 6]">
                 {{
@@ -131,6 +74,97 @@
               </q-tooltip>
             </q-btn>
           </div>
+
+          <template v-else>
+            <div class="row items-center no-wrap">
+              <span class="text-subtitle2 text-weight-bold text-grey-9 ellipsis">
+                {{ group.card.name }}
+              </span>
+              <q-badge outline color="grey-7" class="q-ml-sm" :label="group.card.ccy" />
+              <q-space />
+              <q-badge v-bind="dueBadge(period)" />
+            </div>
+
+            <div class="text-h5 text-weight-bold money q-mt-sm" :class="owedClass(period)">
+              {{ money(period.owed) }}
+            </div>
+            <div class="text-body2 text-grey-8">
+              due <span class="text-weight-bold">{{ formatDate(period.due_date) }}</span> ·
+              {{ bankLine(group) }}
+            </div>
+
+            <div class="text-caption text-grey-7 q-mt-xs money">
+              {{ count(period.charge_count, 'charge') }} · {{ money(period.charged) }}
+              <!-- Paid only once something is, since it is almost always nothing. -->
+              <template v-if="!isZero(period.paid)">
+                · {{ money(period.paid) }} paid, {{ count(period.payment_count, 'payment') }}
+              </template>
+            </div>
+            <div class="text-caption text-grey-6">{{ covers(period) }}</div>
+
+            <!-- A pending row means the owed total is not final yet. -->
+            <q-badge
+              v-if="period.pending_count"
+              class="q-mt-xs app-tint app-tint--warning"
+              :label="`${period.pending_count} not yet posted`"
+            />
+
+            <div class="app-statement-tile__spacer" />
+
+            <!-- Every action on the statement, labelled, along the tile's foot. -->
+            <div class="row items-center no-wrap app-statement-tile__actions">
+              <q-btn
+                flat
+                dense
+                no-caps
+                :color="isShown(group, period) ? 'primary' : 'grey-8'"
+                icon="filter_list"
+                :label="isShown(group, period) ? 'Showing' : 'Transactions'"
+                @click="emit('filter', { cardId: group.card.id, dueDate: period.due_date })"
+              >
+                <q-tooltip :delay="500" :offset="[0, 6]">
+                  {{
+                    isShown(group, period)
+                      ? 'Show every transaction'
+                      : "Show this statement's transactions"
+                  }}
+                </q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                dense
+                round
+                color="grey-7"
+                icon="edit_calendar"
+                :disable="!correctable(period)"
+                @click="openCorrect(group, period)"
+              >
+                <q-tooltip v-if="!correctable(period)" :delay="500" :offset="[0, 6]">
+                  {{ correctionBlocked(period) }}
+                </q-tooltip>
+                <q-tooltip v-else :delay="500" :offset="[0, 6]">
+                  Correct this statement's due date
+                </q-tooltip>
+              </q-btn>
+              <q-space />
+              <q-btn
+                unelevated
+                dense
+                no-caps
+                icon="payments"
+                label="Settle"
+                class="app-btn app-btn--positive text-weight-bold q-px-sm"
+                :disable="!settleable(group, period)"
+                @click="openSettle(group, period)"
+              >
+                <q-tooltip :delay="500" :offset="[0, 6]">
+                  {{
+                    settleable(group, period) ? 'Pay this statement' : blockedReason(group, period)
+                  }}
+                </q-tooltip>
+              </q-btn>
+            </div>
+          </template>
         </div>
       </div>
     </q-card-section>
@@ -151,55 +185,11 @@ const props = defineProps({
   groups: { type: Array, default: Array },
   banks: { type: Object, default: () => ({}) },
   shown: { type: Object, default: null },
-  // The YYYY-MM the table is filtered to, if it is.
-  shownMonth: { type: String, default: null },
 })
 
-const emit = defineEmits(['filter', 'filter-month'])
+const emit = defineEmits(['filter'])
 
-const monthFormat = new Intl.DateTimeFormat('en', {
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-})
-
-// Hong Kong's month, as the server counts it, not the browser's.
-const thisMonth = new Intl.DateTimeFormat('en-CA', { timeZone: usePage().props.tz })
-  .format(new Date())
-  .slice(0, 7)
-
-const shiftMonth = (month, by) => {
-  const day = new Date(`${month}-15T12:00:00Z`)
-  day.setUTCMonth(day.getUTCMonth() + by)
-
-  return day.toISOString().slice(0, 7)
-}
-
-// The last three months, which are paid and looked back on, and every month a statement is
-// still owing in, each with how many are.
-const months = computed(() => {
-  const owing = {}
-
-  for (const group of props.groups) {
-    for (const period of group.periods) {
-      const month = period.due_date.slice(0, 7)
-      owing[month] = (owing[month] ?? 0) + 1
-    }
-  }
-
-  const all = new Set([
-    shiftMonth(thisMonth, -2),
-    shiftMonth(thisMonth, -1),
-    thisMonth,
-    ...Object.keys(owing),
-  ])
-
-  return [...all].sort().map(month => ({
-    month,
-    label: monthFormat.format(new Date(`${month}-15T12:00:00Z`)),
-    owing: owing[month] ?? 0,
-  }))
-})
+const compact = useStorage('transactions.statementsCompact', false)
 
 // Every card's statements in one run, soonest due first, each tile keeping its card.
 const tiles = computed(() =>
