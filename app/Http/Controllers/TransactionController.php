@@ -315,8 +315,26 @@ class TransactionController extends Controller
             ->all();
 
         // Every account, not just active ones: a closed card's history is still searchable.
+        //
+        // Most used first, because the filter's question is which account, and the answer is
+        // almost always the one with the most on it. Ranked here rather than in the option
+        // list because the list re-sorts by account type to put the accounts under a heading
+        // each, and that sort is stable -- so this order is what survives inside a heading.
+        //
+        // A left join, for the account with no rows in it: an inner join would quietly make
+        // a new account unfilterable, and nothing else in the suite would notice. Name breaks
+        // a tie, so two accounts with the same number of rows keep the order they had.
         $filterOptions = [
-            'accounts' => Account::query()->orderBy('name')->get(['id', 'name', 'type', 'ccy'])
+            'accounts' => Account::query()
+                ->leftJoin('transactions', 'transactions.account_id', '=', 'accounts.id')
+                ->select('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
+                // row_count, not usage: the second is a reserved word and MySQL refuses it
+                // as an alias outright.
+                ->selectRaw('COUNT(transactions.id) AS row_count')
+                ->groupBy('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
+                ->orderByDesc('row_count')
+                ->orderBy('accounts.name')
+                ->get()
                 ->map(fn (Account $account) => [
                     'label' => $account->name,
                     'value' => $account->id,

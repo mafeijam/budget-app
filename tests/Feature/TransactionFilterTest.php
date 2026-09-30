@@ -512,6 +512,47 @@ class TransactionFilterTest extends TestCase
         );
     }
 
+    public function test_the_account_filter_offers_the_most_used_first(): void
+    {
+        // The filter's question is which account, and the answer is usually the one with the
+        // most on it. The two added cash accounts are named to sort the other way round, so
+        // a list ordered by name fails here and a list ordered by rows does not.
+        Account::create(['name' => 'AAA Cash', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+        $one = Account::create(['name' => 'ZZZ Cash', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->post('/transactions', [
+            'account_id' => $one->id,
+            'date' => '2026-04-01',
+            'type' => 'deposit',
+            'description' => 'Interest',
+            'amount' => '1.0000',
+            'ccy' => 'HKD',
+        ])->assertSessionHasNoErrors();
+
+        // The bank has four rows from the fixtures, ZZZ Cash one and AAA Cash none.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('filterOptions.accounts', fn ($accounts) => collect($accounts)
+                ->where('type', 'cash')
+                ->pluck('label')
+                ->all() === ['Bank', 'ZZZ Cash', 'AAA Cash'])
+        );
+    }
+
+    public function test_an_account_with_no_transactions_is_still_offered_to_filter_by(): void
+    {
+        // A new account, before anything has been written to it. Ranking by row count means
+        // the count has to come from a left join: an inner one drops the account, and a
+        // brand-new account is the one most worth being able to look at.
+        Account::create(['name' => 'Fresh', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('filterOptions.accounts', fn ($accounts) => collect($accounts)
+                ->where('label', 'Fresh')
+                ->pluck('type')
+                ->all() === ['cash'])
+        );
+    }
+
     public function test_the_statement_panel_ignores_the_filter(): void
     {
         // Filtered to the bank, the card still owes what it owes.
