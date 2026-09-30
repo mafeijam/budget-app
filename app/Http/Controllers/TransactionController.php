@@ -264,6 +264,10 @@ class TransactionController extends Controller
         // is cleared: gone, it shortened the page under a reader scrolled down to it, and the
         // browser threw them back up the list.
         $totals = $this->totals(clone $transactions->getEloquentBuilder());
+        $unconverted = $totals['unconverted'];
+        $baseTotals = $totals['base'];
+        $totals = $totals['currencies'];
+        $base = Currency::Hkd->value;
 
         // By the signed figure the Amount column shows, not the stored magnitude, or money in
         // and money out interleave.
@@ -522,6 +526,9 @@ class TransactionController extends Controller
             'editLocks',
             'directions',
             'totals',
+            'baseTotals',
+            'unconverted',
+            'base',
             'filterOptions',
             'typeOptions',
             'typeDefaults',
@@ -1015,23 +1022,37 @@ class TransactionController extends Controller
 
     /**
      * Money in and out per currency, signed as each row's Amount is. A brokerage row
-     * moves no balance, so trades are totalled apart rather than netted.
+     * moves no balance, so trades are totalled apart rather than netted. A pending row
+     * moves no balance either, so it is left out of these and of the base row below.
      *
-     * @return list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string}>
+     * Alongside the per-currency strips, the same figures in the base currency, for when
+     * the filter spans more than one: a list of AUD and HKD rows otherwise has no total
+     * anyone can read. Only when it does, since a single-currency list gains nothing from
+     * a row that repeats the strip above it in different words.
+     *
+     * @return array{currencies: list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string}>, base: array{count: int, in: string, out: string, net: string, trades: string}|null, unconverted: list<string>}
      */
     private function totals(Builder $query): array
     {
-        $rows = $query->setEagerLoads([])->with('account:id,type')->get(['id', 'account_id', 'type', 'amount', 'ccy']);
+        // A pending row moves no balance, so it is not a figure the reader has yet, and the
+        // list is the only place it belongs. On the clone and not the shared builder, since
+        // the table above must keep showing the rows the reader is looking at.
+        $query = $query->whereIn('status', TransactionStatus::countingTowardBalance());
 
-        return $rows
+        // The bag is a morphOne, so the key is on meta and only this row's own id is
+        // needed here: the morph type is added to the eager load's own where clause.
+        $rows = $query->setEagerLoads([])
+            ->with('account:id,type,ccy', 'meta')
+            ->get(['id', 'account_id', 'type', 'amount', 'ccy']);
+
+        $currencies = $rows
             ->groupBy('ccy')
             ->sortKeys()
             ->map(function (Collection $group, string $ccy) {
                 $in = $out = $trades = BigDecimal::zero();
 
                 foreach ($group as $row) {
-                    $sign = $row->account === null ? 0 : TransactionType::from($row->type)
-                        ->movesBalanceOn(AccountType::from($row->account->type));
+                    $sign = $this->signOf($row);
 
                     match ($sign) {
                         1 => $in = $in->plus($row->amount),
@@ -1051,6 +1072,92 @@ class TransactionController extends Controller
             })
             ->values()
             ->all();
+
+        $base = $this->baseTotals($rows);
+
+        return [
+            'currencies' => $currencies,
+            'base' => $currencies === [] || count($currencies) < 2 ? null : $base['total'],
+            'unconverted' => $base['unconverted'],
+        ];
+    }
+
+    /**
+     * The same figures in the base currency, and the currencies left out of them.
+     *
+     * @param  Collection<int, Transaction>  $rows
+     * @return array{total: array{count: int, in: string, out: string, net: string, trades: string}, unconverted: list<string>}
+     */
+    private function baseTotals(Collection $rows): array
+    {
+        $base = Currency::Hkd->value;
+        $in = $out = $trades = BigDecimal::zero();
+        $count = 0;
+        $unconverted = [];
+
+        foreach ($rows as $row) {
+            $figure = $this->baseFigure($row, $base);
+
+            if ($figure === null) {
+                $unconverted[$row->ccy] = true;
+
+                continue;
+            }
+
+            $count++;
+
+            match ($this->signOf($row)) {
+                1 => $in = $in->plus($figure),
+                -1 => $out = $out->plus($figure),
+                default => $trades = $trades->plus($figure),
+            };
+        }
+
+        return [
+            'total' => [
+                'count' => $count,
+                'in' => (string) $in->toScale(4),
+                'out' => (string) $out->toScale(4),
+                'net' => (string) $in->minus($out)->toScale(4),
+                'trades' => (string) $trades->toScale(4),
+            ],
+            'unconverted' => array_keys($unconverted),
+        ];
+    }
+
+    /**
+     * What this row is worth in the base currency, or null when it says nowhere.
+     *
+     * A foreign charge states the card's own currency in card_amount, and that is the
+     * figure AccountBalance sums. It is the card's currency and not the base's, so the
+     * account is asked which: reading it as a base figure regardless would put a US
+     * card's dollars into a total labelled HKD, and that total would be wrong with
+     * nothing to show for it.
+     *
+     * Every other foreign row has no figure to offer. A rate is the only thing that
+     * could make one, and a row counted at one-for-one would put a yen row into the
+     * total as that many dollars, so it is left out and its currency named instead.
+     */
+    private function baseFigure(Transaction $row, string $base): ?BigDecimal
+    {
+        if ($row->ccy === $base) {
+            return BigDecimal::of($row->amount);
+        }
+
+        if ($row->account?->type !== AccountType::Card->value || $row->account->ccy !== $base) {
+            return null;
+        }
+
+        $stated = $row->meta?->meta['card_amount'] ?? null;
+
+        return $stated === null ? null : BigDecimal::of($stated);
+    }
+
+    /** 1, -1 or 0, as the row's Amount column shows it. */
+    private function signOf(Transaction $row): int
+    {
+        return $row->account === null ? 0 : TransactionType::from($row->type)
+            ->movesBalanceOn(AccountType::from($row->account->type));
     }
 
     /**

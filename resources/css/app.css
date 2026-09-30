@@ -1739,6 +1739,11 @@ body {
   border-top: 1px solid var(--app-border);
 }
 
+/* The currencies the base total left out, under the strips rather than beside them. */
+.app-tx-totals__note {
+  border-top: 1px solid var(--app-border);
+}
+
 .app-tx-totals__figure {
   text-align: right;
   white-space: nowrap;

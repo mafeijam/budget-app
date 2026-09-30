@@ -553,13 +553,15 @@ class TransactionFilterTest extends TestCase
     public function test_a_filtered_list_totals_every_matching_row_not_just_the_page(): void
     {
         // Two charges of 120, a withdrawal of 9000 and a deposit of 30000, on pages of one.
+        // Three of the four are counted: the second charge is pending, and a pending row
+        // is not a figure the reader has yet.
         $this->get('/transactions?per_page=5&filter[ccy]=HKD')->assertInertia(fn (Assert $page) => $page
             ->where('totals', [[
                 'ccy' => 'HKD',
-                'count' => 4,
+                'count' => 3,
                 'in' => '30000.0000',
-                'out' => '9240.0000',
-                'net' => '20760.0000',
+                'out' => '9120.0000',
+                'net' => '20880.0000',
                 'trades' => '0.0000',
             ]])
         );
@@ -570,8 +572,8 @@ class TransactionFilterTest extends TestCase
         // The same rows as the HKD filter above, since every row here is HKD: the card stays
         // when the last filter goes rather than taking the page's height with it.
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('totals.0.count', 4)
-            ->where('totals.0.net', '20760.0000')
+            ->where('totals.0.count', 3)
+            ->where('totals.0.net', '20880.0000')
         );
     }
 

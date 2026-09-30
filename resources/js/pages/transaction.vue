@@ -79,53 +79,75 @@
     </AppTable>
 
     <!-- Every filtered row, not just this page, one line per currency: nothing is
-         converted, so HKD and USD never add up. -->
+         converted, so HKD and USD never add up. Where a second currency is in the
+         filter, a base row in front of them, which is the one total that does add up.
+         Pending rows are in none of them, which the card says under the strips. -->
     <q-card v-if="showTotals && totals.length" flat bordered>
       <div
-        v-for="total in totals"
-        :key="total.ccy"
+        v-for="strip in totalStrips"
+        :key="strip.key"
         class="app-tx-totals"
         :class="{ 'app-tx-totals--trades': hasTrades }"
       >
         <div class="row items-center no-wrap q-gutter-x-sm">
           <q-icon name="functions" size="xs" color="grey-6" />
-          <q-badge outline color="grey-7" :label="total.ccy" />
-          <span class="text-caption text-grey-6">
-            {{ total.count }} row{{ total.count === 1 ? '' : 's' }}, every page
+          <q-badge
+            :outline="!strip.base"
+            :color="strip.base ? 'primary' : 'grey-7'"
+            :label="strip.ccy"
+          />
+          <span class="text-caption" :class="strip.base ? 'text-grey-8' : 'text-grey-6'">
+            {{ strip.caption }}
           </span>
         </div>
 
-        <!-- A column each, the same in every currency's strip, so the figures stack. -->
+        <!-- A column each, the same in every strip, so the figures stack. -->
         <div class="app-tx-totals__figure">
           <div class="app-tx-totals__label">In</div>
-          <div class="money text-body2" :class="isZero(total.in) ? 'text-grey-5' : 'text-positive'">
-            {{ isZero(total.in) ? '—' : `+${formatMoney(total.in)}` }}
+          <div class="money text-body2" :class="isZero(strip.in) ? 'text-grey-5' : 'text-positive'">
+            {{ isZero(strip.in) ? '—' : `+${formatMoney(strip.in)}` }}
           </div>
         </div>
         <div class="app-tx-totals__figure">
           <div class="app-tx-totals__label">Out</div>
           <div
             class="money text-body2"
-            :class="isZero(total.out) ? 'text-grey-5' : 'text-negative'"
+            :class="isZero(strip.out) ? 'text-grey-5' : 'text-negative'"
           >
-            {{ isZero(total.out) ? '—' : `−${formatMoney(total.out)}` }}
+            {{ isZero(strip.out) ? '—' : `−${formatMoney(strip.out)}` }}
           </div>
         </div>
         <div v-if="hasTrades" class="app-tx-totals__figure">
           <div class="app-tx-totals__label">Trades</div>
           <div
             class="money text-body2"
-            :class="isZero(total.trades) ? 'text-grey-5' : 'text-grey-9'"
+            :class="isZero(strip.trades) ? 'text-grey-5' : 'text-grey-9'"
           >
-            {{ isZero(total.trades) ? '—' : formatMoney(total.trades) }}
+            {{ isZero(strip.trades) ? '—' : formatMoney(strip.trades) }}
           </div>
         </div>
         <div class="app-tx-totals__figure">
           <div class="app-tx-totals__label">Net</div>
-          <div class="money text-body2 text-weight-bold" :class="netClass(total.net)">
-            {{ signedNet(total.net) }}
+          <div class="money text-body2 text-weight-bold" :class="netClass(strip.net)">
+            {{ signedNet(strip.net) }}
           </div>
         </div>
+      </div>
+
+      <!-- The list above shows a pending row and this does not count it, so the card says
+           why rather than leaving a count that looks like a row went missing. -->
+      <div class="app-tx-totals__note q-px-md q-py-xs text-caption text-grey-7">
+        Pending rows are left out: they do not count toward a balance.
+      </div>
+
+      <!-- Rows, not whole currencies: a currency can be in the total and still have a row
+           of its own out of it, and saying otherwise would overstate what is missing. -->
+      <div
+        v-if="showTotals && unconverted.length"
+        class="app-tx-totals__note q-px-md q-py-xs text-caption text-grey-7"
+      >
+        {{ unconverted.join(', ') }} rows left out of the {{ base }} total: no {{ base }} figure on
+        the row.
       </div>
     </q-card>
   </div>
@@ -135,6 +157,43 @@
 const filterBar = ref(null)
 
 const totals = computed(() => usePage().props.totals ?? [])
+
+// Null unless the filter holds a second currency: a list of one currency gains nothing
+// from a row that says the same figures in the same money.
+const baseTotals = computed(() => usePage().props.baseTotals ?? null)
+
+const unconverted = computed(() => usePage().props.unconverted ?? [])
+
+/*
+ * The base row in front of the per-currency ones, drawn by the same markup so the columns
+ * line up. The two rows differ in what they claim and nothing else, and the caption is
+ * what carries that: the base row's count is the rows that had a base figure, across
+ * every currency, where a currency row's is the rows in that one currency. "every page"
+ * on both would read as the same count and be neither.
+ */
+const totalStrips = computed(() => {
+  const perCurrency = totals.value.map(total => ({
+    ...total,
+    key: `ccy-${total.ccy}`,
+    base: false,
+    caption: `${total.count} row${total.count === 1 ? '' : 's'}, every page`,
+  }))
+
+  if (!baseTotals.value) {
+    return perCurrency
+  }
+
+  return [
+    {
+      ...baseTotals.value,
+      key: 'base',
+      base: true,
+      ccy: props.base,
+      caption: `${baseTotals.value.count} row${baseTotals.value.count === 1 ? '' : 's'}, every currency`,
+    },
+    ...perCurrency,
+  ]
+})
 
 // Off by default, and remembered per browser, as the filter panel is; the toggle is in it.
 const showTotals = useStorage('transactions.totalsOpen', false)
@@ -148,7 +207,7 @@ const signedNet = value =>
     : `${isZero(value) ? '' : '+'}${formatMoney(value)}`
 
 // A Trades column in every strip when any has trades, so the columns stay in line.
-const hasTrades = computed(() => totals.value.some(total => !isZero(total.trades)))
+const hasTrades = computed(() => totalStrips.value.some(strip => !isZero(strip.trades)))
 
 const netClass = value =>
   isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'
@@ -172,6 +231,7 @@ const props = defineProps({
   options: { type: Object, default: Object },
   statements: { type: Array, default: Array },
   cardBanks: { type: Object, default: () => ({}) },
+  base: { type: String, default: 'HKD' },
 })
 
 const pagination = usePagination()
