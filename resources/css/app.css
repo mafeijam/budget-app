@@ -1653,3 +1653,14 @@ body {
 .app-statement-tiles--compact .app-statement-tile {
   padding: 8px 12px;
 }
+
+/* The date filter's quick ranges, a column beside its calendar. */
+.app-range-shortcuts {
+  min-width: 180px;
+  border-right: 1px solid var(--app-border);
+}
+
+.app-range-shortcuts--on {
+  background: var(--app-btn-tint);
+  color: var(--app-primary-ink);
+}

@@ -95,8 +95,27 @@
     >
       <template #append>
         <q-btn flat dense round icon="event">
-          <q-menu :offset="[10, 15]" anchor="bottom right" self="top right">
-            <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="primary" />
+          <q-menu ref="rangeMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+            <!-- The ranges asked for most, beside the calendar for any other. -->
+            <div class="row no-wrap">
+              <q-list dense class="app-range-shortcuts">
+                <q-item-label header class="q-pb-xs">Quick</q-item-label>
+                <q-item
+                  v-for="shortcut in rangeShortcuts"
+                  :key="shortcut.label"
+                  clickable
+                  :active="isRange(shortcut)"
+                  active-class="app-range-shortcuts--on"
+                  @click="pickRange(shortcut)"
+                >
+                  <q-item-section>
+                    <q-item-label>{{ shortcut.label }}</q-item-label>
+                    <q-item-label caption>{{ shortcut.from }} – {{ shortcut.to }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </q-list>
+              <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="primary" />
+            </div>
           </q-menu>
         </q-btn>
       </template>
@@ -457,6 +476,44 @@ const filters = reactive(parse(seeded))
 // controls, a chip went at the click and the rows a fifth of a second later, and the table
 // jumped up under the old rows before they were replaced.
 const applied = computed(() => parse(page.props.params?.filter ?? {}))
+
+// Today in the app's time zone, which the server's dates are in; the browser's day differs
+// from Hong Kong's for hours of every day.
+const todayHere = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: page.props.tz ?? 'Asia/Hong_Kong' }).format(
+    new Date(),
+  )
+
+// A month's first and last day, `back` months before today's, as YYYY-MM-DD.
+const monthBounds = back => {
+  const [year, month] = todayHere().split('-').map(Number)
+  const first = new Date(Date.UTC(year, month - 1 - back, 1))
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0))
+
+  return [first, last].map(day => day.toISOString().slice(0, 10))
+}
+
+const rangeShortcuts = computed(() => {
+  const [thisFrom] = monthBounds(0)
+  const [lastFrom, lastTo] = monthBounds(1)
+  const [threeFrom] = monthBounds(2)
+  const today = todayHere()
+
+  return [
+    { label: 'This month', from: thisFrom, to: today },
+    { label: 'Last month', from: lastFrom, to: lastTo },
+    { label: 'Last 3 months', from: threeFrom, to: today },
+  ]
+})
+
+const rangeMenu = ref(null)
+
+const isRange = shortcut => filters.date_from === shortcut.from && filters.date_to === shortcut.to
+
+const pickRange = shortcut => {
+  range.value = { from: shortcut.from, to: shortcut.to }
+  rangeMenu.value?.hide()
+}
 
 const range = computed({
   get: () => {
