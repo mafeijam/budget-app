@@ -564,3 +564,43 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* The categories page: what a category is, how its spending moved, and its share. */
+.app-category-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 140px 60px 180px 80px;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-category-row--quiet {
+  grid-template-columns: minmax(0, 1fr) 80px;
+}
+
+.app-category-row:last-child {
+  border-bottom: 0;
+}
+
+.app-category-row.cursor-pointer:hover {
+  background: #f8fafc;
+}
+
+.app-category-row__name {
+  min-width: 0;
+}
+
+.app-category-row__figures {
+  text-align: right;
+}
+
+@media (max-width: 767px) {
+  .app-category-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-category-row__trend {
+    display: none;
+  }
+}
