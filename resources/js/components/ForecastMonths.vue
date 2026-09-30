@@ -60,23 +60,23 @@
           <g v-for="(month, i) in bars" :key="month.month">
             <path
               v-if="month.in > 0"
-              :d="column(i, 0, month.in, 1, !typical || month.typicalIn <= 0)"
+              :d="column(barX(i, 'in'), 0, month.in, !typical || month.typicalIn <= 0)"
               :fill="colours.in"
             />
             <path
               v-if="typical && month.typicalIn > 0"
-              :d="column(i, month.in, month.in + month.typicalIn, 1, true)"
+              :d="column(barX(i, 'in'), month.in, month.in + month.typicalIn, true)"
               :fill="colours.typicalIn"
             />
             <path
               v-if="month.out > 0"
-              :d="column(i, 0, month.out, -1, !typical || month.typical <= 0)"
+              :d="column(barX(i, 'out'), 0, month.out, !typical || month.typical <= 0)"
               :fill="colours.out"
             />
             <!-- Lighter, beyond the known figure: an estimate, and drawn to look like one. -->
             <path
               v-if="typical && month.typical > 0"
-              :d="column(i, month.out, month.out + month.typical, -1, true)"
+              :d="column(barX(i, 'out'), month.out, month.out + month.typical, true)"
               :fill="colours.typical"
             />
             <text
@@ -179,8 +179,8 @@ const money = useMoney()
 const colours = {
   in: '#059669',
   out: '#dc2626',
-  typical: '#fca5a5',
-  typicalIn: '#86efac',
+  typical: '#f87171',
+  typicalIn: '#34d399',
   net: '#f59e0b',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
@@ -249,10 +249,15 @@ const scale = computed(() => {
   // A quarter of the tallest bar: at a half, a peak just past a round figure got steps of
   // twice it, and a whole empty band below the last bar.
   const tick = niceStep(peak / 4)
+  // Spending is a bar like any other now and stands up from the zero line, so the top of
+  // the scale has to clear it. It did not used to: it hung off the bottom, where `low`
+  // found it by the accident of being negative, and leaving it out runs the tallest
+  // spending column off the top of the chart with nothing to fail. Below zero there is
+  // only the net line, so that side is sized by how far short a month went -- which for a
+  // forecast is usually nothing, and then the bars get the whole height.
   const high =
-    Math.ceil(Math.max(...bars.value.map(m => Math.max(inOf(m), m.net)), 0) / tick) * tick
-  const low =
-    Math.ceil(Math.max(...bars.value.map(m => Math.max(outOf(m), -m.net)), 0) / tick) * tick
+    Math.ceil(Math.max(...bars.value.map(m => Math.max(inOf(m), outOf(m), m.net)), 0) / tick) * tick
+  const low = Math.ceil(Math.max(...bars.value.map(m => -m.net), 0) / tick) * tick
 
   return { tick, high: high || tick, low }
 })
@@ -277,19 +282,23 @@ const step = computed(() => (width.value - left - right) / Math.max(bars.value.l
 const band = i => left + i * step.value
 const centre = i => band(i) + step.value / 2
 
+// Two bars to a month with a gap between them, the pair centred on the band, so the net
+// line threading that gap is over the difference rather than over one of the two.
+const gutter = 3
+const barWidth = computed(() => Math.min(24, step.value * 0.3))
+const barX = (i, side) =>
+  centre(i) - barWidth.value - gutter / 2 + (side === 'in' ? 0 : barWidth.value + gutter)
+
 // The cash flow chart's column: square at its base, rounded at the end of its stack.
-const column = (i, from, to, direction, outer) => {
-  const w = Math.min(36, step.value * 0.6)
-  const x = centre(i) - w / 2
-  const base = y(direction * from) - direction
-  const end = y(direction * to)
+const column = (x, from, to, outer) => {
+  const w = barWidth.value
+  const base = y(from) - 1
+  const end = y(to)
   const r = outer ? Math.min(4, Math.abs(end - base)) : 0
 
   if (Math.abs(end - base) < 0.5) return ''
 
-  return direction > 0
-    ? `M${x},${base} V${end + r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end + r} V${base} Z`
-    : `M${x},${base} V${end - r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end - r} V${base} Z`
+  return `M${x},${base} V${end + r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end + r} V${base} Z`
 }
 
 const netLine = computed(() =>

@@ -55,7 +55,7 @@
           <path
             v-for="segment in month.segments"
             :key="segment.key"
-            :d="column(i, segment.from, segment.to, segment.direction, segment.outer)"
+            :d="column(barX(i, segment.side), segment.from, segment.to, segment.outer)"
             :fill="segment.colour"
           />
           <text :x="centre(i)" :y="height - 18" text-anchor="middle" class="cash-flow-chart__tick">
@@ -136,9 +136,9 @@ const money = useMoney()
 // Each kind's lighter shade is its broken-out share, stacked outermost.
 const colours = {
   income: '#059669',
-  dividend: '#6ee7b7',
+  dividend: '#34d399',
   spending: '#dc2626',
-  card: '#fca5a5',
+  card: '#f87171',
   net: '#f59e0b',
   deficit: '#dc2626',
   grid: '#e2e8f0',
@@ -158,12 +158,14 @@ const hovered = ref(null)
 // Two charts on one page must not share clip path ids, or one clips by the other's zero line.
 const uid = `cash-flow-${useId()}`
 
-// Nearest the zero line first: the part a stack starts from.
+// Nearest the zero line first: the part a stack starts from. The two stacks stand side by
+// side rather than one above the other, so a month reads as its income against its
+// spending and the net line down the gap between them is what says which won.
 const parts = [
-  { key: 'dividend', label: 'Dividend', colour: colours.dividend, direction: 1 },
-  { key: 'other_income', label: 'Income', colour: colours.income, direction: 1 },
-  { key: 'cash_spending', label: 'Cash spending', colour: colours.spending, direction: -1 },
-  { key: 'card_spending', label: 'Card spending', colour: colours.card, direction: -1 },
+  { key: 'dividend', label: 'Dividend', colour: colours.dividend, side: 'in' },
+  { key: 'other_income', label: 'Income', colour: colours.income, side: 'in' },
+  { key: 'cash_spending', label: 'Cash spending', colour: colours.spending, side: 'out' },
+  { key: 'card_spending', label: 'Card spending', colour: colours.card, side: 'out' },
 ]
 
 const monthName = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
@@ -179,20 +181,20 @@ const points = computed(() =>
     const [year, number] = month.month.split('-').map(Number)
     const day = new Date(Date.UTC(year, number - 1, 1))
 
-    const reached = { 1: 0, [-1]: 0 }
+    const reached = { in: 0, out: 0 }
     const segments = parts
       .map(part => {
-        const from = reached[part.direction]
+        const from = reached[part.side]
         const to = from + Math.max(0, Number(month[part.key]))
-        reached[part.direction] = to
+        reached[part.side] = to
 
-        return { key: part.key, colour: part.colour, direction: part.direction, from, to }
+        return { key: part.key, colour: part.colour, side: part.side, from, to }
       })
       .filter(segment => segment.to > segment.from)
 
     // Only the end of a stack is rounded; a part under another meets it square.
-    for (const direction of [1, -1]) {
-      const outer = segments.filter(segment => segment.direction === direction).at(-1)
+    for (const side of ['in', 'out']) {
+      const outer = segments.filter(segment => segment.side === side).at(-1)
       if (outer) outer.outer = true
     }
 
@@ -220,10 +222,15 @@ const scale = computed(() => {
   // A quarter of the tallest bar: at a half, a peak just past a round figure got steps of
   // twice it, and a whole empty band below the last bar.
   const tick = niceStep(peak / 4)
+  // Spending is a bar like any other now and stands up from the zero line, so the top of
+  // the scale has to clear it. It did not used to: it hung off the bottom, where `low`
+  // found it by the accident of being negative, and leaving it out runs the tallest
+  // spending column off the top of the chart with nothing to fail. Below zero there is
+  // only the net line, so that side is sized by how far short a month went.
   const high =
-    Math.ceil(Math.max(...points.value.map(m => Math.max(m.income, m.net)), 0) / tick) * tick
-  const low =
-    Math.ceil(Math.max(...points.value.map(m => Math.max(m.spending, -m.net)), 0) / tick) * tick
+    Math.ceil(Math.max(...points.value.map(m => Math.max(m.income, m.spending, m.net)), 0) / tick) *
+    tick
+  const low = Math.ceil(Math.max(...points.value.map(m => -m.net), 0) / tick) * tick
 
   return { tick, high: high || tick, low }
 })
@@ -248,20 +255,24 @@ const step = computed(() => (width - left - right) / Math.max(points.value.lengt
 const band = i => left + i * step.value
 const centre = i => band(i) + step.value / 2
 
-// Capped at 36px, square at the baseline and rounded 4px at the end of the stack, with a 1px
-// surface gap either side of the zero line and between stacked parts.
-const column = (i, from, to, direction, outer) => {
-  const w = Math.min(36, step.value * 0.75)
-  const x = centre(i) - w / 2
-  const base = y(direction * from) - direction
-  const end = y(direction * to)
+// Two bars to a month with a gap between them, the pair centred on the band, so the net
+// line threading that gap is over the difference rather than over one of the two.
+const gutter = 3
+const barWidth = computed(() => Math.min(24, step.value * 0.3))
+const barX = (i, side) =>
+  centre(i) - barWidth.value - gutter / 2 + (side === 'in' ? 0 : barWidth.value + gutter)
+
+// Capped at 24px, square at the baseline and rounded 4px at the end of the stack, with a
+// 1px surface gap between stacked parts.
+const column = (x, from, to, outer) => {
+  const w = barWidth.value
+  const base = y(from) - 1
+  const end = y(to)
   const r = outer ? Math.min(4, Math.abs(end - base)) : 0
 
   if (Math.abs(end - base) < 0.5) return ''
 
-  return direction > 0
-    ? `M${x},${base} V${end + r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end + r} V${base} Z`
-    : `M${x},${base} V${end - r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end - r} V${base} Z`
+  return `M${x},${base} V${end + r} Q${x},${end} ${x + r},${end} H${x + w - r} Q${x + w},${end} ${x + w},${end + r} V${base} Z`
 }
 
 const netCurve = computed(() =>
