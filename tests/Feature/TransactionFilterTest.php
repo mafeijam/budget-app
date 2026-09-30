@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\TransactionController;
 use App\Models\Account;
 use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -90,6 +91,35 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(
             ['filter' => ['category_id' => "{$this->category},{$travel}"]],
             ['Rent', 'Books', 'Flight', 'Coffee, tea']
+        );
+    }
+
+    public function test_it_filters_to_the_rows_with_no_category(): void
+    {
+        $none = TransactionController::NO_CATEGORY;
+
+        // Salary is the only one of the four with no category, and it is income, which says
+        // nothing about whether the filter found it: the report's uncategorised block is
+        // spending, and the list needs a second filter for that.
+        $this->assertListed(['filter' => ['category_id' => $none]], ['Salary']);
+
+        // Asked for beside a category, it is either of them. And'ing a row with no category
+        // against FOOD is a request for the empty set, and the list would show nothing for a
+        // selection the filter bar is holding two of.
+        $this->assertListed(
+            ['filter' => ['category_id' => "{$this->category},$none"]],
+            ['Salary', 'Rent', 'Books', 'Coffee, tea']
+        );
+    }
+
+    public function test_no_category_is_offered_to_the_filter_and_not_to_the_forms(): void
+    {
+        // The two forms choose a category from options.categories, and a row with no category
+        // is not a choice: offering it there would write NO_CATEGORY into a category_id, which
+        // the database has no column for and which no row would ever match.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('options.filterCategories', fn ($options) => collect($options)->last()['value'] === TransactionController::NO_CATEGORY)
+            ->where('options.categories', fn ($options) => ! collect($options)->contains('value', TransactionController::NO_CATEGORY))
         );
     }
 
@@ -557,6 +587,83 @@ class TransactionFilterTest extends TestCase
         $this->assertSame(1, $payments('&filter[type]=payment'));
         $this->assertSame(1, $payments('&filter[account_id]='.$this->card->id));
         $this->assertSame(1, $payments('&filter[account_id]='.$this->card->id.'&filter[due_date]=2026-02-09'));
+    }
+
+    public function test_it_filters_to_spending_as_the_cash_flow_report_counts_it(): void
+    {
+        $this->cardPaymentOnBank($this->payment('2026-02-01', '120.0000', self::PERIOD));
+
+        // The three rows that took money out of the user's own hands. Left out: Salary, which
+        // came in, and the bank's own side of settling the card -- a payment is a withdrawal
+        // on the bank, so no list of types can tell it from Rent, and the charge it settles is
+        // already counted by the report.
+        $this->assertListed(['filter' => ['spending' => '1']], ['Rent', 'Books', 'Coffee, tea']);
+
+        // A value that does not say yes is no filter, as with unpaid, so a stale
+        // filter[spending]=0 off the address bar does not empty the page.
+        $this->assertListed(
+            ['filter' => ['spending' => '0']],
+            ['Salary', 'Card payment', 'Rent', 'Books', 'Coffee, tea']
+        );
+    }
+
+    public function test_the_link_out_of_a_cash_flow_block_lists_what_the_block_says(): void
+    {
+        // An uncategorised withdrawal to sit under the uncategorised block, and a card payment
+        // with no category either: if the spending filter let the settlement through, the block
+        // would say 500 and the list behind it 620, and nothing on the page would say so.
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id,
+            'date' => '2026-02-02',
+            'type' => 'withdraw',
+            'description' => 'ATM',
+            'amount' => '500.0000',
+            'ccy' => 'HKD',
+        ])->assertSessionHasNoErrors();
+
+        $this->cardPaymentOnBank($this->payment('2026-02-01', '120.0000', self::PERIOD));
+
+        $february = collect($this->get('/cash-flow')->viewData('page')['props']['report'][0]['months'])
+            ->firstWhere('month', '2026-02');
+        $uncategorised = collect($february['categories'])->firstWhere('id', null);
+
+        // Rent is under FOOD, and the settlement the card paid is not spending at all.
+        $this->assertSame('500.0000', $uncategorised['amount']);
+
+        // The block's own month and its own category, read off the report, put through the
+        // filter the cash flow page builds for its link.
+        $this->get('/transactions?'.http_build_query([
+            'per_page' => 20,
+            'filter' => [
+                'counted_from' => $february['from'],
+                'counted_to' => $february['to'],
+                'spending' => '1',
+                'category_id' => TransactionController::NO_CATEGORY,
+            ],
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('data.data', fn ($rows) => $rows->pluck('description')->all() === ['ATM'])
+            ->where('totals.0.count', 1)
+            ->where('totals.0.out', $uncategorised['amount'])
+        );
+    }
+
+    /** The bank withdrawal that pays a card, which is half of a pair and not spending. */
+    private function cardPaymentOnBank(Transaction $payment): Transaction
+    {
+        $withdrawal = Transaction::create([
+            'account_id' => $this->bank->id,
+            'category_id' => null,
+            'date' => '2026-02-05',
+            'type' => 'withdraw',
+            'description' => 'Card payment',
+            'amount' => $payment->amount,
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $withdrawal->meta()->create(['meta' => ['paired_transaction_id' => $payment->id]]);
+
+        return $withdrawal;
     }
 
     public function test_the_amount_sorts_by_its_signed_figure(): void

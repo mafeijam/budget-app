@@ -9,6 +9,7 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const NO_CATEGORY: typeof import('./resources/js/composables/filter.js').NO_CATEGORY
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const byAmountDescending: typeof import('./resources/js/composables/money.js').byAmountDescending

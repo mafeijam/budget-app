@@ -347,6 +347,14 @@ const breakdownLabel = month =>
     .map(c => `${c.name} ${share(c.amount, month.spending)}`)
     .join(', ')}`
 
+// The breakdown is spending, so the link says so: a category on its own is not enough, because
+// the uncategorised block also catches the month's uncategorised income -- two dividends and
+// a credit interest sat above the cash withdrawals in the list it opened, and their total was
+// nothing like the figure on the block. A type list cannot do it either, since a card payment
+// is a withdrawal on the bank.
+//
+// NO_CATEGORY is what the filter calls a row with no category; it has no id to send, and
+// sending nothing at all read as an unfiltered month.
 const openTransactions = (month, category) =>
   router.visit('/transactions', {
     data: {
@@ -354,7 +362,8 @@ const openTransactions = (month, category) =>
         ...(props.card === 'due'
           ? { counted_from: month.from, counted_to: month.to }
           : { date_from: month.from, date_to: month.to }),
-        ...(category.id ? { category_id: category.id } : {}),
+        spending: '1',
+        category_id: category.id ?? NO_CATEGORY,
       },
     },
   })

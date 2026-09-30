@@ -13,6 +13,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Income, spending and money invested, per currency and month.
@@ -330,6 +331,36 @@ class CashFlow
         }
 
         return $sign > 0 ? ['income', $amount] : ['spending', $amount];
+    }
+
+    /**
+     * The rows this report counts as spending: a card's charge, and a bank withdrawal that is
+     * not settling one.
+     *
+     * A hand-written mirror of classify(), like whereCounted() above, and for the same reason:
+     * the transaction list needs to be able to reproduce a figure this report summed, and a
+     * filter built from the same rule cannot drift from it the way a second rule would. The
+     * one thing worth restating is the exclusion, because it is the half a type list cannot
+     * express -- a card payment is a withdrawal on the bank and looks like any other. It is
+     * left out by its partner's account type in classify(); a payment only ever exists on a
+     * card, so a partner that is a payment row says the same thing here, in SQL.
+     */
+    public static function whereSpends(Builder $q): Builder
+    {
+        $settles = DB::table('meta')
+            ->select('model_id')
+            ->where('model_type', Transaction::class)
+            ->whereIn('meta->paired_transaction_id', DB::table('transactions')
+                ->join('accounts', 'accounts.id', '=', 'transactions.account_id')
+                ->select('transactions.id')
+                ->where('transactions.type', TransactionType::Payment->value)
+                ->where('accounts.type', AccountType::Card->value));
+
+        return $q->where(fn (Builder $either) => $either
+            ->where('type', TransactionType::Charge->value)
+            ->orWhere(fn (Builder $bank) => $bank
+                ->where('type', TransactionType::Withdraw->value)
+                ->whereNotIn('id', $settles)));
     }
 
     /**

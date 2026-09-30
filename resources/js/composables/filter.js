@@ -38,3 +38,12 @@ export const filterInto = (shown, source, matches) => {
         needle === '' ? [...source.value] : source.value.filter(entry => matches(entry, needle))
     })
 }
+
+// What a category filter carries when it is narrowed to the rows with no category. It has to
+// be something other than null, because null is what an untouched select holds and a filter
+// that meant both would be no filter at all -- and the cash flow page's uncategorised block
+// links here with this, since its category has no id to send.
+//
+// Mirrors TransactionController::NO_CATEGORY, which is where the query turns it into a
+// whereNull. Two names for one value, because it crosses the wire.
+export const NO_CATEGORY = 'none'

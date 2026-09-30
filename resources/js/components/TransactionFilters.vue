@@ -416,7 +416,9 @@ const filterSymbols = filterInto(shownSymbols, symbolOptions, (symbol, needle) =
   symbol.toLowerCase().includes(needle),
 )
 const statusOptions = computed(() => page.props.statusOptions ?? [])
-const categoryOptions = computed(() => page.props.options?.categories ?? [])
+// The server's own list, which carries the No category entry the plain categories list must
+// not: the transaction form chooses from that one, and a row with no category is not a choice.
+const categoryOptions = computed(() => page.props.options?.filterCategories ?? [])
 const shownCategories = ref([])
 const filterCategories = filterInto(shownCategories, categoryOptions, (category, needle) =>
   category.label.toLowerCase().includes(needle),
@@ -425,6 +427,9 @@ const currencyOptions = computed(() => page.props.currencyOptions ?? [])
 
 const list = value => (value ? String(value).split(',') : [])
 const ids = value => list(value).map(Number)
+// A category, or NO_CATEGORY for the rows with none, which is a string and not an id:
+// Number() on it is NaN, and the select then shows NaN as the label for the filter.
+const categoryIds = value => list(value).map(id => (id === NO_CATEGORY ? id : Number(id)))
 
 const shown = (chosen, options = null) => {
   if (!chosen?.length) return ''
@@ -457,7 +462,7 @@ const parse = filter => ({
   account_type: list(filter.account_type),
   type: list(filter.type),
   status: list(filter.status),
-  category_id: ids(filter.category_id),
+  category_id: categoryIds(filter.category_id),
   ccy: list(filter.ccy),
   symbol: list(filter.symbol),
   date_from: filter.date_from ?? null,

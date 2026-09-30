@@ -43,6 +43,13 @@ class TransactionController extends Controller
 
     private const HINT_YEARS = 2;
 
+    /**
+     * What the category filter carries for "no category". It cannot be null, which is what an
+     * unfiltered select holds. Mirrored by NO_CATEGORY in resources/js/composables/filter.js,
+     * where the cash flow page's uncategorised block puts it into a link.
+     */
+    public const NO_CATEGORY = 'none';
+
     public function index(Request $r)
     {
         // Seeded here, not in a watcher: useWatchTarget() overwrites it when editing.
@@ -69,6 +76,14 @@ class TransactionController extends Controller
             'label' => $category->name,
             'value' => $category->id,
         ]);
+
+        // The filter gets a list of its own, because the two forms choose a category from the
+        // plain one and neither may offer a row with none: NO_CATEGORY is a filter, not a
+        // category, and a form that offered it would write it into a category_id.
+        $filterCategories = [
+            ...$categories->all(),
+            ['label' => 'No category', 'value' => self::NO_CATEGORY],
+        ];
 
         // Inactive cards included: closing a card does not pay it.
         $cards = Account::query()
@@ -101,7 +116,38 @@ class TransactionController extends Controller
                 )),
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
-                AllowedFilter::exact('category_id'),
+                // A category, or every row with none of one. The second has to be a value of
+                // its own: null is what an untouched filter holds, so a filter that meant
+                // both would be no filter at all -- which is what the cash flow page's
+                // uncategorised block was sending, and why it showed the whole month.
+                //
+                // A callback rather than an exact filter, because the value has to be read
+                // before it becomes a where. Or'd rather than and'd, since the select is a
+                // set of categories and No category is one of them: asking for it and GAME &
+                // TOY together is asking for either, and and'ing them asks for nothing.
+                AllowedFilter::callback('category_id', function (Builder $q, $value) {
+                    $values = (array) $value;
+                    $none = in_array(self::NO_CATEGORY, $values, true);
+                    $ids = array_values(array_filter(
+                        $values,
+                        fn ($id) => $id !== self::NO_CATEGORY,
+                    ));
+
+                    return $q->where(fn ($either) => $none
+                        ? $either->whereNull('category_id')->orWhereIn('category_id', $ids)
+                        : $either->whereIn('category_id', $ids));
+                }),
+                // Spending alone, as the report counts it. A category filter cannot say this:
+                // an uncategorised month also holds uncategorised income, and a card payment
+                // is a withdrawal and looks like any other. Off unless asked, as `unpaid` is,
+                // so a stale filter[spending]=0 empties nothing.
+                AllowedFilter::callback('spending', function (Builder $q, $value) {
+                    if (! in_array((string) $value, ['1', 'true'], true)) {
+                        return $q;
+                    }
+
+                    return CashFlow::whereSpends($q);
+                }),
                 AllowedFilter::exact('ccy'),
                 // No delimiter: "coffee, tea" is one phrase.
                 AllowedFilter::partial('description')->delimiter(''),
@@ -250,7 +296,7 @@ class TransactionController extends Controller
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
-        $options = compact('accounts', 'categories');
+        $options = compact('accounts', 'categories') + ['filterCategories' => $filterCategories];
 
         // No window, unlike the hints: a ticker does not go stale. 'null' is what a present
         // null key unquotes to.
@@ -1070,7 +1116,7 @@ class TransactionController extends Controller
 
         $period = $cardPeriods?->firstWhere('dueDate', $dueDate);
 
-        if ($period === null || ! $period->isSettled()) {
+        if ($period === null || ! $period->isClosed()) {
             return null;
         }
 
