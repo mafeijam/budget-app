@@ -47,7 +47,7 @@
           stroke-dasharray="3 3"
         />
 
-        <!-- Fills first, so the lines and dots sit on top of them. -->
+        <!-- Fills first, so the lines and the marker sit on top of them. -->
         <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
         <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
         <path
@@ -70,16 +70,15 @@
           stroke-linecap="round"
         />
 
-        <template v-for="(point, i) in points" :key="point.date">
-          <circle
-            :cx="x(i)"
-            :cy="y(point.net_worth)"
-            :r="i === selectedIndex ? 6 : 3"
-            :fill="colours.net_worth"
-            stroke="#ffffff"
-            :stroke-width="i === selectedIndex ? 2 : 1"
-          />
-        </template>
+        <circle
+          v-if="points[selectedIndex]"
+          :cx="x(selectedIndex)"
+          :cy="y(points[selectedIndex].net_worth)"
+          r="6"
+          :fill="colours.net_worth"
+          stroke="#ffffff"
+          stroke-width="2"
+        />
 
         <text
           v-for="tick in axis"
