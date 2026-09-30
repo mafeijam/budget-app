@@ -604,3 +604,57 @@ body {
     display: none;
   }
 }
+
+/* The forecast chart's money-in and money-out markers, as the legend shows them. */
+.app-forecast-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 2px;
+}
+
+.app-forecast-tooltip__event {
+  max-width: 220px;
+}
+
+/*
+ * An estimate's figures, in the amber the charts draw them in but darker: Quasar's warning
+ * amber on white is about 2:1, too faint to read a number in.
+ */
+.app-text-estimate {
+  color: #b45309;
+}
+
+/* How a forecast estimate is made up, as a short sum: its parts, then the total ruled off. */
+.app-basis {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #475569;
+}
+
+.app-basis__title {
+  font-weight: 500;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.app-basis__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0;
+}
+
+.app-basis__row--total {
+  border-top: 1px solid var(--app-border);
+  margin-top: 4px;
+  padding-top: 6px;
+  font-weight: 700;
+}
+
+.app-basis__note {
+  margin-top: 6px;
+  color: #64748b;
+}

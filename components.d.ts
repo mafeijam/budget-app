@@ -19,6 +19,7 @@ declare module 'vue' {
     DeleteDialog: typeof import('./resources/js/components/DeleteDialog.vue')['default']
     DueDateDialog: typeof import('./resources/js/components/DueDateDialog.vue')['default']
     ForecastChart: typeof import('./resources/js/components/ForecastChart.vue')['default']
+    ForecastMonths: typeof import('./resources/js/components/ForecastMonths.vue')['default']
     FormAccount: typeof import('./resources/js/components/Form/FormAccount.vue')['default']
     FormCategory: typeof import('./resources/js/components/Form/FormCategory.vue')['default']
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']

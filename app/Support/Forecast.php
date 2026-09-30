@@ -24,11 +24,12 @@ use Illuminate\Support\Collection;
  * Everything is in the base currency at today's rate, the only one known for the days
  * ahead, so every cash account is on one chart.
  *
- * Nothing here is guessed except "typical spending", which is kept apart: a daily allowance from the last year's spending, less what the recurring rules already
- * account for. The known figures never include it, so the page can show both.
+ * Nothing here is guessed except "typical spending" and "typical income", which are kept
+ * apart: a daily figure each from the last year's, less what the recurring rules already
+ * account for. The known figures never include them, so the page can show both.
  *
- * Dividends are left out: they are irregular, and money not yet declared is not money
- * coming.
+ * Dividends are left out of the known figures: they are irregular, and money not yet
+ * declared is not money coming. Typical income's average has them, as an estimate may.
  */
 class Forecast
 {
@@ -59,6 +60,9 @@ class Forecast
      * @var list<array<string, mixed>>|null
      */
     private ?array $lastMonths = null;
+
+    /** @var list<array{account: Account, monthly: BigDecimal}>|null read once, as is */
+    private ?array $cardTypical = null;
 
     private Fx $fx;
 
@@ -94,7 +98,7 @@ class Forecast
     {
         $day = $this->today->toDateString();
         $shownIn = $only ?? Fx::BASE->value;
-        $opening = AccountBalance::forAccounts($this->cash, $day);
+        $openingBalances = AccountBalance::forAccounts($this->cash, $day);
         $typical = $this->typicalSpending();
         $moving = collect($this->events)->pluck('account_id')->unique()->all();
 
@@ -104,7 +108,7 @@ class Forecast
         $balances = [];
 
         foreach ($this->cash as $account) {
-            $balance = BigDecimal::of($opening[$account->id] ?? '0');
+            $balance = BigDecimal::of($openingBalances[$account->id] ?? '0');
 
             // An account with nothing in it and nothing coming is left off the page.
             if ($balance->isZero() && ! in_array($account->id, $moving, true)) {
@@ -138,7 +142,8 @@ class Forecast
 
         $base = fn (int $id, BigDecimal $amount) => $amount->multipliedBy($rates[$id])->toScale(4, RoundingMode::HalfUp);
 
-        $monthly = $average = $covered = BigDecimal::zero();
+        $monthly = $average = $covered = $cashMonthly = $cardMonthly = BigDecimal::zero();
+        $incomeMonthly = $incomeAverage = $incomeCovered = BigDecimal::zero();
 
         foreach ($typical as $ccy => $figures) {
             if ($only !== null && $ccy !== $only) {
@@ -152,29 +157,115 @@ class Forecast
             }
 
             $monthly = $monthly->plus(BigDecimal::of($figures['monthly'])->multipliedBy($rate));
+            $cashMonthly = $cashMonthly->plus(BigDecimal::of($figures['cash'])->multipliedBy($rate));
+            $incomeMonthly = $incomeMonthly->plus(BigDecimal::of($figures['income'])->multipliedBy($rate));
+            $incomeAverage = $incomeAverage->plus(BigDecimal::of($figures['income_average'])->multipliedBy($rate));
+            $incomeCovered = $incomeCovered->plus(BigDecimal::of($figures['income_recurring'])->multipliedBy($rate));
             $average = $average->plus(BigDecimal::of($figures['average'])->multipliedBy($rate));
             $covered = $covered->plus(BigDecimal::of($figures['recurring'])->multipliedBy($rate));
         }
 
-        $daily = $monthly->multipliedBy(12)->dividedBy(365, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+        $perDay = fn (BigDecimal $month) => $month->multipliedBy(12)->dividedBy(365, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+        $dailyCash = $perDay($cashMonthly);
+        $dailyIncome = $perDay($incomeMonthly);
 
         $lowest = array_map(fn (BigDecimal $balance) => [$balance, $day], $balances);
         $byDay = collect($this->events)->whereIn('account_id', array_keys($balances))->groupBy('date');
 
+        // Each card's typical charges, a day's worth from tomorrow, paid on the due date of
+        // the statement that day falls in -- as a recurring card charge is. The statements
+        // already known pay for what was charged up to today, so nothing here repeats them,
+        // and a charge made before a statement closes is on that statement, not the next.
+        $cardDue = [];
+
+        foreach ($this->cardTypical() as $card) {
+            $bank = $card['account']->settlementAccount();
+            $cycle = CardStatementCycle::fromMeta($card['account']->meta?->meta);
+
+            if ($bank === null || $cycle === null || ! isset($balances[$bank->id])) {
+                continue;
+            }
+
+            if ($only !== null && $card['account']->ccy !== $only) {
+                continue;
+            }
+
+            $rate = $only === null ? $this->fx->rate($card['account']->ccy, $day) : '1';
+
+            if ($rate === null) {
+                continue;
+            }
+
+            $monthlyBase = $card['monthly']->multipliedBy($rate);
+            $cardMonthly = $cardMonthly->plus($monthlyBase);
+            $perCharge = $perDay($monthlyBase);
+
+            for ($charged = $this->today->copy()->addDay(); $charged->lessThanOrEqualTo($this->end); $charged->addDay()) {
+                $due = $cycle->dueDateFor($charged->copy())->toDateString();
+
+                if ($due <= $this->end->toDateString()) {
+                    $cardDue[$due] = ($cardDue[$due] ?? BigDecimal::zero())->plus($perCharge);
+                }
+            }
+        }
+
         $points = [];
         $allowance = BigDecimal::zero();
+        $earned = BigDecimal::zero();
         $lowestTotal = null;
+        $zero = BigDecimal::zero();
+
+        // Each event with the balance it leaves, and each month's known money in and out.
+        $events = [];
+        $monthsAhead = [];
+        $lowestAhead = ['known' => null, 'typical' => null];
+        $recurringIn = $zero;
+        $running = $zero;
+
+        foreach ($balances as $id => $balance) {
+            $running = $running->plus($base($id, $balance));
+        }
 
         for ($cursor = $this->today->copy(); $cursor->lessThanOrEqualTo($this->end); $cursor->addDay()) {
             $date = $cursor->toDateString();
-
-            foreach ($byDay[$date] ?? [] as $event) {
-                $balances[$event['account_id']] = $balances[$event['account_id']]->plus($event['amount']);
-            }
+            $month = substr($date, 0, 7);
+            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'typical_in' => $zero];
 
             // From tomorrow: today's spending is in today's balance already.
             if ($cursor->greaterThan($this->today)) {
+                $daily = $dailyCash->plus($cardDue[$date] ?? BigDecimal::zero());
                 $allowance = $allowance->plus($daily);
+                $earned = $earned->plus($dailyIncome);
+                $monthsAhead[$month]['typical'] = $monthsAhead[$month]['typical']->plus($daily);
+                $monthsAhead[$month]['typical_in'] = $monthsAhead[$month]['typical_in']->plus($dailyIncome);
+            }
+
+            foreach ($byDay[$date] ?? [] as $event) {
+                $balances[$event['account_id']] = $balances[$event['account_id']]->plus($event['amount']);
+
+                $amount = $base($event['account_id'], $event['amount']);
+                $running = $running->plus($amount);
+                $side = $amount->isNegative() ? 'out' : 'in';
+                $monthsAhead[$month][$side] = $monthsAhead[$month][$side]->plus($amount->abs());
+
+                // What the page's what-if takes away when it asks for no recurring income.
+                if ($event['kind'] === 'recurring' && $amount->isPositive()) {
+                    $recurringIn = $recurringIn->plus($amount);
+                }
+
+                $events[] = [
+                    'date' => $date,
+                    'account_id' => $event['account_id'],
+                    'account' => $this->cash[$event['account_id']]->name,
+                    'ccy' => $this->cash[$event['account_id']]->ccy,
+                    'amount' => self::money($event['amount']),
+                    'base' => self::money($amount),
+                    'description' => $event['description'],
+                    'kind' => $event['kind'],
+                    'link' => $event['link'],
+                    'balance' => self::money($running),
+                    'with_typical' => self::money($running->minus($allowance)->plus($earned)),
+                ];
             }
 
             $total = BigDecimal::zero();
@@ -191,21 +282,72 @@ class Forecast
                 $lowestTotal = [$total, $date];
             }
 
+            // After today, since today's balance is already a fact and the lowest of every
+            // horizon that only rises from here.
+            if ($cursor->greaterThan($this->today)) {
+                foreach (['known' => $total, 'typical' => $total->minus($allowance)->plus($earned)] as $line => $value) {
+                    if ($lowestAhead[$line] === null || $value->isLessThan($lowestAhead[$line][0])) {
+                        $lowestAhead[$line] = [$value, $date];
+                    }
+                }
+            }
+
+            $monthsAhead[$month]['end_known'] = $total;
+            $monthsAhead[$month]['end_typical'] = $total->minus($allowance)->plus($earned);
+
             $points[] = [
                 'date' => $date,
                 'known' => self::money($total),
-                'typical' => self::money($total->minus($allowance)),
+                'typical' => self::money($total->minus($allowance)->plus($earned)),
+                // Running totals, so the page's what-if can redraw without the server.
+                'allowance' => self::money($allowance),
+                'earned' => self::money($earned),
+                'recurring_in' => self::money($recurringIn),
             ];
         }
+
+        $opening = $points[0]['known'];
+        $closing = BigDecimal::of(end($points)['typical']);
+        $horizon = max(1, (int) round($this->today->diffInMonths($this->end)));
 
         return [[
             'ccy' => $shownIn,
             'points' => $points,
             'typical_monthly' => self::money($monthly),
-            'typical_basis' => ['average' => self::money($average), 'recurring' => self::money($covered)],
+            'typical_income' => self::money($incomeMonthly),
+            'typical_income_basis' => ['average' => self::money($incomeAverage), 'recurring' => self::money($incomeCovered)],
+            'typical_basis' => [
+                'average' => self::money($average),
+                'recurring' => self::money($covered),
+                'cash' => self::money($cashMonthly),
+                'card' => self::money($cardMonthly),
+            ],
             'lowest' => ['amount' => self::money($lowestTotal[0]), 'date' => $lowestTotal[1]],
-            'accounts' => collect($balances)->map(function (BigDecimal $closing, int $id) use ($opening, $lowest, $base) {
-                $start = BigDecimal::of($opening[$id] ?? '0');
+            'lowest_ahead' => array_map(
+                fn (?array $low) => $low === null ? null : ['amount' => self::money($low[0]), 'date' => $low[1]],
+                $lowestAhead
+            ),
+            // What the balance gains a month with typical spending, over the whole horizon.
+            'saving_monthly' => self::money($closing->minus($opening)->dividedBy($horizon, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)),
+            // How many months today's cash would last spending the year's average and earning
+            // nothing: null when there is no spending to divide by.
+            'runway_months' => $average->isPositive()
+                ? (string) BigDecimal::of($opening)->dividedBy($average, 1, RoundingMode::Down)
+                : null,
+            'months' => array_values(array_map(fn (array $m) => [
+                'month' => $m['month'],
+                'in' => self::money($m['in']),
+                'out' => self::money($m['out']),
+                'typical' => self::money($m['typical']),
+                'typical_in' => self::money($m['typical_in']),
+                'net_known' => self::money($m['in']->minus($m['out'])),
+                'net_typical' => self::money($m['in']->minus($m['out'])->minus($m['typical'])->plus($m['typical_in'])),
+                'end_known' => self::money($m['end_known']),
+                'end_typical' => self::money($m['end_typical']),
+            ], $monthsAhead)),
+            'events' => $events,
+            'accounts' => collect($balances)->map(function (BigDecimal $closing, int $id) use ($openingBalances, $lowest, $base) {
+                $start = BigDecimal::of($openingBalances[$id] ?? '0');
 
                 return [
                     'id' => $id,
@@ -309,7 +451,12 @@ class Forecast
 
             $comingIn = $toCome[$ccy]['income'] ?? $zero;
             $comingOut = $toCome[$ccy]['spending'] ?? $zero;
-            $typicalRest = BigDecimal::of($typical[$ccy]['monthly'] ?? '0')
+            // Cash only: a card charge made in the days left is paid for next month or later.
+            $typicalRest = BigDecimal::of($typical[$ccy]['cash'] ?? '0')
+                ->multipliedBy($daysLeft)
+                ->dividedBy($daysInMonth, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+
+            $typicalIncomeRest = BigDecimal::of($typical[$ccy]['income'] ?? '0')
                 ->multipliedBy($daysLeft)
                 ->dividedBy($daysInMonth, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
 
@@ -322,8 +469,9 @@ class Forecast
                 'so_far' => ['income' => self::money($income), 'spending' => self::money($spending), 'net' => self::money($income->minus($spending))],
                 'to_come' => ['income' => self::money($comingIn), 'spending' => self::money($comingOut)],
                 'typical_rest' => self::money($typicalRest),
+                'typical_income_rest' => self::money($typicalIncomeRest),
                 'likely_known' => self::money($known),
-                'likely_net' => self::money($known->minus($typicalRest)),
+                'likely_net' => self::money($known->minus($typicalRest)->plus($typicalIncomeRest)),
                 'average_net' => self::money(BigDecimal::of($section['totals']['net'])->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)),
             ];
         }
@@ -349,7 +497,7 @@ class Forecast
         }
 
         $day = $this->today->toDateString();
-        $paths = ['so_far.income', 'so_far.spending', 'so_far.net', 'to_come.income', 'to_come.spending', 'typical_rest', 'likely_known', 'likely_net', 'average_net'];
+        $paths = ['so_far.income', 'so_far.spending', 'so_far.net', 'to_come.income', 'to_come.spending', 'typical_rest', 'typical_income_rest', 'likely_known', 'likely_net', 'average_net'];
         $sums = array_fill_keys($paths, BigDecimal::zero());
 
         foreach ($rows as $row) {
@@ -570,15 +718,86 @@ class Forecast
     }
 
     /**
+     * Each card's typical charges a month: its own charges over the last twelve months, by
+     * the day they were made, less its active recurring charges, which the forecast already
+     * places. Per card rather than per currency, because each card has its own cycle, and
+     * a single start for them all left one card's charges in a gap and piled another's
+     * into the month after.
+     *
+     * @return list<array{account: Account, monthly: BigDecimal}>
+     */
+    private function cardTypical(): array
+    {
+        if ($this->cardTypical !== null) {
+            return $this->cardTypical;
+        }
+
+        $from = $this->today->copy()->startOfMonth()->subMonthsNoOverflow(CashFlow::MONTHS - 1)->toDateString();
+        $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->get();
+
+        $charged = Transaction::query()
+            ->with('meta')
+            ->whereIn('account_id', $cards->pluck('id'))
+            ->where('type', TransactionType::Charge->value)
+            ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->whereBetween('date', [$from, $this->today->copy()->endOfMonth()->toDateString()])
+            ->get()
+            ->groupBy('account_id');
+
+        $rules = RecurringTransaction::query()
+            ->where('active', true)
+            ->where('type', TransactionType::Charge->value)
+            ->whereIn('account_id', $cards->pluck('id'))
+            ->get()
+            ->filter(fn (RecurringTransaction $rule) => $rule->end_date === null || $rule->end_date >= $this->today->toDateString())
+            ->groupBy('account_id');
+
+        $typical = [];
+
+        foreach ($cards as $card) {
+            // card_amount, the figure the card owes, as the statements and CashFlow read it.
+            $total = ($charged[$card->id] ?? collect())->reduce(
+                fn (BigDecimal $sum, Transaction $row) => $sum->plus((string) ($row->meta?->meta['card_amount'] ?? $row->amount)),
+                BigDecimal::zero()
+            );
+            $covered = ($rules[$card->id] ?? collect())->reduce(function (BigDecimal $sum, RecurringTransaction $rule) {
+                $amount = BigDecimal::of((string) ($rule->card_amount ?? $rule->amount));
+
+                return $sum->plus(Frequency::from($rule->frequency) === Frequency::Yearly
+                    ? $amount->dividedBy(12, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)
+                    : $amount);
+            }, BigDecimal::zero());
+
+            $monthly = $total->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)->minus($covered);
+
+            if ($monthly->isPositive()) {
+                $typical[] = ['account' => $card, 'monthly' => $monthly];
+            }
+        }
+
+        return $this->cardTypical = $typical;
+    }
+
+    /**
      * Per currency: the last twelve months' average spending, less the monthly share of
      * the active rules that spend, so rent recorded by a rule is not counted twice. Never
      * below zero.
      *
-     * @return array<string, array{monthly: string, average: string, recurring: string}>
+     * Split into cash and card, because they reach the bank at different times: cash the
+     * day it is spent, a card's when its statement is paid. The card half is cardTypical()'s,
+     * card by card, which projection() puts on each card's own due dates.
+     *
+     * Income the same way: the year's average less what the recurring rules that pay in
+     * already bring, so a forecast that knows only the salary does not read every other
+     * deposit of the year as never happening again.
+     *
+     * @return array<string, array{monthly: string, cash: string, card: string, average: string, recurring: string, income: string, income_average: string, income_recurring: string}>
      */
     private function typicalSpending(): array
     {
         $recurring = [];
+        $cardRecurring = [];
+        $earning = [];
 
         $rules = RecurringTransaction::query()->where('active', true)->with('account')->get();
 
@@ -586,7 +805,10 @@ class Forecast
             $spends = ($rule->account?->type === AccountType::Cash->value && $rule->type === TransactionType::Withdraw->value)
                 || ($rule->account?->type === AccountType::Card->value && $rule->type === TransactionType::Charge->value);
 
-            if (! $spends || ($rule->end_date !== null && $rule->end_date < $this->today->toDateString())) {
+            $earns = $rule->account?->type === AccountType::Cash->value
+                && TransactionType::from($rule->type)->movesBalanceOn(AccountType::Cash) > 0;
+
+            if ((! $spends && ! $earns) || ($rule->end_date !== null && $rule->end_date < $this->today->toDateString())) {
                 continue;
             }
 
@@ -595,22 +817,54 @@ class Forecast
                 ? $amount->dividedBy(12, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)
                 : $amount;
 
+            if ($earns) {
+                $earning[$rule->account->ccy] = ($earning[$rule->account->ccy] ?? BigDecimal::zero())->plus($monthly);
+
+                continue;
+            }
+
             $ccy = $rule->account->ccy;
             $recurring[$ccy] = ($recurring[$ccy] ?? BigDecimal::zero())->plus($monthly);
+
+            if ($rule->account->type === AccountType::Card->value) {
+                $cardRecurring[$ccy] = ($cardRecurring[$ccy] ?? BigDecimal::zero())->plus($monthly);
+            }
         }
 
         $typical = [];
+        $cards = [];
+
+        foreach ($this->cardTypical() as $card) {
+            $ccy = $card['account']->ccy;
+            $cards[$ccy] = ($cards[$ccy] ?? BigDecimal::zero())->plus($card['monthly']);
+        }
 
         foreach ($this->lastMonths() as $section) {
             $average = BigDecimal::of($section['totals']['spending'])
                 ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+            $cardAverage = BigDecimal::of($section['totals']['card_spending'])
+                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
             $covered = $recurring[$section['ccy']] ?? BigDecimal::zero();
-            $monthly = $average->minus($covered);
+            $cardCovered = $cardRecurring[$section['ccy']] ?? BigDecimal::zero();
+
+            $floor = fn (BigDecimal $value) => $value->isNegative() ? BigDecimal::zero() : $value;
+            $card = $cards[$section['ccy']] ?? BigDecimal::zero();
+            $cash = $floor($average->minus($cardAverage)->minus($covered->minus($cardCovered)));
+
+            $incomeAverage = BigDecimal::of($section['totals']['income'])
+                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+            $earned = $earning[$section['ccy']] ?? BigDecimal::zero();
 
             $typical[$section['ccy']] = [
-                'monthly' => self::money($monthly->isNegative() ? BigDecimal::zero() : $monthly),
+                'monthly' => self::money($cash->plus($card)),
+                'cash' => self::money($cash),
+                'card' => self::money($card),
                 'average' => self::money($average),
                 'recurring' => self::money($covered),
+                // Income the rules do not bring: bonuses, refunds, dividends, the odd deposit.
+                'income' => self::money($floor($incomeAverage->minus($earned))),
+                'income_average' => self::money($incomeAverage),
+                'income_recurring' => self::money($earned),
             ];
         }
 

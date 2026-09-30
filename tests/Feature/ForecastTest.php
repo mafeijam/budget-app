@@ -158,6 +158,64 @@ class ForecastTest extends TestCase
     }
 
     /** @return array<string, mixed> */
+    public function test_a_cards_typical_charges_are_paid_on_its_own_due_dates(): void
+    {
+        // 2400 on the card last June, paid off, and 120 this month: 210 a month of charges.
+        $this->charge('2025-06-01', '2400.0000');
+        $this->payment('2025-07-01', '2400.0000', '2025-07-10');
+        $this->charge('2026-01-05', '120.0000');
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+        $points = collect($section['points'])->keyBy('date');
+
+        $this->assertSame('210.0000', $section['typical_basis']['card']);
+        // Charges from tomorrow to the 24th are on this month's statement, due 9 February (the
+        // closing day itself rolls to the next): nothing leaves the bank for them before then,
+        // and four days' worth leaves on it.
+        $this->assertSame('0.0000', $points['2026-02-08']['allowance']);
+        $this->assertSame('27.6164', $points[self::PERIOD]['allowance']);
+        // The next statement's charges, the 25th on, wait for its own due date in March.
+        $this->assertSame('27.6164', $points['2026-03-01']['allowance']);
+    }
+
+    public function test_the_projection_has_its_months_its_events_and_what_they_leave(): void
+    {
+        $this->row('deposit', '2025-05-01', '2200');
+        $this->row('withdraw', '2025-06-01', '1200');
+        $this->rule(['type' => 'withdraw', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+
+        $this->assertSame(['2026-01', '2026-02', '2026-03', '2026-04'], array_column($section['months'], 'month'));
+        $this->assertSame('100.0000', $section['months'][1]['out']);
+        $this->assertSame('1900.0000', $section['months'][1]['end_known']);
+
+        $this->assertSame('2026-02-01', $section['events'][0]['date']);
+        $this->assertSame('-100.0000', $section['events'][0]['base']);
+        $this->assertSame('1900.0000', $section['events'][0]['balance']);
+
+        // After today, so not today's 2000 but where the rule leaves it by April.
+        $this->assertSame(['amount' => '1700.0000', 'date' => '2026-04-01'], $section['lowest_ahead']['known']);
+        // 2000 at the year's average of 100 a month, earning nothing.
+        $this->assertSame('20.0', $section['runway_months']);
+    }
+
+    public function test_typical_income_is_the_years_average_less_what_the_rules_bring(): void
+    {
+        // 1000 from setUp and 2600 more in the year: 300 a month, 100 of it a salary rule.
+        $this->row('deposit', '2025-06-01', '2600');
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+        $points = collect($section['points'])->keyBy('date');
+
+        $this->assertSame('200.0000', $section['typical_income']);
+        $this->assertSame(['average' => '300.0000', 'recurring' => '100.0000'], $section['typical_income_basis']);
+        // Earned from tomorrow, and on the typical line only.
+        $this->assertSame('0.0000', $points['2026-01-20']['earned']);
+        $this->assertTrue((float) $points['2026-02-20']['typical'] > (float) $points['2026-02-20']['known']);
+    }
+
     private function account(): array
     {
         return Forecast::for(today(), 3)->projection()[0]['accounts'][0];

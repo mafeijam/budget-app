@@ -102,7 +102,7 @@
                   {{ signed(brokerage(account).unrealised) }}{{ percentOf(brokerage(account)) }}
                 </span>
               </div>
-              <div v-if="marketValues[account.id]?.unpriced" class="text-caption text-warning">
+              <div v-if="marketValues[account.id]?.unpriced" class="text-caption app-text-estimate">
                 {{ marketValues[account.id].unpriced }} unpriced, counted at cost
               </div>
             </template>
