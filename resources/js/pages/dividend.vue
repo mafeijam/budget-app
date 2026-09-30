@@ -380,7 +380,9 @@ const ranked = computed(() =>
 
 const isCurrent = computed(() => props.today.startsWith(String(props.year)))
 
-// A comparison for reading, not money, so a float percentage is fine.
+// A comparison for reading, not money, so a float percentage is fine. One decimal, not
+// none: a change that rounded away to nothing still showed its sign, and "-0%" says less
+// than "-0.1%" does about a year that fell a little.
 const change = (now, before) => {
   const [a, b] = [Number(now), Number(before)]
 
@@ -389,7 +391,7 @@ const change = (now, before) => {
   const percent = ((a - b) / b) * 100
 
   return {
-    label: `${percent >= 0 ? '+' : ''}${percent.toFixed(0)}%`,
+    label: `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`,
     class: percent >= 0 ? 'text-positive' : 'text-negative',
   }
 }
