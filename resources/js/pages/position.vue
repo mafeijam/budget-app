@@ -32,15 +32,19 @@
 
       <div class="app-toolbar row items-center no-wrap">
         <!-- A calendar day, so the day formatter; the server owns today, not the browser. -->
-        <q-btn
-          flat
-          dense
-          no-caps
-          icon="event"
-          :label="at ? `As at ${formatDate(at)}` : 'Today'"
-          :color="at ? 'primary' : 'grey-8'"
-          class="q-px-sm text-weight-bold"
-        >
+        <q-btn flat dense no-caps class="app-toolbar__pick q-px-sm" icon-right="expand_more">
+          <div class="row items-center no-wrap">
+            <q-icon name="event" size="20px" :color="at ? 'primary' : 'grey-7'" class="q-mr-sm" />
+            <div class="column items-start">
+              <span class="text-caption text-grey-6 app-toolbar__label">As at</span>
+              <span
+                class="text-body2 text-weight-bold"
+                :class="at ? 'text-primary' : 'text-grey-9'"
+              >
+                {{ at ? formatDate(at) : 'Today' }}
+              </span>
+            </div>
+          </div>
           <q-menu ref="dayMenu" :offset="[0, 8]">
             <q-date
               :model-value="at ?? today"
@@ -70,45 +74,54 @@
 
         <q-separator vertical inset class="q-mx-sm" />
 
-        <q-toggle
-          v-model="showClosed"
-          label="Show sold out"
-          color="primary"
+        <!-- A chip that is on or off, with how many it would show, rather than a bare switch. -->
+        <q-btn
+          flat
           dense
-          class="q-px-sm"
-        />
+          no-caps
+          padding="xs sm"
+          class="app-toolbar__chip"
+          :class="{ 'app-toolbar__chip--on': showClosed }"
+          :icon="showClosed ? 'visibility' : 'visibility_off'"
+          @click="showClosed = !showClosed"
+        >
+          <span class="q-ml-xs">Sold out</span>
+          <span v-if="soldOutCount" class="app-toolbar__count q-ml-xs">{{ soldOutCount }}</span>
+          <q-tooltip :delay="500" :offset="[0, 6]">
+            {{ showClosed ? 'Hide' : 'Show' }} the positions sold out, and what they realised
+          </q-tooltip>
+        </q-btn>
 
         <q-separator vertical inset class="q-mx-sm" />
 
-        <div class="row items-center no-wrap q-px-sm">
-          <q-icon name="schedule" size="xs" color="grey-6" class="q-mr-sm" />
-          <div class="column">
-            <span class="text-caption text-grey-6 app-toolbar__label">Prices updated</span>
-            <span class="text-body2 text-grey-9">
-              {{ pricesUpdatedAt ? whenUpdated(pricesUpdatedAt) : 'Never' }}
-            </span>
-          </div>
-          <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
-          <q-tooltip v-if="pricesUpdatedAt" :delay="500" :offset="[0, 6]">
-            {{ formatTime(pricesUpdatedAt) }}
-          </q-tooltip>
-        </div>
-
+        <!-- One button: what it does, and when it was last done under it. -->
         <q-btn
           unelevated
           no-caps
-          class="text-weight-bold app-btn q-ml-sm"
-          icon="refresh"
-          label="Fetch prices"
+          class="app-btn app-toolbar__fetch"
           :loading="fetching"
           @click="fetchPrices"
         >
+          <div class="row items-center no-wrap">
+            <q-icon name="refresh" size="20px" class="q-mr-sm" />
+            <div class="column items-start">
+              <span class="text-weight-bold">Fetch prices</span>
+              <span class="app-toolbar__fetch-note">
+                {{
+                  pricesUpdatedAt
+                    ? `updated ${lowerFirst(whenUpdated(pricesUpdatedAt))}`
+                    : 'never fetched'
+                }}
+              </span>
+            </div>
+          </div>
+          <!-- A timestamp column, so the time formatter, not the calendar-day one. -->
           <q-tooltip :delay="500" :offset="[0, 6]">
             {{
               at
                 ? `The week up to ${formatDate(at)}, for what was held then`
                 : 'The last week, for what is held'
-            }}
+            }}{{ pricesUpdatedAt ? `. Last fetched ${formatTime(pricesUpdatedAt)}` : '' }}
           </q-tooltip>
         </q-btn>
       </div>
@@ -138,7 +151,7 @@
         />
       </q-card-section>
 
-      <!-- The three figures that say how the holdings are doing, and the rest in a line. -->
+      <!-- The four figures that say how the holdings are doing, and the rest in a line. -->
       <q-card-section class="q-pt-none">
         <div class="app-position-headline">
           <div v-for="figure in headline(view.figureRows[0].totals)" :key="figure.label">
@@ -169,8 +182,10 @@
       </q-card-section>
 
       <q-card-section v-if="holdings.length > 1" class="q-pt-none">
-        <div class="text-caption text-grey-7 q-mb-xs">Share of market value, in {{ base }}</div>
-        <PositionAllocation :holdings="holdings" :base="base" />
+        <div class="text-caption text-grey-7 q-mb-xs">
+          Share of market value, in {{ allocationCcy }}
+        </div>
+        <PositionAllocation :holdings="holdings" :base="allocationCcy" />
       </q-card-section>
 
       <q-separator />
@@ -278,41 +293,35 @@
               <div class="text-caption text-grey-6">{{ activity(position) }}</div>
             </td>
 
+            <!-- The last 30 days' line and its change; empty for a holding with no closes. -->
+            <td class="text-right money">
+              <template v-if="trendOf(owner, position).length > 1">
+                <div class="row items-start no-wrap justify-end">
+                  <HomeSpark
+                    :values="trendOf(owner, position).map(close => close.close)"
+                    :colour="trendChange(owner, position) < 0 ? '#dc2626' : '#059669'"
+                    :label="`${position.symbol} over the last 30 days`"
+                    class="app-price-spark q-mr-sm"
+                  />
+                  <span
+                    class="app-positions__change text-right"
+                    :class="trendChange(owner, position) < 0 ? 'text-negative' : 'text-positive'"
+                  >
+                    {{ trendLabel(owner, position) }}
+                  </span>
+                </div>
+                <q-tooltip :delay="500" :offset="[0, 6]">{{ trendTip(owner, position) }}</q-tooltip>
+              </template>
+            </td>
+
             <!-- Stopped, so setting a price does not also open the trades. -->
             <td class="text-right money" @click.stop>
               <div class="cursor-pointer">
                 <template v-if="position.price">
-                  <!-- The line beside the price and its change, as tall as the two together. -->
-                  <div class="row items-start no-wrap justify-end">
-                    <HomeSpark
-                      v-if="trendOf(owner, position).length > 1"
-                      :values="trendOf(owner, position).map(close => close.close)"
-                      :colour="trendChange(owner, position) < 0 ? '#dc2626' : '#059669'"
-                      :label="`${position.symbol} over the last 30 days`"
-                      class="app-price-spark q-mr-sm"
-                    />
-                    <div>
-                      <div>{{ money(position.price) }}</div>
-                      <div class="text-caption text-grey-6">
-                        <span
-                          v-if="trendOf(owner, position).length > 1"
-                          :class="
-                            trendChange(owner, position) < 0 ? 'text-negative' : 'text-positive'
-                          "
-                        >
-                          {{ trendLabel(owner, position) }}
-                        </span>
-                        <div v-if="priceNote(position)">{{ priceNote(position) }}</div>
-                      </div>
-                    </div>
+                  <div>{{ money(position.price) }}</div>
+                  <div v-if="priceNote(position)" class="text-caption text-grey-6">
+                    {{ priceNote(position) }}
                   </div>
-                  <q-tooltip
-                    v-if="trendOf(owner, position).length > 1"
-                    :delay="500"
-                    :offset="[0, 6]"
-                  >
-                    {{ trendTip(owner, position) }}
-                  </q-tooltip>
                 </template>
                 <span v-else-if="position.open && !at" class="text-grey-5">set price</span>
                 <span v-else-if="position.open" class="text-grey-5">no price</span>
@@ -458,6 +467,9 @@ const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
 const clock = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
 const shortDay = new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short' })
 
+// "Today, 12:42" reads as a sentence's middle after "updated".
+const lowerFirst = text => text.charAt(0).toLowerCase() + text.slice(1)
+
 const whenUpdated = value => {
   const at = new Date(value)
   const day = dayOf.format(at)
@@ -470,6 +482,14 @@ const whenUpdated = value => {
 }
 
 const showClosed = ref(false)
+
+// Across the brokerages in view, so the chip's count is what switching it on would add.
+const soldOutCount = computed(
+  () =>
+    (view.value?.all ? props.brokerages : [broker.value])
+      .flatMap(owner => owner?.positions ?? [])
+      .filter(position => !position.open).length,
+)
 
 // The per-currency rows under the All view's HKD sum, folded away until asked for.
 const byCurrency = useStorage('positions.byCurrency', false)
@@ -523,28 +543,10 @@ const view = computed(() => {
       all: false,
       title: broker.value.name,
       currencies: [broker.value.ccy],
-      caption: [
-        ...(broker.value.settles_into ? [`Settles into ${broker.value.settles_into}`] : []),
-        ...(broker.value.combined ? [inBaseCaption(broker.value.combined, false)] : []),
-      ].join(' · '),
-      // A foreign brokerage also in the base currency, above its own figures as in All.
-      figureRows: [
-        ...(broker.value.combined && !broker.value.combined.unconverted.length
-          ? [
-              {
-                ccy: 'all',
-                totals: broker.value.combined,
-                prefix: `In ${props.base} · `,
-                combined: true,
-              },
-            ]
-          : []),
-        {
-          ccy: broker.value.ccy,
-          totals: broker.value,
-          prefix: broker.value.combined ? `${broker.value.ccy} ` : '',
-        },
-      ],
+      // One brokerage is one currency, so its own figures alone: a second set in the base
+      // currency beside them only repeated the same holdings at another size.
+      caption: broker.value.settles_into ? `Settles into ${broker.value.settles_into}` : '',
+      figureRows: [{ ccy: broker.value.ccy, totals: broker.value, prefix: '' }],
       fold: false,
       // Keyed on the total, not on the rows on screen: the column must not come and go
       // with the sold-out toggle.
@@ -654,7 +656,7 @@ const trendChange = (owner, position) => {
 const trendLabel = (owner, position) => {
   const change = trendChange(owner, position) * 100
 
-  return `${change > 0 ? '+' : ''}${change.toFixed(1)}% 30d`
+  return `${change > 0 ? '+' : ''}${change.toFixed(1)}%`
 }
 
 // The two closes the change is between, the server's strings; a gap of more than a week
@@ -735,10 +737,17 @@ const unrealisedPercent = position => unrealisedOf(position)
 
 const headline = totals => [
   {
+    label: 'Cost',
+    value: money(totals.open_cost),
+    class: 'text-grey-9',
+    note: 'of what is held now',
+    noteClass: 'text-grey-6',
+  },
+  {
     label: totals.unpriced ? `Market value (${totals.unpriced} unpriced)` : 'Market value',
     value: money(totals.market_value),
     class: 'text-grey-9',
-    note: `cost ${money(totals.open_cost)}`,
+    note: totals.unpriced ? 'what has no price is left out' : 'at the latest prices',
     noteClass: 'text-grey-6',
   },
   {
@@ -803,6 +812,7 @@ const returnBar = percent => {
 
 const columns = computed(() => [
   { key: 'symbol', label: 'Symbol', align: 'left', sort: true },
+  { key: 'trend', label: '30d' },
   { key: 'price', label: 'Price' },
   { key: 'cost', label: 'Cost', sort: true },
   { key: 'market', label: 'Market value', sort: true },
@@ -860,7 +870,10 @@ const holdings = computed(() =>
       key: `${owner.id}-${position.symbol}`,
       label: position.symbol,
       name: props.names[position.symbol] ?? null,
-      base: position.market_value_base,
+      // One brokerage in its own money, as its figures above are; All in the base.
+      base: view.value.all ? position.market_value_base : position.market_value,
     })),
 )
+
+const allocationCcy = computed(() => (view.value?.all ? props.base : view.value?.currencies[0]))
 </script>

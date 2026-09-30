@@ -674,9 +674,9 @@ body {
 /* The positions page: three figures that say how the holdings are doing. */
 .app-position-headline {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  max-width: 900px;
+  max-width: 1100px;
 }
 
 .app-position-currency {
@@ -788,7 +788,7 @@ body {
 
 @media (max-width: 767px) {
   .app-position-headline {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -799,6 +799,14 @@ body {
   margin-top: 0;
   padding-top: 0;
   flex: none;
+}
+
+/*
+ * On the price's line and at its size, and wide enough for "+100.0%", so the lines above
+ * one another start at the same x and every percent ends at the cell's edge.
+ */
+.app-positions__change {
+  min-width: 4.2em;
 }
 
 /* Beside the symbol on its line, cut short rather than pushing the row onto two. */
@@ -1285,4 +1293,52 @@ body {
   padding: 0 14px;
   border-radius: 8px;
   font-size: 0.85rem;
+}
+
+/* Positions toolbar: a picker with its label over its value, as the fetch button is. */
+.app-toolbar__pick .q-icon.on-right {
+  font-size: 18px;
+  margin-left: 6px;
+  color: #94a3b8;
+}
+
+/* An on-off chip: grey when off, the app's tint when on. */
+.app-toolbar__chip {
+  border-radius: 8px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.app-toolbar__chip .q-icon {
+  font-size: 18px;
+}
+
+.app-toolbar__chip--on {
+  background: var(--app-btn-tint);
+  color: var(--app-primary-ink);
+}
+
+.app-toolbar__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  font-size: 0.72rem;
+  line-height: 18px;
+  text-align: center;
+}
+
+.app-toolbar__chip--on .app-toolbar__count {
+  background: #fff;
+}
+
+.app-toolbar__fetch {
+  border-radius: 8px;
+  padding: 4px 14px;
+}
+
+.app-toolbar__fetch-note {
+  font-size: 0.72rem;
+  line-height: 1.1;
+  opacity: 0.75;
 }
