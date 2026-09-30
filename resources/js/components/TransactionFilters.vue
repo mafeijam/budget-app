@@ -85,7 +85,7 @@
     <q-input
       :model-value="rangeLabel"
       class="col-12 col-sm-6 col-md-3"
-      label="Date"
+      :label="counted ? 'Counted' : 'Date'"
       dense
       outlined
       bg-color="white"
@@ -467,6 +467,14 @@ const parse = filter => ({
   symbol: list(filter.symbol),
   date_from: filter.date_from ?? null,
   date_to: filter.date_to ?? null,
+  // A range of when a row counts, not of the day it carries: a card charge counts in the month
+  // its statement is due. The cash flow page links here with it, and a filter that dropped it
+  // on the next change would quietly hand back the whole month -- and the income in it.
+  counted_from: filter.counted_from ?? null,
+  counted_to: filter.counted_to ?? null,
+  // Spending alone, as the report counts it. No control: it is a link's condition, and a chip
+  // is the only place it can be seen and dropped.
+  spending: filter.spending ?? '',
   due_date: filter.due_date ?? null,
   month: list(filter.month),
   due_month: list(filter.due_month),
@@ -513,7 +521,20 @@ const rangeShortcuts = computed(() => {
 
 const rangeMenu = ref(null)
 
-const isRange = shortcut => filters.date_from === shortcut.from && filters.date_to === shortcut.to
+// Which range the Date field is talking about. A link from the cash flow page arrives asking
+// for a counted one, and the field has to be talking about the same range the rows are: a
+// month of statements due, where a card charge is dated by its due date, would show empty
+// beside seven rows, and picking a day in it would quietly switch the question to the row's
+// own date and bring the month's income back with it.
+const counted = computed(() => !filters.date_from && !!filters.counted_from)
+
+const isRange = shortcut => {
+  const [from, to] = counted.value
+    ? [filters.counted_from, filters.counted_to]
+    : [filters.date_from, filters.date_to]
+
+  return from === shortcut.from && to === shortcut.to
+}
 
 const pickRange = shortcut => {
   range.value = { from: shortcut.from, to: shortcut.to }
@@ -522,24 +543,36 @@ const pickRange = shortcut => {
 
 const range = computed({
   get: () => {
-    if (!filters.date_from) return null
+    const [from, to] = counted.value
+      ? [filters.counted_from, filters.counted_to]
+      : [filters.date_from, filters.date_to]
 
-    return filters.date_from === filters.date_to
-      ? filters.date_from
-      : { from: filters.date_from, to: filters.date_to }
+    if (!from) return null
+
+    return from === to ? from : { from, to }
   },
   set: value => {
-    filters.date_from = typeof value === 'string' ? value : (value?.from ?? null)
-    filters.date_to = typeof value === 'string' ? value : (value?.to ?? null)
+    const from = typeof value === 'string' ? value : (value?.from ?? null)
+    const to = typeof value === 'string' ? value : (value?.to ?? null)
+
+    // One range at a time. A hand-made URL can carry both and the server ANDs them, which is
+    // a list of nothing; and a field that kept the other would be showing a month the rows
+    // are not from.
+    filters.date_from = counted.value ? null : from
+    filters.date_to = counted.value ? null : to
+    filters.counted_from = counted.value ? from : null
+    filters.counted_to = counted.value ? to : null
   },
 })
 
 const rangeLabel = computed(() => {
-  if (!filters.date_from) return ''
+  const [from, to] = counted.value
+    ? [filters.counted_from, filters.counted_to]
+    : [filters.date_from, filters.date_to]
 
-  return filters.date_from === filters.date_to
-    ? filters.date_from
-    : `${filters.date_from} – ${filters.date_to}`
+  if (!from) return ''
+
+  return from === to ? from : `${from} – ${to}`
 })
 
 const query = () =>
@@ -591,21 +624,42 @@ const chips = computed(() => {
       ]
     : []
 
-  const appliedRange =
-    on.date_from === on.date_to ? on.date_from : `${on.date_from} – ${on.date_to}`
+  const stated = (from, to) => (from === to ? from : `${from} – ${to}`)
 
+  // One chip for whichever range is on, named for it. A counted range is not the row's day
+  // and a chip reading "Date" over a month of statements due would be the wrong name for it.
   const dated = on.date_from
-    ? [{ key: 'date', label: `Date: ${appliedRange}`, remove: () => (range.value = null) }]
-    : []
+    ? [
+        {
+          key: 'date',
+          label: `Date: ${stated(on.date_from, on.date_to)}`,
+          remove: () => (range.value = null),
+        },
+      ]
+    : on.counted_from
+      ? [
+          {
+            key: 'date',
+            label: `Counted: ${stated(on.counted_from, on.counted_to)}`,
+            remove: () => (range.value = null),
+          },
+        ]
+      : []
 
-  return [...due, ...month, ...dated, ...picked]
+  // A value that does not say yes is no filter, so an off spending is no chip either.
+  const spending =
+    on.spending === '1'
+      ? [{ key: 'spending', label: 'Spending only', remove: () => (filters.spending = '') }]
+      : []
+
+  return [...due, ...month, ...spending, ...dated, ...picked]
 })
 
-// The statement and the month have no input in the panel, so their chips show even while
-// the panel is open.
+// The statement, the month and spending have no input in the panel, so their chips show even
+// while the panel is open.
 const shownChips = computed(() =>
   rowOpen.value
-    ? chips.value.filter(chip => ['due_date', 'due_month'].includes(chip.key))
+    ? chips.value.filter(chip => ['due_date', 'due_month', 'spending'].includes(chip.key))
     : chips.value,
 )
 
@@ -641,6 +695,9 @@ const clear = () => {
     symbol: [],
     date_from: null,
     date_to: null,
+    counted_from: null,
+    counted_to: null,
+    spending: '',
     due_date: null,
     month: [],
     due_month: [],
