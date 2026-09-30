@@ -311,6 +311,37 @@ class RecurringDetectTest extends TestCase
     /**
      * @param  list<string>  $dates
      */
+    public function test_a_foreign_subscription_on_a_card_is_written_with_what_the_card_owes(): void
+    {
+        // FLICKR PRO in USD on the HKD card: a rule without the HKD figure is refused the
+        // first time it tries to record, so the rule takes the newest payment's.
+        foreach ([['2025-04-18', '79.99', '620.00'], ['2026-04-18', '96.00', '766.59']] as [$date, $usd, $hkd]) {
+            $this->post('/transactions', [
+                'account_id' => $this->card->id,
+                'category_id' => $this->category->id,
+                'date' => $date,
+                'type' => TransactionType::Charge->value,
+                'description' => "FLICKR PRO 1 YEAR {$usd} USD",
+                'amount' => $usd,
+                'ccy' => 'USD',
+                'meta_data' => ['card_amount' => $hkd],
+            ])->assertSessionHasNoErrors();
+        }
+
+        $this->post('/recurring/find/apply')->assertSessionHasNoErrors();
+
+        $rule = RecurringTransaction::sole();
+
+        $this->assertSame('FLICKR PRO 1 YEAR', $rule->description);
+        $this->assertSame('yearly', $rule->frequency);
+        $this->assertSame('USD', $rule->ccy);
+        $this->assertSame('766.5900', $rule->card_amount);
+        $this->assertSame([], Validator::make(
+            RecurringTransactionData::fromModel($rule)->toArray(),
+            RecurringTransactionData::rules()
+        )->errors()->all());
+    }
+
     private function monthly(string $description, string $amount, Account $account, array $dates = ['2026-07-12', '2026-08-12', '2026-09-12']): void
     {
         foreach ($dates as $date) {

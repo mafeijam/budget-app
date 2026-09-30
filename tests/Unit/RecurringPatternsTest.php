@@ -181,6 +181,47 @@ class RecurringPatternsTest extends TestCase
         $this->assertSame('2027-06-24', $finding['start_date']);
     }
 
+    public function test_a_yearly_renewal_at_a_new_price_and_a_later_day_is_still_found(): void
+    {
+        // PLAYSTATION®PLUS: 429.25 on the 17th, then 505.00 on the 22nd. At the current figure
+        // alone it was one payment, and its day moved one past the monthly spread.
+        $rows = array_merge(
+            $this->history('PLAYSTATION®PLUS', '429.2500', ['2025-02-17']),
+            $this->history('PLAYSTATION®PLUS', '505.0000', ['2026-02-22'])
+        );
+
+        $finding = $this->find($rows);
+
+        $this->assertSame('yearly', $finding['cadence']);
+        $this->assertSame('505.0000', $finding['amount']);
+        $this->assertSame('2027-02-22', $finding['start_date']);
+    }
+
+    public function test_a_price_in_the_description_does_not_split_its_history(): void
+    {
+        // FLICKR PRO bills with the year's price, and with one space or two, in the text.
+        $rows = array_merge(
+            $this->history('FLICKR PRO 1 YEAR  79.99 USD', '79.9900', ['2025-04-18']),
+            $this->history('FLICKR PRO 1 YEAR 96 USD', '96.0000', ['2026-04-18'])
+        );
+
+        $finding = $this->find($rows, [], 'FLICKR PRO 1 YEAR');
+
+        $this->assertSame(2, $finding['occurrences']);
+        $this->assertSame('96.0000', $finding['amount']);
+    }
+
+    public function test_a_monthly_subscription_is_still_cut_to_its_current_figure(): void
+    {
+        // Only a year's price is its renewal: a month's odd charge is not the price.
+        $rows = array_merge(
+            $this->history('NETFLIX', '88.8800', ['2026-05-11', '2026-06-11']),
+            $this->history('NETFLIX', '98.9800', ['2026-07-10', '2026-08-10', '2026-09-10'])
+        );
+
+        $this->assertSame(3, $this->find($rows)['occurrences']);
+    }
+
     public function test_the_named_credit_is_never_offered(): void
     {
         $this->assertNotFound($this->history('CREDIT INTEREST', '0.5600', [

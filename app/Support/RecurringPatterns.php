@@ -73,11 +73,15 @@ class RecurringPatterns
     private const YEARLY_GAP = [350, 380];
 
     /**
-     * How far the day of the month may wander. A rule fires on one day of the month, so a
-     * history landing further apart than this is not that rule: the 25th to the 29th is
-     * (spread 4, and a real monthly payment), the 3rd to the 31st is not.
+     * How far the day of the month may wander, per cadence. A rule fires on one day of the
+     * month, so a history landing further apart than this is not that rule: the 25th to the
+     * 29th is (spread 4, and a real monthly payment), the 3rd to the 31st is not. A year's
+     * renewal drifts further, the 17th one year and the 22nd the next, as PLAYSTATION®PLUS
+     * did and was missed for; seven days is still one date, and a month away is not.
+     *
+     * @var array<string, int>
      */
-    private const DAY_SPREAD = 4;
+    private const DAY_SPREAD = ['monthly' => 4, 'yearly' => 7];
 
     /** Days without a payment after which a rule is treated as finished, per cadence. */
     private const STOPPED_AFTER = ['monthly' => 70, 'yearly' => 730];
@@ -164,7 +168,20 @@ class RecurringPatterns
 
     private static function key(int $accountId, string $description): string
     {
-        return $accountId.'|'.$description;
+        return $accountId.'|'.self::name($description);
+    }
+
+    /**
+     * A description as the payment is known across its history: spaces collapsed, and a
+     * trailing price with its currency cut off. FLICKR PRO bills as "1 YEAR 79.99 USD" one
+     * year and "1 YEAR 96 USD" the next, with one space or two; kept whole, each year was a
+     * group of one, and a subscription paid ten years running was never found.
+     */
+    public static function name(string $description): string
+    {
+        $name = trim((string) preg_replace('/\s+/u', ' ', $description));
+
+        return trim((string) preg_replace('/\s+\d+(?:[.,]\d+)?\s*[A-Z]{3}$/u', '', $name)) ?: $name;
     }
 
     /**
@@ -178,7 +195,13 @@ class RecurringPatterns
     private static function detect(array $group, string $today): ?array
     {
         $summary = self::summarise($group);
-        $run = $summary['deposit'] ? $group : self::atCurrentFigure($group);
+
+        // A yearly subscription's price is set at each renewal, so its figure changing is
+        // the pattern, not a break in it: at the current figure only, a yearly service whose
+        // price rose last renewal is one payment, and never found. A month's is still cut
+        // to its current figure, where one odd charge must not read as the price.
+        $every = array_values(array_unique(array_column($group, 'date')));
+        $run = $summary['deposit'] || self::cadence($every) === 'yearly' ? $group : self::atCurrentFigure($group);
 
         // One date per occasion, so a thirteenth month paid on the same day as the salary
         // is not a payment that arrives twice. The count below still counts both, because
@@ -192,7 +215,7 @@ class RecurringPatterns
 
         $day = self::modalDay($dates);
 
-        if ($day['spread'] > self::DAY_SPREAD) {
+        if ($day['spread'] > self::DAY_SPREAD[$cadence]) {
             return null;
         }
 
@@ -202,6 +225,7 @@ class RecurringPatterns
         return [
             ...$summary,
             'amount' => $newest['amount'],
+            'card_amount' => $newest['card_amount'] ?? null,
             'cadence' => $cadence,
             'occurrences' => count($run),
             'first' => $run[0]['date'],
@@ -235,11 +259,13 @@ class RecurringPatterns
         return [
             'account_id' => (int) $first['account_id'],
             'account' => $first['account'],
-            'description' => $first['description'],
+            // The name the payments share, so a rule written from it is not one year's price.
+            'description' => self::name($newest['description']),
             'type' => $first['type'],
             'ccy' => $first['ccy'],
             'deposit' => $first['type'] === TransactionType::Deposit->value,
             'amount' => $newest['amount'],
+            'card_amount' => $newest['card_amount'] ?? null,
             'cadence' => null,
             'occurrences' => count($group),
             'first' => $first['date'],

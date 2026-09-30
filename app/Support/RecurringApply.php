@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Account;
 use App\Models\RecurringTransaction;
 use Illuminate\Support\Facades\DB;
 
@@ -51,6 +52,9 @@ class RecurringApply
             return;
         }
 
+        $foreign = ($finding['card_amount'] ?? null) !== null
+            && Account::find($finding['account_id'])?->ccy !== $finding['ccy'];
+
         RecurringTransaction::create([
             'account_id' => $finding['account_id'],
             'category_id' => $finding['category_id'],
@@ -58,6 +62,10 @@ class RecurringApply
             'description' => $finding['description'],
             'amount' => $finding['amount'],
             'ccy' => $finding['ccy'],
+            // A charge in another currency than the card's is refused without what the card
+            // owes for it, so the rule carries the newest payment's -- and only then, since
+            // the same figure on a charge in the card's own currency is refused too.
+            'card_amount' => $foreign ? $finding['card_amount'] : null,
             'frequency' => $finding['cadence'],
             // The next occurrence, never the first in the history: the recorder writes a
             // pending row for every occurrence since this date, and those months are

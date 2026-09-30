@@ -39,7 +39,7 @@ class RecurringScan
      * The types come from the enum rather than from a list here, so a type that stops being
      * repeatable stops being scanned without this file being opened.
      *
-     * @return list<array{account_id: int, account: string, type: string, description: string, ccy: string, date: string, amount: string, category_id: ?int}>
+     * @return list<array{account_id: int, account: string, type: string, description: string, ccy: string, date: string, amount: string, card_amount: ?string, category_id: ?int}>
      */
     public static function rows(int $months): array
     {
@@ -69,6 +69,8 @@ class RecurringScan
                 'ccy' => $row->ccy,
                 'date' => $row->date,
                 'amount' => $row->amount,
+                // What a card owes for a charge in another currency, for a rule written from it.
+                'card_amount' => $row->meta?->meta['card_amount'] ?? null,
                 'category_id' => $row->category_id,
             ])
             ->values()
