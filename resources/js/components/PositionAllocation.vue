@@ -50,11 +50,8 @@ const money = useMoney()
 
 const hovered = ref(null)
 
-// The dataviz reference palette's categorical slots in their fixed order, validated for
-// the light surface; slot 8 is spent on nothing, since the ninth holding onwards fold
-// into Others, in a neutral that is no holding's hue.
-const palette = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']
-const others = '#94a3b8'
+// The shared categorical palette; the ninth holding onwards folds into Others, in the
+// neutral that is no holding's hue.
 
 // Below this share a slice is too thin to point at, so it joins Others.
 const smallest = 0.03
@@ -70,6 +67,8 @@ const slices = computed(() => {
   if (total <= 0) return []
 
   const ranked = [...priced.value].sort((a, b) => Number(b.base) - Number(a.base))
+  // Named is bounded by the palette as well as by the share, since a slice past its end
+  // would take the neutral and read as Others while being named.
   const named = ranked.filter((h, i) => i < palette.length && Number(h.base) / total >= smallest)
   const rest = ranked.slice(named.length)
 
@@ -80,7 +79,7 @@ const slices = computed(() => {
     value: Number(h.base),
     amount: h.base,
     share: Number(h.base) / total,
-    colour: palette[i],
+    colour: seriesColour(i),
   }))
 
   if (rest.length) {
@@ -92,7 +91,7 @@ const slices = computed(() => {
       value: sum,
       amount: sum.toFixed(2),
       share: sum / total,
-      colour: others,
+      colour: neutral,
       members: rest.map(h => (h.name ? `${h.label} ${h.name}` : h.label)).join(', '),
     })
   }

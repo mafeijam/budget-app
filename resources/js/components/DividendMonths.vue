@@ -161,15 +161,15 @@ const short = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const long = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' })
 
 // The key names only the coloured symbols; the rest share the neutral, as in the table.
-const legend = computed(() => {
-  const named = props.symbols.filter(s => !s.other)
-  const rest = props.symbols.filter(s => s.other)
+const othersColour = computed(() => props.symbols.find(s => s.other)?.colour)
+const othersCount = computed(() => props.symbols.filter(s => s.other).length)
 
-  return [
-    ...named.map(s => ({ label: s.symbol, colour: s.colour })),
-    ...(rest.length ? [{ label: `Others (${rest.length})`, colour: rest[0].colour }] : []),
-  ]
-})
+const legend = computed(() => [
+  ...props.symbols.filter(s => !s.other).map(s => ({ label: s.symbol, colour: s.colour })),
+  ...(othersCount.value
+    ? [{ label: `Others (${othersCount.value})`, colour: othersColour.value }]
+    : []),
+])
 
 const hasExpected = computed(() => props.expectedMonths.some(v => Number(v) > 0))
 
@@ -178,12 +178,23 @@ const stacks = computed(() =>
   Array.from({ length: 12 }, (_, i) => {
     const day = new Date(Date.UTC(props.year, i, 1))
     let running = 0
+    let rest = 0
     const segments = []
 
     for (const symbol of props.symbols) {
       const amount = Number(symbol.months[i])
 
       if (amount <= 0) continue
+
+      // The tail is one block, not one block per symbol: they share the neutral already,
+      // and each as its own segment put a 1px gap between them that read as a border, so
+      // eleven of them looked like a stack of separate things rather than a single share
+      // of the month's money. Added together, and drawn once, on top of the named.
+      if (symbol.other) {
+        rest += amount
+
+        continue
+      }
 
       segments.push({
         key: symbol.symbol,
@@ -192,6 +203,16 @@ const stacks = computed(() =>
         colour: symbol.colour,
       })
       running += amount
+    }
+
+    if (rest > 0) {
+      segments.push({
+        key: 'others',
+        from: running,
+        to: running + rest,
+        colour: othersColour.value,
+      })
+      running += rest
     }
 
     return {
@@ -241,11 +262,34 @@ const label = computed(() => `Dividends paid each month of ${props.year}, in ${p
 
 const tooltipRows = computed(() => {
   const i = hovered.value
+  const named = []
+  const rest = []
+
+  for (const symbol of props.symbols) {
+    if (Number(symbol.months[i]) <= 0) continue
+
+    // The tail as the one row the bar draws, with the count beside it, so the tooltip and
+    // the stack are saying the same thing. Still one figure: a month can carry a dozen of
+    // these and the list is not the point of the hover.
+    if (symbol.other) {
+      rest.push(symbol)
+
+      continue
+    }
+
+    named.push({ label: symbol.symbol, value: money(symbol.months[i]), colour: symbol.colour })
+  }
+
+  if (rest.length) {
+    named.push({
+      label: `Others (${rest.length})`,
+      value: money(rest.reduce((total, s) => total + Number(s.months[i]), 0).toFixed(2)),
+      colour: othersColour.value,
+    })
+  }
 
   return [
-    ...props.symbols
-      .filter(s => Number(s.months[i]) > 0)
-      .map(s => ({ label: s.symbol, value: money(s.months[i]), colour: s.colour })),
+    ...named,
     ...props.symbols
       .filter(s => Number(s.expected_months[i]) > 0)
       .map(s => ({

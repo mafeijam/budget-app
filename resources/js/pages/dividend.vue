@@ -331,15 +331,13 @@ const at = computed(() => props.years.findIndex(y => y.year === props.year))
 const newer = computed(() => props.years[at.value - 1]?.year ?? null)
 const older = computed(() => props.years[at.value + 1]?.year ?? null)
 
-// The positions page's categorical palette in rank order; past it the neutral, so a colour
-// always means one symbol, and the same symbol in the chart and the table.
-const palette = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']
-const neutral = '#94a3b8'
-
+// The shared categorical palette, in rank order, and the neutral past its end. Ranked by
+// the server on what each symbol paid plus what is expected of it, so a colour says both
+// which symbol and how big a share it is.
 const ranked = computed(() =>
   props.symbols.map((symbol, i) => ({
     ...symbol,
-    colour: i < palette.length ? palette[i] : neutral,
+    colour: seriesColour(i),
     other: i >= palette.length,
   })),
 )

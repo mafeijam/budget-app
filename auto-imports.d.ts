@@ -56,6 +56,7 @@ declare global {
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
   const monotoneCurve: typeof import('./resources/js/composables/curve.js').monotoneCurve
+  const neutral: typeof import('./resources/js/composables/palette.js').neutral
   const nextTick: typeof import('vue').nextTick
   const notifySuccess: typeof import('./resources/js/composables/notify.js').notifySuccess
   const onActivated: typeof import('vue').onActivated
@@ -77,6 +78,7 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const palette: typeof import('./resources/js/composables/palette.js').palette
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
@@ -96,6 +98,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core').refWithControl
   const resolveComponent: typeof import('vue').resolveComponent
   const router: typeof import('@inertiajs/vue3').router
+  const seriesColour: typeof import('./resources/js/composables/palette.js').seriesColour
   const shallowReactive: typeof import('vue').shallowReactive
   const shallowReadonly: typeof import('vue').shallowReadonly
   const shallowRef: typeof import('vue').shallowRef

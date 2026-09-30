@@ -337,12 +337,9 @@ const share = (part, whole) => {
 const named = month => month.categories.filter(category => category.name)
 const unnamed = month => month.categories.filter(category => !category.name)
 
-// The positions page's categorical palette in rank order; past it, and for spending with no
-// category, the neutral no category has, so a colour always means one named category.
-const palette = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7']
-const neutral = '#94a3b8'
-
-const categoryColour = (category, i) => (category.name && i < palette.length ? palette[i] : neutral)
+// The shared categorical palette in rank order, and the neutral past it, which spending
+// with no category also takes: a colour always means one named category.
+const categoryColour = (category, i) => (category.name ? seriesColour(i) : neutral)
 
 const breakdownLabel = month =>
   `Spending by category: ${month.categories
