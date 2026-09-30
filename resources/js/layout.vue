@@ -54,7 +54,9 @@ const menus = computed(() => {
     to: () => router.visit(path),
   })
 
-  // What is recorded, then what is read off it.
+  // What is recorded day to day, what is read off it, and the lists both are filed under,
+  // which are set up once and visited rarely -- so last, out of the way of the daily two.
+  // Positions is a report: it is worked out from trades, and nothing is entered on it.
   return [
     { items: [item('Home', 'index', 'dashboard', '/')] },
     {
@@ -62,9 +64,6 @@ const menus = computed(() => {
       items: [
         item('Transactions', 'transaction', 'paid', '/transactions'),
         item('Recurring', 'recurring', 'event_repeat', '/recurring'),
-        item('Accounts', 'account', 'account_balance', '/accounts'),
-        item('Positions', 'position', 'show_chart', '/positions'),
-        item('Categories', 'category', 'category', '/categories'),
       ],
     },
     {
@@ -73,6 +72,14 @@ const menus = computed(() => {
         item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
         item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
         item('Forecast', 'forecast', 'query_stats', '/forecast'),
+        item('Positions', 'position', 'show_chart', '/positions'),
+      ],
+    },
+    {
+      heading: 'Settings',
+      items: [
+        item('Accounts', 'account', 'account_balance', '/accounts'),
+        item('Categories', 'category', 'category', '/categories'),
       ],
     },
   ]
