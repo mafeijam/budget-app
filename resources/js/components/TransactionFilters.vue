@@ -50,6 +50,10 @@
           dense
           class="q-px-sm"
         />
+        <q-separator vertical inset class="q-mx-sm" />
+        <!-- The totals under the table, off unless asked for: a figure on every visit is one
+             nobody reads, and the page is shorter without it. -->
+        <q-toggle v-model="showTotals" label="Totals" color="primary" dense class="q-px-sm" />
       </div>
     </div>
 
@@ -417,6 +421,9 @@ const seeded = page.props.params?.filter ?? {}
 // anyway when the URL carries a filter, so a followed link shows what applied. Only a click
 // is remembered: a link that opened the row does not leave it open for the next visit.
 const keptOpen = useStorage('transactions.filtersOpen', false)
+
+// Shared with the page, which draws the totals: the same key, so the two stay in step.
+const showTotals = useStorage('transactions.totalsOpen', false)
 const rowOpen = ref(keptOpen.value || Object.keys(seeded).length > 0)
 
 const toggleRow = () => {

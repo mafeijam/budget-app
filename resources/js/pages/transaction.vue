@@ -82,66 +82,53 @@
 
     <!-- Every filtered row, not just this page, one line per currency: nothing is
          converted, so HKD and USD never add up. -->
-    <q-card v-if="totals.length" flat bordered>
-      <q-card-section class="row items-center no-wrap q-py-sm">
-        <q-icon name="functions" size="sm" color="grey-7" class="q-mr-sm" />
-        <div class="text-subtitle1 text-weight-medium">What these add up to</div>
-        <div class="text-caption text-grey-6 q-ml-sm">
-          {{ rowCount }} row{{ rowCount === 1 ? '' : 's' }}, every page of them
-        </div>
-      </q-card-section>
-
-      <q-separator />
-
-      <q-card-section v-for="total in totals" :key="total.ccy">
-        <div class="row items-center q-mb-sm">
+    <q-card v-if="showTotals && totals.length" flat bordered>
+      <div
+        v-for="total in totals"
+        :key="total.ccy"
+        class="app-tx-totals"
+        :class="{ 'app-tx-totals--trades': hasTrades }"
+      >
+        <div class="row items-center no-wrap q-gutter-x-sm">
+          <q-icon name="functions" size="xs" color="grey-6" />
           <q-badge outline color="grey-7" :label="total.ccy" />
-          <span v-if="totals.length > 1" class="text-caption text-grey-6 q-ml-sm">
-            {{ total.count }} row{{ total.count === 1 ? '' : 's' }}
+          <span class="text-caption text-grey-6">
+            {{ total.count }} row{{ total.count === 1 ? '' : 's' }}, every page
           </span>
         </div>
-        <div class="app-outlook">
-          <div class="app-outlook__tile">
-            <div class="text-caption text-grey-7">In</div>
-            <div class="text-h6 text-weight-bold money text-positive">
-              +{{ formatMoney(total.in) }}
-            </div>
-          </div>
-          <div class="app-outlook__tile">
-            <div class="text-caption text-grey-7">Out</div>
-            <div class="text-h6 text-weight-bold money text-negative">
-              −{{ formatMoney(total.out) }}
-            </div>
-          </div>
-          <div class="app-outlook__tile app-outlook__tile--total">
-            <div class="text-caption text-grey-7">Net</div>
-            <div class="text-h6 text-weight-bold money" :class="netClass(total.net)">
-              {{ signedNet(total.net) }}
-            </div>
-          </div>
-          <div v-if="!isZero(total.trades)" class="app-outlook__tile">
-            <div class="text-caption text-grey-7">Trades</div>
-            <div class="text-h6 text-weight-bold money text-grey-9">
-              {{ formatMoney(total.trades) }}
-            </div>
-            <div class="text-caption text-grey-6">bought and sold, in neither</div>
-          </div>
-        </div>
 
-        <!-- In against out on one scale, as the forecast's outlook draws them. -->
-        <div v-if="!isZero(total.in) || !isZero(total.out)" class="q-mt-md">
-          <div
-            v-for="bar in flowBars(total)"
-            :key="bar.label"
-            class="app-outlook__bar row items-center no-wrap"
-          >
-            <div class="app-outlook__bar-label text-caption text-grey-7">{{ bar.label }}</div>
-            <div class="app-outlook__track col">
-              <div :style="{ width: `${bar.width}%`, background: bar.colour }" />
-            </div>
+        <!-- A column each, the same in every currency's strip, so the figures stack. -->
+        <div class="app-tx-totals__figure">
+          <div class="app-tx-totals__label">In</div>
+          <div class="money text-body2" :class="isZero(total.in) ? 'text-grey-5' : 'text-positive'">
+            {{ isZero(total.in) ? '—' : `+${formatMoney(total.in)}` }}
           </div>
         </div>
-      </q-card-section>
+        <div class="app-tx-totals__figure">
+          <div class="app-tx-totals__label">Out</div>
+          <div
+            class="money text-body2"
+            :class="isZero(total.out) ? 'text-grey-5' : 'text-negative'"
+          >
+            {{ isZero(total.out) ? '—' : `−${formatMoney(total.out)}` }}
+          </div>
+        </div>
+        <div v-if="hasTrades" class="app-tx-totals__figure">
+          <div class="app-tx-totals__label">Trades</div>
+          <div
+            class="money text-body2"
+            :class="isZero(total.trades) ? 'text-grey-5' : 'text-grey-9'"
+          >
+            {{ isZero(total.trades) ? '—' : formatMoney(total.trades) }}
+          </div>
+        </div>
+        <div class="app-tx-totals__figure">
+          <div class="app-tx-totals__label">Net</div>
+          <div class="money text-subtitle1 text-weight-bold" :class="netClass(total.net)">
+            {{ signedNet(total.net) }}
+          </div>
+        </div>
+      </div>
     </q-card>
   </div>
 </template>
@@ -151,25 +138,19 @@ const filterBar = ref(null)
 
 const totals = computed(() => usePage().props.totals ?? [])
 
+// Off by default, and remembered per browser, as the filter panel is; the toggle is in it.
+const showTotals = useStorage('transactions.totalsOpen', false)
+
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
-
-const rowCount = computed(() => totals.value.reduce((n, total) => n + total.count, 0))
 
 const signedNet = value =>
   String(value).startsWith('-') && !isZero(value)
     ? `−${formatMoney(String(value).slice(1))}`
     : `${isZero(value) ? '' : '+'}${formatMoney(value)}`
 
-// Widths only, so floats: in and out against the larger of the two.
-const flowBars = total => {
-  const scale = Math.max(Number(total.in), Number(total.out), 1)
-
-  return [
-    { label: 'In', width: (Number(total.in) / scale) * 100, colour: '#059669' },
-    { label: 'Out', width: (Number(total.out) / scale) * 100, colour: '#dc2626' },
-  ]
-}
+// A Trades column in every strip when any has trades, so the columns stay in line.
+const hasTrades = computed(() => totals.value.some(total => !isZero(total.trades)))
 
 const netClass = value =>
   isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'

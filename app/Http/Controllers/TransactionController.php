@@ -214,7 +214,10 @@ class TransactionController extends Controller
         }
 
         // Every filtered row, not the page: a total of ten rows would read as the filter's.
-        $totals = $r->has('filter') ? $this->totals(clone $transactions->getEloquentBuilder()) : null;
+        // Unfiltered too, so the card under the table never disappears when the last filter
+        // is cleared: gone, it shortened the page under a reader scrolled down to it, and the
+        // browser threw them back up the list.
+        $totals = $this->totals(clone $transactions->getEloquentBuilder());
 
         // By the signed figure the Amount column shows, not the stored magnitude, or money in
         // and money out interleave.

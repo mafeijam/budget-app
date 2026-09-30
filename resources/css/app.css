@@ -1610,3 +1610,41 @@ body {
   line-height: 1.1;
   opacity: 0.75;
 }
+
+/*
+ * The transactions' totals: one strip a currency, each figure in a column of fixed width
+ * so a second currency's figures stand under the first's.
+ */
+.app-tx-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 160px);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+}
+
+.app-tx-totals--trades {
+  grid-template-columns: minmax(0, 1fr) repeat(4, 160px);
+}
+
+.app-tx-totals + .app-tx-totals {
+  border-top: 1px solid var(--app-border);
+}
+
+.app-tx-totals__figure {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.app-tx-totals__label {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: #64748b;
+}
+
+@media (max-width: 599px) {
+  .app-tx-totals,
+  .app-tx-totals--trades {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -535,9 +535,14 @@ class TransactionFilterTest extends TestCase
         );
     }
 
-    public function test_an_unfiltered_list_has_no_totals(): void
+    public function test_an_unfiltered_list_totals_every_row(): void
     {
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page->where('totals', null));
+        // The same rows as the HKD filter above, since every row here is HKD: the card stays
+        // when the last filter goes rather than taking the page's height with it.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('totals.0.count', 4)
+            ->where('totals.0.net', '20760.0000')
+        );
     }
 
     public function test_a_card_payment_is_hidden_unless_the_filter_asks_for_it(): void
