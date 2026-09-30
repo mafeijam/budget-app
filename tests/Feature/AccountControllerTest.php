@@ -48,13 +48,13 @@ class AccountControllerTest extends TestCase
         );
     }
 
-    public function test_index_exposes_pagination_and_sort_params(): void
+    public function test_index_lists_every_account_by_name(): void
     {
         $response = $this->get('/accounts');
 
         $response->assertInertia(fn (Assert $page) => $page
-            ->where('params.sort', 'created_at')
-            ->where('params.dir', 'desc')
+            ->where('params.sort', 'name')
+            ->where('params.dir', 'asc')
         );
     }
 
@@ -189,9 +189,8 @@ class AccountControllerTest extends TestCase
 
     public function test_the_option_list_is_not_the_paginated_page_of_accounts(): void
     {
-        // The picker must reach every cash account, not the handful on the
-        // current page. The account table paginates at 10 by default, so reusing
-        // that result set would quietly make most banks unselectable.
+        // The picker must reach every cash account. The list is on one page now, but a
+        // picker built from it would still lose whatever a filter or a page left out.
         foreach (range(1, 12) as $n) {
             Account::create(['name' => "Bank $n", 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
         }
@@ -199,8 +198,8 @@ class AccountControllerTest extends TestCase
         $response = $this->get('/accounts');
 
         $response->assertInertia(fn (Assert $page) => $page->has('settlementOptions', 12));
-        // ...while the table itself stays paginated.
-        $response->assertInertia(fn (Assert $page) => $page->has('data.data', 10));
+        // ...and the list is every account, where it used to stop at ten and hide the rest.
+        $response->assertInertia(fn (Assert $page) => $page->has('data.data', 12));
     }
 
     public function test_index_exposes_the_picker_even_with_no_accounts(): void

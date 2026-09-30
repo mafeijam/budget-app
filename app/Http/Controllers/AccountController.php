@@ -10,7 +10,11 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\AccountBalance;
+use App\Support\CardStatement;
+use App\Support\Fx;
+use App\Support\NetWorth;
 use App\Support\Positions;
+use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -26,10 +30,13 @@ class AccountController extends Controller
             'status' => 'active',
         ]);
 
+        // Every account on one page, grouped by type on screen: a household has a dozen, and
+        // paged by ten the second page hid cards whose statements were due. Still a paginator,
+        // because saving and deleting reload through it.
         $accounts = Account::query()
             ->with('meta')
-            ->orderBy($r->input('sort', 'created_at'), $r->input('dir', 'desc'))
-            ->paginate($r->input('per_page', self::PER_PAGE));
+            ->orderBy('name')
+            ->paginate(max(1, Account::query()->count()));
 
         $data = AccountData::collect($accounts, PaginatedDataCollection::class);
 
@@ -49,6 +56,12 @@ class AccountController extends Controller
 
         $refusals = $this->deleteRefusals($accounts->getCollection());
 
+        // The Net worth page's figures, so a section's subtotal is the figure that page shows.
+        ['today' => $summary, 'trends' => $trends] = (new NetWorth)->accountTrends(today());
+
+        $statements = $this->nextStatements();
+        $base = Fx::BASE->value;
+
         $settlementOptions = Account::settlementOptions();
 
         $currencyOptions = collect(Currency::cases())
@@ -62,7 +75,7 @@ class AccountController extends Controller
 
         $statusOptions = array_column(AccountStatus::cases(), 'value');
 
-        $params = $r->query() + ['sort' => 'created_at', 'dir' => 'desc'];
+        $params = ['sort' => 'name', 'dir' => 'asc'];
 
         $meta = [
             'form' => 'account-form',
@@ -76,6 +89,10 @@ class AccountController extends Controller
             'meta',
             'balances',
             'marketValues',
+            'summary',
+            'trends',
+            'statements',
+            'base',
             'refusals',
             'settlementOptions',
             'currencyOptions',
@@ -140,6 +157,32 @@ class AccountController extends Controller
         }
 
         return back()->with('message', "Account [$account->name] updated");
+    }
+
+    /**
+     * Each card's earliest statement with something owed, and how many more are open after
+     * it. An overpaid period is not settled either, but it is a credit rather than a bill,
+     * so it is not the thing a row should say is due.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function nextStatements(): array
+    {
+        $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->get();
+        $next = [];
+
+        foreach (CardStatement::forAccounts($cards) as $cardId => $periods) {
+            $owing = $periods
+                ->filter(fn (CardStatement $period) => BigDecimal::of($period->owed())->isPositive())
+                ->sortBy(fn (CardStatement $period) => $period->toArray()['due_date'])
+                ->values();
+
+            if ($owing->isNotEmpty()) {
+                $next[$cardId] = [...$owing->first()->toArray(), 'more' => $owing->count() - 1];
+            }
+        }
+
+        return $next;
     }
 
     /**

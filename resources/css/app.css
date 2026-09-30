@@ -512,3 +512,55 @@ body {
 .app-toolbar__toggle .q-btn {
   border-radius: 6px;
 }
+
+/* The accounts page: who it is, how it has moved, what it holds, and what to do with it. */
+.app-account-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) 140px minmax(240px, 1fr) 120px;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-account-row:last-child {
+  border-bottom: 0;
+}
+
+.app-account-row:hover {
+  background: #f8fafc;
+}
+
+.app-account-row--closed .app-account-row__name,
+.app-account-row--closed .app-account-row__trend {
+  opacity: 0.6;
+}
+
+.app-account-row__name {
+  min-width: 0;
+}
+
+.app-account-row__figures {
+  text-align: right;
+}
+
+/* The home card's spark, sized for a row: the two share the line's drawing, not its box. */
+.app-home-spark.app-account-spark {
+  height: 32px;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+@media (max-width: 767px) {
+  .app-account-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-account-row__trend {
+    display: none;
+  }
+
+  .app-account-row__actions {
+    grid-column: 1 / -1;
+  }
+}

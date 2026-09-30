@@ -254,6 +254,41 @@ class NetWorth
     }
 
     /**
+     * Today's snapshot and, per account, its figure at the last $months month ends and today,
+     * oldest first, in its own currency: a balance, or a brokerage's market value. Read in
+     * one onMany() so the accounts page's totals are the snapshot its lines end on.
+     *
+     * An account missing from a snapshot is zero, not absent: snapshot() leaves out a zero
+     * balance and a brokerage holding nothing, and a line with a gap would start mid-chart.
+     *
+     * @return array{today: array<string, mixed>, trends: array<int, list<string>>}
+     */
+    public function accountTrends(Carbon $today, int $months = 12): array
+    {
+        $days = [];
+
+        for ($n = $months; $n >= 1; $n--) {
+            $days[] = $today->copy()->startOfMonth()->subMonthsNoOverflow($n - 1)->subDay()->toDateString();
+        }
+
+        $days[] = $today->toDateString();
+
+        $snapshots = $this->onMany($days);
+        $trends = [];
+
+        foreach ($this->accounts as $account) {
+            $trends[$account->id] = array_map(function (array $snapshot) use ($account) {
+                $row = collect($account->type === AccountType::Security->value ? $snapshot['brokerages'] : $snapshot['accounts'])
+                    ->firstWhere('id', $account->id);
+
+                return $row[$account->type === AccountType::Security->value ? 'value' : 'balance'] ?? '0.0000';
+            }, $snapshots);
+        }
+
+        return ['today' => end($snapshots), 'trends' => $trends];
+    }
+
+    /**
      * A snapshot at the end of every $months-month period back from today, and today's for
      * the period still running. Periods count from January, so a 12-month history is year
      * ends and a 3-month one quarter ends.
