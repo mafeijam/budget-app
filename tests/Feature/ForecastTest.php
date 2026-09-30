@@ -286,6 +286,95 @@ class ForecastTest extends TestCase
         $this->assertTrue($bonus['estimate']);
     }
 
+    public function test_a_month_paid_twice_over_places_the_extra_on_the_same_date_a_year_on(): void
+    {
+        // 100 a month all year, and one month at 250: a second month's pay, and the part
+        // above the median is what a year on is expected to bring.
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        foreach ($this->salaryMonths([6]) as $month) {
+            $this->row('deposit', $month, '100', description: 'SALARY');
+        }
+
+        $this->row('deposit', '2025-06-01', '250', description: 'SALARY');
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+        $months = collect($section['months'])->keyBy('month');
+
+        $this->assertSame('150.0000', $section['expected_double_pay']);
+        $this->assertSame('150.0000', $months['2026-06']['double_pay']);
+        $this->assertSame('0.0000', $months['2026-07']['double_pay']);
+
+        // On the typical line only, as every other estimate is. The known figure for June is
+        // the rule's own 100 -- the 250 was paid last June, so the extra is nowhere in it.
+        $this->assertSame('100.0000', $months['2026-06']['in']);
+        $this->assertGreaterThan(
+            (float) $months['2026-05']['typical_in'],
+            (float) $months['2026-06']['typical_in'],
+        );
+
+        $double = collect($section['events'])->firstWhere('kind', 'expected double pay');
+
+        $this->assertNotNull($double);
+        $this->assertSame('2026-06-01', $double['date']);
+        $this->assertSame('150.0000', $double['base']);
+        $this->assertSame('Double pay, as paid 2025-06-01', $double['description']);
+        $this->assertTrue($double['estimate']);
+    }
+
+    public function test_a_raise_is_not_read_as_a_second_months_pay(): void
+    {
+        // 100 a month all year, and one month at 140: a raise, not two payments' worth, and
+        // projecting it would put a month's salary on the typical line for a year.
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        foreach ($this->salaryMonths([6]) as $month) {
+            $this->row('deposit', $month, '100', description: 'SALARY');
+        }
+
+        $this->row('deposit', '2025-06-01', '140', description: 'SALARY');
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+        $months = collect($section['months'])->keyBy('month');
+
+        $this->assertSame('0.0000', $section['expected_double_pay']);
+        $this->assertSame('0.0000', $months['2026-06']['double_pay']);
+        $this->assertNull(collect($section['events'])->firstWhere('kind', 'expected double pay'));
+    }
+
+    public function test_two_payments_in_one_month_read_as_one_double(): void
+    {
+        // The doubled month paid as two rows rather than one, and the extra is the same: the
+        // month is added up before it is measured, not the first row of it.
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        foreach ($this->salaryMonths([6]) as $month) {
+            $this->row('deposit', $month, '100', description: 'SALARY');
+        }
+
+        $this->row('deposit', '2025-06-01', '150', description: 'SALARY');
+        $this->row('deposit', '2025-06-01', '100', description: 'SALARY');
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+
+        $this->assertSame('150.0000', $section['expected_double_pay']);
+    }
+
+    /**
+     * One salary date a month through the last year, skipping the named months so a test can
+     * give one of them a different figure without two rows landing in the same month.
+     *
+     * @param  list<int>  $except
+     * @return list<string>
+     */
+    private function salaryMonths(array $except): array
+    {
+        return collect(range(2, 12))
+            ->reject(fn (int $month) => in_array($month, $except, true))
+            ->map(fn (int $month) => sprintf('2025-%02d-01', $month))
+            ->all();
+    }
+
     public function test_a_refund_is_not_projected_because_nothing_says_it_recurs(): void
     {
         $this->row('deposit', '2025-06-01', '8975', description: 'TAX REFUND');

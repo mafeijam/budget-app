@@ -240,9 +240,9 @@
                 their own payments, so a bonus or a refund month does not set it. For comparison,
                 income averaged {{ money(section.typical_income_basis.average) }} a month. Dividends
                 are each holding's last year of payments a year on,
-                {{ money(section.expected_dividends) }} over the {{ months }} months, and a bonus is
-                placed on the date it was paid, {{ money(section.expected_bonuses) }} over the
-                {{ months }} months.
+                {{ money(section.expected_dividends) }} over the {{ months }} months. A bonus is
+                placed on the date it was paid, {{ money(section.expected_bonuses) }}, and a month's
+                double pay on the date it was doubled, {{ money(section.expected_double_pay) }}.
               </div>
             </div>
           </div>
@@ -758,6 +758,7 @@ const kinds = {
   statement: { label: 'card statement', class: 'app-tint app-tint--negative' },
   'expected dividend': { label: 'expected dividend', class: 'app-tint app-tint--muted' },
   'expected bonus': { label: 'expected bonus', class: 'app-tint app-tint--muted' },
+  'expected double pay': { label: 'expected double pay', class: 'app-tint app-tint--muted' },
 }
 
 const openLabel = event =>

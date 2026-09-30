@@ -92,6 +92,7 @@ class Forecast
         $this->statements();
         $this->expectedDividends();
         $this->expectedBonuses();
+        $this->expectedDoublePay();
 
         usort($this->events, fn (array $a, array $b) => [$a['date'], $a['description']] <=> [$b['date'], $b['description']]);
     }
@@ -186,7 +187,7 @@ class Forecast
 
         $lowest = array_map(fn (BigDecimal $balance) => [$balance, $day], $balances);
         $byDay = collect($this->events)->whereIn('account_id', array_keys($balances))->groupBy('date');
-        $dividendsByDay = collect($this->expected)->whereIn('account_id', array_keys($balances))->groupBy('date');
+        $expectedByDay = collect($this->expected)->whereIn('account_id', array_keys($balances))->groupBy('date');
         $expectedBy = array_map(fn () => BigDecimal::zero(), $balances);
         // Each account at today and every month end, known and with its expected dividends.
         $paths = [];
@@ -248,7 +249,7 @@ class Forecast
         for ($cursor = $this->today->copy(); $cursor->lessThanOrEqualTo($this->end); $cursor->addDay()) {
             $date = $cursor->toDateString();
             $month = substr($date, 0, 7);
-            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'typical_in' => $zero, 'dividends' => $zero, 'bonuses' => $zero];
+            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'typical_in' => $zero, 'dividends' => $zero, 'bonuses' => $zero, 'double_pay' => $zero];
 
             // From tomorrow: today's spending is in today's balance already.
             if ($cursor->greaterThan($this->today)) {
@@ -288,31 +289,27 @@ class Forecast
             }
 
             // An estimate, so on the typical line only, as typical income is: the known balance
-            // does not move, and the row says it is expected rather than coming. A bonus
-            // lands the same way, on the date it was paid rather than spread across the year.
-            foreach ($dividendsByDay[$date] ?? [] as $dividend) {
-                $amount = $base($dividend['account_id'], $dividend['amount']);
+            // does not move, and the row says it is expected rather than coming. A bonus and
+            // a month's double pay land the same way, on the date they were paid rather than
+            // spread across the year. Each says which column of the month it belongs in and
+            // how it reads, so adding a third kind costs nothing here.
+            foreach ($expectedByDay[$date] ?? [] as $expected) {
+                $amount = $base($expected['account_id'], $expected['amount']);
                 $earned = $earned->plus($amount);
-                $expectedBy[$dividend['account_id']] = $expectedBy[$dividend['account_id']]->plus($dividend['amount']);
+                $expectedBy[$expected['account_id']] = $expectedBy[$expected['account_id']]->plus($expected['amount']);
                 $monthsAhead[$month]['typical_in'] = $monthsAhead[$month]['typical_in']->plus($amount);
-
-                $bonus = $dividend['kind'] === 'expected bonus';
-                $bucket = $bonus ? 'bonuses' : 'dividends';
-
-                $monthsAhead[$month][$bucket] = $monthsAhead[$month][$bucket]->plus($amount);
+                $monthsAhead[$month][$expected['bucket']] = $monthsAhead[$month][$expected['bucket']]->plus($amount);
 
                 $events[] = [
                     'date' => $date,
-                    'account_id' => $dividend['account_id'],
-                    'account' => $this->cash[$dividend['account_id']]->name,
-                    'ccy' => $this->cash[$dividend['account_id']]->ccy,
-                    'amount' => self::money($dividend['amount']),
+                    'account_id' => $expected['account_id'],
+                    'account' => $this->cash[$expected['account_id']]->name,
+                    'ccy' => $this->cash[$expected['account_id']]->ccy,
+                    'amount' => self::money($expected['amount']),
                     'base' => self::money($amount),
-                    'description' => $bonus
-                        ? "Bonus, as paid {$dividend['paid']}"
-                        : "Dividend {$dividend['symbol']}, as paid {$dividend['paid']}",
-                    'kind' => $dividend['kind'],
-                    'link' => ['transaction' => $dividend['transaction']],
+                    'description' => $expected['description'],
+                    'kind' => $expected['kind'],
+                    'link' => ['transaction' => $expected['transaction']],
                     'balance' => self::money($running),
                     'with_typical' => self::money($running->minus($allowance)->plus($earned)),
                     'estimate' => true,
@@ -389,6 +386,10 @@ class Forecast
             'expected_bonuses' => self::money(collect($events)
                 ->where('kind', 'expected bonus')
                 ->reduce(fn (BigDecimal $sum, array $e) => $sum->plus($e['base']), BigDecimal::zero())),
+            // And the second month's pay, on the January it was last paid.
+            'expected_double_pay' => self::money(collect($events)
+                ->where('kind', 'expected double pay')
+                ->reduce(fn (BigDecimal $sum, array $e) => $sum->plus($e['base']), BigDecimal::zero())),
             'typical_basis' => [
                 'average' => self::money($average),
                 'recurring' => self::money($covered),
@@ -413,10 +414,11 @@ class Forecast
                 'out' => self::money($m['out']),
                 'typical' => self::money($m['typical']),
                 'typical_in' => self::money($m['typical_in']),
-                // Of typical_in, what the holdings are expected to pay, and the bonus
-                // expected on the date it was paid last.
+                // Of typical_in, what the holdings are expected to pay, the bonus expected on
+                // the date it was paid, and the second month's pay likewise.
                 'dividends' => self::money($m['dividends']),
                 'bonuses' => self::money($m['bonuses']),
+                'double_pay' => self::money($m['double_pay']),
                 'net_known' => self::money($m['in']->minus($m['out'])),
                 'net_typical' => self::money($m['in']->minus($m['out'])->minus($m['typical'])->plus($m['typical_in'])),
                 'end_known' => self::money($m['end_known']),
@@ -886,6 +888,8 @@ class Forecast
                 'amount' => $amount,
                 'symbol' => $row['symbol'],
                 'kind' => 'expected dividend',
+                'bucket' => 'dividends',
+                'description' => "Dividend {$row['symbol']}, as paid {$row['date']}",
                 'paid' => $row['date'],
                 'transaction' => $row['id'],
             ];
@@ -960,8 +964,83 @@ class Forecast
                 // this, and a symbol would put a bonus in a dividend's de-duplication.
                 'symbol' => '',
                 'kind' => 'expected bonus',
+                'bucket' => 'bonuses',
+                'description' => "Bonus, as paid {$row->date}",
                 'paid' => $row->date,
                 'transaction' => $row->id,
+            ];
+        }
+    }
+
+    /**
+     * The double pay expected by the end: a month whose salary came to half again the median
+     * month is two months' pay, and the part above the median is placed on the same date a
+     * year on. A month's pay in all first, so two payments in one month read as one double
+     * rather than as a month and a stray.
+     *
+     * On the ratio rather than on the month being January, because what identifies it is the
+     * size and not the month, and the test has to tell a second payment from a raise. Nine of
+     * the last ten Januaries on file came to between 1.7 and 2.0 times the ordinary month,
+     * the tenth did not, and the two months on file that were a raise rather than a second
+     * payment came to 1.05 and 1.36. Half again sits between those groups with room either
+     * side.
+     *
+     * Read the other way, the cost is a month of salary: a large one-off raise arriving alone
+     * in a month clears the test, and puts a whole extra month on the typical line for a year.
+     * And a January that is not doubled is a month the projection is a month too rich, which
+     * is the price of expecting the nine years that were.
+     */
+    private function expectedDoublePay(): void
+    {
+        $rows = Transaction::query()
+            ->whereIn('account_id', $this->cash->keys())
+            ->where('type', TransactionType::Deposit->value)
+            ->where('description', 'SALARY')
+            ->where('date', '>', $this->today->copy()->subYearNoOverflow()->toDateString())
+            ->where('date', '<=', $this->today->toDateString())
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $byMonth = $rows->groupBy(fn (Transaction $row) => substr($row->date, 0, 7))
+            ->map(fn ($inMonth) => [
+                'paid' => $inMonth->reduce(
+                    fn (BigDecimal $sum, Transaction $row) => $sum->plus(BigDecimal::of((string) $row->amount)),
+                    BigDecimal::zero(),
+                ),
+                'first' => $inMonth->first(),
+            ]);
+
+        // The ordinary month, as the median rather than the mean: the doubles are what would
+        // drag a mean up, and the months either side of a raise would drag it too.
+        $ordinary = self::median($byMonth->pluck('paid')->all());
+
+        foreach ($byMonth as $entry) {
+            // Twice the month against three times the ordinary one, so the test is half again
+            // without a float anywhere near it.
+            if ($entry['paid']->multipliedBy(2)->isLessThan($ordinary->multipliedBy(3))) {
+                continue;
+            }
+
+            $first = $entry['first'];
+            $date = Carbon::parse($first->date)->addYearNoOverflow();
+
+            if ($date->lessThanOrEqualTo($this->today) || $date->greaterThan($this->end)) {
+                continue;
+            }
+
+            $this->expected[] = [
+                'date' => $date->toDateString(),
+                'account_id' => $first->account_id,
+                'amount' => $entry['paid']->minus($ordinary),
+                'symbol' => '',
+                'kind' => 'expected double pay',
+                'bucket' => 'double_pay',
+                'description' => "Double pay, as paid {$first->date}",
+                'paid' => $first->date,
+                'transaction' => $first->id,
             ];
         }
     }
