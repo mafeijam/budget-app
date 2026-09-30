@@ -8,34 +8,44 @@
         <q-space />
         <div class="row items-center q-gutter-sm">
           <RecurringFindDialog v-model="findOpen" :findings="findings ?? []" />
-          <q-btn
-            unelevated
-            no-caps
-            class="text-weight-bold app-btn"
-            icon="manage_search"
-            label="Find from history"
-            :loading="finding"
-            @click="find"
-          >
-            <q-tooltip :delay="500" :offset="[0, 6]">
-              Look for recurring payments in the last two years, and put the rules in line with what
-              they say
-            </q-tooltip>
-          </q-btn>
-          <q-btn
-            unelevated
-            no-caps
-            class="text-weight-bold app-btn"
-            icon="play_arrow"
-            label="Run now"
-            :loading="running"
-            @click="runNow"
-          >
-            <q-tooltip :delay="500" :offset="[0, 6]">
-              Record everything due through today, as the nightly run does
-            </q-tooltip>
-          </q-btn>
-          <CreateBtn />
+          <!-- The two runs as one toolbar, as the other pages keep their controls. -->
+          <div class="app-toolbar row items-center no-wrap">
+            <q-btn
+              flat
+              no-caps
+              color="grey-9"
+              padding="xs md"
+              class="text-weight-medium"
+              icon="manage_search"
+              label="Find from history"
+              :loading="finding"
+              @click="find"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                Look for recurring payments in the last two years, and put the rules in line with
+                what they say
+              </q-tooltip>
+            </q-btn>
+
+            <q-separator vertical inset class="q-mx-xs" />
+
+            <q-btn
+              flat
+              no-caps
+              color="grey-9"
+              padding="xs md"
+              class="text-weight-medium"
+              icon="play_arrow"
+              label="Run now"
+              :loading="running"
+              @click="runNow"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                Record everything due through today, as the nightly run does
+              </q-tooltip>
+            </q-btn>
+          </div>
+          <CreateBtn label="New rule" />
         </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">

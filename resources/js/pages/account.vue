@@ -16,7 +16,7 @@
               class="q-px-sm"
             />
           </div>
-          <CreateBtn />
+          <CreateBtn label="New account" />
         </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">

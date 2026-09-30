@@ -15,7 +15,7 @@
       <template #top>
         <TransactionFilters ref="filterBar" title="Transactions">
           <template #actions>
-            <CreateBtn />
+            <CreateBtn label="New transaction" />
           </template>
         </TransactionFilters>
       </template>

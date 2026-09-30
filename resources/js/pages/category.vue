@@ -6,7 +6,7 @@
       <div class="row items-center">
         <div class="text-h6 text-weight-medium q-mr-md">Categories</div>
         <q-space />
-        <CreateBtn />
+        <CreateBtn label="New category" />
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">
         {{ base }} {{ money(spending.total) }} spent in the last {{ months.length }} months, a card
