@@ -106,13 +106,20 @@
           <div class="text-subtitle2 text-weight-medium q-mb-sm">Every year</div>
           <div class="app-dividend-years">
             <div
-              v-for="entry in [...years].reverse()"
+              v-for="entry in yearsWithChange"
               :key="entry.year"
               class="app-dividend-year cursor-pointer"
               :class="{ 'app-dividend-year--on': entry.year === year }"
               @click="choose(entry.year)"
             >
               <div class="app-dividend-year__track">
+                <div
+                  v-if="entry.change"
+                  class="text-caption money text-center"
+                  :class="entry.change.class"
+                >
+                  {{ entry.change.label }}
+                </div>
                 <div class="text-caption money text-grey-8 text-center">
                   {{ compact(entry.total) }}
                 </div>
@@ -278,6 +285,17 @@ const change = (now, before) => {
 }
 
 const monthsSoFar = computed(() => (isCurrent.value ? Number(props.today.slice(5, 7)) : 12))
+
+// Each year against the one before it, oldest first as the bars run, so the earliest has
+// none to compare and shows nothing rather than a change from nothing.
+const yearsWithChange = computed(() => {
+  const ordered = [...props.years].reverse()
+
+  return ordered.map((entry, i) => ({
+    ...entry,
+    change: i === 0 ? null : change(entry.total, ordered[i - 1].total),
+  }))
+})
 
 const tiles = computed(() => {
   const vsLast = change(props.total, props.previous)
