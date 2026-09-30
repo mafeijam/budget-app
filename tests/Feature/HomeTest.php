@@ -230,9 +230,9 @@ class HomeTest extends TestCase
     }
 
     /**
-     * The props a revisit does not have to compute: the forecast's three, and the line.
+     * The props a revisit does not have to compute: the forecast's, and the line.
      */
-    private const CACHED = ['month', 'upcoming', 'upcomingMore', 'attention'];
+    private const CACHED = ['month', 'nextMonth', 'upcoming', 'upcomingMore', 'attention'];
 
     /** Read off a page so the next request can be sent as the same browser's would be. */
     private ?string $assetVersion = null;

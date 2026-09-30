@@ -1611,6 +1611,21 @@ body {
   opacity: 0.75;
 }
 
+/* The home month card's place in its month, a thin bar under the day count. */
+.app-home-month-days__track {
+  width: 160px;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.app-home-month-days__track > div {
+  height: 100%;
+  background: #94a3b8;
+}
+
 /*
  * The transactions' totals: one strip a currency, each figure in a column of fixed width
  * so a second currency's figures stand under the first's.
@@ -1647,4 +1662,9 @@ body {
   .app-tx-totals--trades {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Two cards side by side on the home page: their four figures two by two. */
+.app-outlook--pairs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }

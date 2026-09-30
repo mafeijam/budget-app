@@ -204,6 +204,11 @@ class HomeController extends Controller
             )->as("attention.{$mark}")->until(self::ONCE_FOR),
             'month' => Inertia::once(fn () => $this->forecast($today)->monthOutlook()[0] ?? null)
                 ->as("month.{$mark}")->until(self::ONCE_FOR),
+            // The month after this one as the forecast has it, known and typical, with its
+            // expected dividends: the projection's own figures, so it is the forecast's month.
+            'nextMonth' => Inertia::once(fn () => collect($this->forecast($today)->projection()[0]['months'] ?? [])
+                ->first(fn (array $month) => $month['month'] > $today->format('Y-m')))
+                ->as("nextMonth.{$mark}")->until(self::ONCE_FOR),
             'upcoming' => Inertia::once(fn () => $this->upcoming($today)->take(self::UPCOMING_SHOWN)->values()->all())
                 ->as("upcoming.{$mark}")->until(self::ONCE_FOR),
             // Cached with upcoming, not computed from it: a prop left out of the cache would
