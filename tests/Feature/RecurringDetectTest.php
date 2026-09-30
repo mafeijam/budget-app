@@ -108,6 +108,62 @@ class RecurringDetectTest extends TestCase
         $this->assertSame(0, RecurringTransaction::count());
     }
 
+    public function test_the_page_carries_each_rules_group_its_cost_and_what_the_history_says(): void
+    {
+        $this->monthly('NETFLIX', '98.9800', $this->card, ['2026-07-10', '2026-08-10', '2026-09-10']);
+        $netflix = $this->rule(['description' => 'NETFLIX', 'amount' => '88.8800', 'start_date' => '2026-01-10']);
+        $salary = $this->rule([
+            'account_id' => $this->bank->id, 'type' => 'deposit', 'description' => 'SALARY',
+            'amount' => '1000.0000', 'start_date' => '2026-01-01',
+        ]);
+        $domain = $this->rule([
+            'account_id' => $this->bank->id, 'type' => 'withdraw', 'description' => 'DOMAIN',
+            'amount' => '120.0000', 'frequency' => 'yearly', 'start_date' => '2026-02-01',
+        ]);
+
+        $this->get('/recurring')->assertInertia(fn (Assert $page) => $page
+            ->where("costs.rules.{$netflix->id}.group", 'cards')
+            ->where("costs.rules.{$salary->id}.group", 'income')
+            // A yearly rule is a twelfth of itself a month.
+            ->where("costs.rules.{$domain->id}.monthly", '10.0000')
+            ->where('costs.totals.income', '1000.0000')
+            ->where('costs.totals.bills', '10.0000')
+            ->where('costs.totals.cards', '88.8800')
+            ->where('costs.totals.net', '901.1200')
+            ->where('costs.yearly.cards', '1066.5600')
+            ->where("health.{$netflix->id}.verdict", 'differs')
+            ->where("health.{$netflix->id}.amount", '98.9800')
+            ->where("health.{$netflix->id}.last", '2026-09-10')
+        );
+    }
+
+    public function test_one_rule_is_put_in_line_with_its_history_and_no_other(): void
+    {
+        $this->monthly('NETFLIX', '98.9800', $this->card, ['2026-07-10', '2026-08-10', '2026-09-10']);
+        $this->monthly('KKBOX', '53.0000', $this->card);
+        $netflix = $this->rule(['description' => 'NETFLIX', 'amount' => '88.8800', 'start_date' => '2026-01-10']);
+        $kkbox = $this->rule(['description' => 'KKBOX', 'amount' => '50.0000', 'start_date' => '2026-01-12']);
+
+        $this->post("/recurring/{$netflix->id}/adopt")->assertSessionHas('message', '1 brought up to date');
+
+        $this->assertSame('98.9800', $netflix->refresh()->amount);
+        $this->assertSame('50.0000', $kkbox->refresh()->amount, 'Only the rule asked about is touched.');
+
+        $this->post("/recurring/{$netflix->id}/adopt")
+            ->assertSessionHas('message', 'Recurring [NETFLIX] already matches its history');
+    }
+
+    public function test_a_rule_whose_payments_stopped_is_deleted_on_its_own(): void
+    {
+        $rule = $this->rule(['description' => 'INSTALMENT', 'amount' => '2800.0000', 'start_date' => '2024-09-01']);
+
+        $this->get('/recurring')->assertInertia(fn (Assert $page) => $page->where("health.{$rule->id}.verdict", 'stopped'));
+
+        $this->post("/recurring/{$rule->id}/adopt")->assertSessionHas('message', '1 removed');
+
+        $this->assertSame(0, RecurringTransaction::count());
+    }
+
     public function test_a_rule_the_history_agrees_with_is_left_alone(): void
     {
         $this->monthly('KKBOX', '53.0000', $this->card);

@@ -798,3 +798,93 @@ body {
   min-width: 0;
   max-width: 300px;
 }
+
+/* The recurring page: the month's totals, the next 30 days, and a row per rule. */
+.app-recurring-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.app-recurring-strip {
+  display: grid;
+  grid-template-columns: repeat(31, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.app-recurring-strip__day {
+  border-top: 2px solid var(--app-border);
+  padding-top: 4px;
+  min-height: 34px;
+}
+
+.app-recurring-strip__day--month {
+  border-top-color: #94a3b8;
+}
+
+.app-recurring-strip__dots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 10px;
+}
+
+.app-recurring-strip__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.app-recurring-strip__label {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.app-recurring-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 130px 260px 170px 80px;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-recurring-row:last-child {
+  border-bottom: 0;
+}
+
+.app-recurring-row:hover {
+  background: #f8fafc;
+}
+
+.app-recurring-row--paused .app-recurring-row__name,
+.app-recurring-row--paused .app-recurring-row__amount {
+  opacity: 0.6;
+}
+
+.app-recurring-row__name {
+  min-width: 0;
+}
+
+.app-recurring-row__amount {
+  text-align: right;
+}
+
+@media (max-width: 1023px) {
+  .app-recurring-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-recurring-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-recurring-row__health,
+  .app-recurring-row__next {
+    grid-column: 1 / -1;
+  }
+}

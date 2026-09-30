@@ -10,10 +10,14 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
 use App\Models\RecurringTransaction;
+use App\Support\Fx;
 use App\Support\RecurringApply;
 use App\Support\RecurringPayments;
 use App\Support\RecurringScan;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Spatie\LaravelData\PaginatedDataCollection;
 
 class RecurringTransactionController extends Controller
@@ -40,10 +44,17 @@ class RecurringTransactionController extends Controller
         $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
         $dir = $r->input('dir') === 'desc' ? 'desc' : 'asc';
 
+        // Every rule on one page, grouped on screen: paged by ten, seven of seventeen were a
+        // click away. Still a paginator, because saving and deleting reload through it.
         $rules = RecurringTransaction::query()
+            ->with('account')
             ->orderBy($sort, $dir)
             ->orderBy('id')
-            ->paginate($r->input('per_page', self::PER_PAGE));
+            ->paginate(max(1, RecurringTransaction::query()->count()));
+
+        $costs = $this->costs($rules->getCollection());
+        $base = Fx::BASE->value;
+        $health = $this->health();
 
         // Before Data::collect(), which replaces the paginator's models with DTOs.
         $nextDates = $rules->getCollection()
@@ -113,6 +124,9 @@ class RecurringTransactionController extends Controller
                 'meta',
                 'options',
                 'nextDates',
+                'costs',
+                'health',
+                'base',
                 'typeOptions',
                 'typeDefaults',
                 'currencyOptions',
@@ -150,11 +164,108 @@ class RecurringTransactionController extends Controller
         $findings = RecurringScan::findings((int) $r->integer('months', self::FIND_MONTHS));
         $done = RecurringApply::apply($findings);
 
-        // To the first page rather than back: the table is ten rows sorted by start date, and
-        // a page of ten is quite likely to be showing the same ten rows it was showing before
-        // -- the rules just created sort after the ones just corrected, and there are more of
-        // them than fit. Landing on the top of a refreshed table is the point of applying.
+        // To the index rather than back, so a find opened from anywhere lands on the rules it
+        // just wrote.
         return to_route('recurring.index')->with('message', ucfirst(RecurringApply::summary($done)));
+    }
+
+    /**
+     * Each rule's group and what it comes to a month and a year in the base currency, and
+     * each group's monthly total over the active rules. A yearly rule is a twelfth a month.
+     *
+     * The group is read from the enums, not a list: money in is income, a card's charge a
+     * card charge -- rent on a card as much as a streaming plan -- and cash going out a bill.
+     *
+     * @param  Collection<int, RecurringTransaction>  $rules
+     * @return array{rules: array<int, array{group: string, monthly: ?string, yearly: ?string}>, totals: array<string, string>, yearly: array<string, string>, unconverted: list<string>}
+     */
+    private function costs($rules): array
+    {
+        $fx = Fx::for($rules->pluck('ccy')->unique()->all());
+        $day = today()->toDateString();
+        $zero = BigDecimal::zero();
+        $totals = ['income' => $zero, 'bills' => $zero, 'cards' => $zero];
+        $each = [];
+        $unconverted = [];
+
+        foreach ($rules as $rule) {
+            $accountType = AccountType::tryFrom((string) $rule->account?->type);
+            $sign = $accountType === null ? 0 : TransactionType::from($rule->type)->movesBalanceOn($accountType);
+            $group = $sign > 0 ? 'income' : ($accountType === AccountType::Card ? 'cards' : 'bills');
+
+            $amount = BigDecimal::of((string) $rule->amount);
+            $monthly = Frequency::from($rule->frequency) === Frequency::Yearly
+                ? $amount->dividedBy(12, 4, RoundingMode::HalfUp)
+                : $amount;
+            $base = $fx->toBase((string) $monthly, $rule->ccy, $day);
+
+            if ($base === null) {
+                $unconverted[] = $rule->ccy;
+            } elseif ($rule->active && ($rule->end_date === null || $rule->end_date >= $day)) {
+                $totals[$group] = $totals[$group]->plus($base);
+            }
+
+            $each[$rule->id] = [
+                'group' => $group,
+                'monthly' => $base === null ? null : (string) $base,
+                'yearly' => $base === null ? null : (string) $base->multipliedBy(12)->toScale(4),
+            ];
+        }
+
+        $totals['net'] = $totals['income']->minus($totals['bills'])->minus($totals['cards']);
+
+        return [
+            'rules' => $each,
+            'totals' => array_map(fn (BigDecimal $total) => (string) $total->toScale(4), $totals),
+            'yearly' => array_map(fn (BigDecimal $total) => (string) $total->multipliedBy(12)->toScale(4), $totals),
+            'unconverted' => array_values(array_unique($unconverted)),
+        ];
+    }
+
+    /**
+     * What the history says of each rule, from the scan the Find button runs: the last
+     * payment it matched, and where the rule has drifted -- a new figure or day, or no
+     * payment for long enough to have stopped -- the figures to correct it with.
+     *
+     * @return array<int, array{verdict: string, last: ?string, amount: ?string, day: ?int, flags: list<string>}>
+     */
+    private function health(): array
+    {
+        $health = [];
+
+        foreach (RecurringScan::findings(self::FIND_MONTHS) as $finding) {
+            if ($finding['rule_id'] === null) {
+                continue;
+            }
+
+            $health[$finding['rule_id']] = [
+                'verdict' => $finding['verdict'],
+                'last' => $finding['last'] ?? null,
+                'amount' => $finding['amount'] ?? null,
+                'day' => $finding['day'] ?? null,
+                'flags' => $finding['flags'],
+            ];
+        }
+
+        return $health;
+    }
+
+    /**
+     * One rule put in line with its history: the correction the scan found, or its deletion
+     * when the payments stopped. Scanned again rather than trusting the page's figures, as
+     * applyFindings() is, and only this rule's finding is applied.
+     */
+    public function adopt(RecurringTransaction $recurringTransaction)
+    {
+        $finding = collect(RecurringScan::findings(self::FIND_MONTHS))
+            ->first(fn (array $f) => $f['rule_id'] === $recurringTransaction->id
+                && in_array($f['verdict'], ['differs', 'stopped'], true));
+
+        if ($finding === null) {
+            return back()->with('message', "Recurring [{$recurringTransaction->description}] already matches its history");
+        }
+
+        return back()->with('message', ucfirst(RecurringApply::summary(RecurringApply::apply([$finding]))));
     }
 
     public function store(RecurringTransactionData $data)
