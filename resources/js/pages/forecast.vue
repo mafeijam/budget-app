@@ -28,36 +28,6 @@
             </q-item>
           </template>
         </q-select>
-
-        <q-space />
-
-        <!-- The Positions page's toolbar, so the two pages' controls read alike. -->
-        <div class="app-toolbar row items-center no-wrap">
-          <q-toggle
-            v-model="withTypical"
-            label="Typical spending"
-            color="warning"
-            dense
-            class="q-px-sm"
-          />
-
-          <q-separator vertical inset class="q-mx-sm" />
-
-          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
-          <q-btn-toggle
-            :model-value="months"
-            :options="horizons.map(n => ({ label: `${n} months`, value: n }))"
-            no-caps
-            unelevated
-            dense
-            toggle-color="blue-1"
-            toggle-text-color="primary"
-            text-color="grey-8"
-            padding="xs md"
-            class="app-toolbar__toggle text-weight-bold"
-            @update:model-value="choose"
-          />
-        </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">
         Each cash account from today: rows dated ahead or still pending, recurring rules, and card
@@ -124,8 +94,8 @@
     <div v-if="!projection.length" class="text-grey-6">No cash accounts to forecast.</div>
 
     <q-card v-for="section in projection" :key="section.ccy" flat bordered>
-      <q-card-section class="row items-center q-gutter-sm">
-        <q-icon name="query_stats" size="sm" color="grey-6" />
+      <q-card-section class="row items-center no-wrap">
+        <q-icon name="query_stats" size="sm" color="grey-6" class="q-mr-sm" />
         <div>
           <div class="text-subtitle1 text-weight-medium">Cash runway</div>
           <div class="text-caption text-grey-7">
@@ -134,14 +104,47 @@
           </div>
         </div>
         <q-space />
-        <!-- Top-aligned, so a figure with a caption under it does not lift the rest. -->
-        <div class="row items-start no-wrap">
-          <div v-for="figure in figures(section)" :key="figure.label" class="text-right q-ml-lg">
+
+        <!-- On the chart it changes, as the cash flow page keeps its: the toggle draws the
+             pale second line, and the horizon is the one the figures below count to. -->
+        <div class="col-auto app-toolbar row items-center no-wrap">
+          <q-toggle
+            v-model="withTypical"
+            label="Typical spending"
+            color="warning"
+            dense
+            class="q-px-sm"
+          />
+
+          <q-separator vertical inset class="q-mx-sm" />
+
+          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
+          <q-btn-toggle
+            :model-value="months"
+            :options="horizons.map(n => ({ label: `${n} months`, value: n }))"
+            no-caps
+            unelevated
+            dense
+            toggle-color="blue-1"
+            toggle-text-color="primary"
+            text-color="grey-8"
+            padding="xs md"
+            class="app-toolbar__toggle text-weight-bold"
+            @update:model-value="choose"
+          />
+        </div>
+      </q-card-section>
+
+      <!-- What the chart is showing, as figures rather than a row of columns beside the
+           title: three of them, or five or six with the estimates on. -->
+      <q-card-section class="q-pt-none">
+        <div class="app-outlook app-outlook--runway">
+          <div v-for="figure in figures(section)" :key="figure.label" class="app-outlook__tile">
             <div class="text-caption text-grey-7">{{ figure.label }}</div>
-            <div class="text-subtitle1 text-weight-bold money" :class="figure.class">
+            <div class="text-h6 text-weight-bold money" :class="figure.class">
               {{ figure.value }}
             </div>
-            <div v-if="figure.caption" class="text-caption text-grey-6">{{ figure.caption }}</div>
+            <div class="text-caption text-grey-6">{{ figure.caption }}</div>
           </div>
         </div>
       </q-card-section>

@@ -1648,6 +1648,16 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/*
+  The runway's figures: three of them, or five or six with the estimates on, so as many
+  across as fit. The four-column grid would orphan a fifth and a sixth onto a second row
+  of their own. Declared down here rather than beside app-outlook, whose narrower-screen
+  rule would otherwise win on source order.
+*/
+.app-outlook--runway {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
 /* Compact statements: a short row a card, more of them across. */
 .app-statement-tiles--compact {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
