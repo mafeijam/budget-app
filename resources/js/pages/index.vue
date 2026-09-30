@@ -48,7 +48,6 @@
             >
               <div class="app-home-list__name">
                 <div class="row items-center no-wrap">
-                  <q-icon :name="item.icon" size="14px" color="grey-6" class="q-mr-xs" />
                   <span class="text-body2 text-weight-medium text-grey-9 ellipsis">
                     {{ item.name }}
                   </span>
@@ -64,15 +63,31 @@
                 </div>
               </div>
               <div class="app-home-list__figures text-right">
-                <div class="text-body2 text-weight-bold money" :class="item.valueClass">
-                  {{ item.value }}
+                <!-- Held in another currency: that money beside the base figure the card sums,
+                     on its line, so a foreign row is no taller than the rest -- or under it
+                     when the row has a line of its own, whose name would lose the width. -->
+                <div class="row items-baseline no-wrap justify-end">
+                  <span
+                    v-if="item.native && !item.lines?.length"
+                    class="text-caption text-grey-6 money q-mr-sm"
+                  >
+                    {{ item.ccy }} {{ item.native }}
+                  </span>
+                  <span class="text-body2 text-weight-bold money" :class="item.valueClass">
+                    {{ item.value }}
+                  </span>
                 </div>
-                <!-- Held in another currency: that money under the base figure the card sums. -->
-                <div v-if="item.native" class="text-caption text-grey-6 money">
+                <div
+                  v-if="item.native && item.lines?.length"
+                  class="text-caption text-grey-6 money"
+                >
                   {{ item.ccy }} {{ item.native }}
                 </div>
                 <!-- Only when it is not the base: then the figure is not the card's currency. -->
-                <div v-else-if="item.ccy && item.ccy !== base" class="text-caption text-grey-6">
+                <div
+                  v-if="!item.native && item.ccy && item.ccy !== base"
+                  class="text-caption text-grey-6"
+                >
                   {{ item.ccy }}
                 </div>
               </div>
@@ -333,7 +348,6 @@ const props = defineProps({
 })
 
 const money = useMoney()
-const dueBadge = useDueBadge()
 const formatDate = useCalendarDay()
 
 // The trend is deferred, so it is empty until it arrives. The caption counts the points
@@ -448,7 +462,6 @@ const movement = computed(() => {
   if (points.length < 2) {
     return ['3m', '6m', 'best'].map(key => ({
       key,
-      icon: 'more_horiz',
       name: '…',
       value: '—',
       valueClass: 'text-grey-5',
@@ -457,13 +470,12 @@ const movement = computed(() => {
   }
 
   const now = points.at(-1).net_worth
-  const since = (point, name, icon) => {
+  const since = (point, name) => {
     const change = minus(now, point.net_worth)
     const pct = percent(change, point.net_worth)
 
     return {
       key: name,
-      icon,
       name,
       value: signed(change),
       valueClass: signClass(change),
@@ -482,11 +494,10 @@ const movement = computed(() => {
   const [best, worst] = [byChange[0], byChange.at(-1)]
 
   return [
-    ...(points.length > 4 ? [since(points.at(-4), '3 months', 'history')] : []),
-    since(points[0], `${points.length - 1} months`, 'date_range'),
+    ...(points.length > 4 ? [since(points.at(-4), '3 months')] : []),
+    since(points[0], `${points.length - 1} months`),
     {
       key: 'best',
-      icon: 'trending_up',
       name: `Best, ${monthName(best.month)}`,
       value: signed(best.change),
       valueClass: signClass(best.change),
@@ -496,7 +507,7 @@ const movement = computed(() => {
   ]
 })
 
-// One decimal string less another, exactly: BigInt at four places, so a change shown is
+// Decimal strings added and taken away exactly: BigInt at four places, so a change shown is
 // the difference of the two figures and not a float's rounding of it.
 const scaled = value => {
   const [, sign, whole, fraction = ''] = String(value ?? '0').match(/^(-?)(\d*)\.?(\d*)$/) ?? []
@@ -505,12 +516,15 @@ const scaled = value => {
   return sign ? -units : units
 }
 
-const minus = (a, b) => {
-  const units = scaled(a) - scaled(b)
+const fromUnits = units => {
   const digits = (units < 0n ? -units : units).toString().padStart(5, '0')
 
   return `${units < 0n ? '-' : ''}${digits.slice(0, -4)}.${digits.slice(-4)}`
 }
+
+const plus = (a, b) => fromUnits(scaled(a) + scaled(b))
+
+const minus = (a, b) => fromUnits(scaled(a) - scaled(b))
 
 const monthFormat = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' })
 
@@ -707,7 +721,6 @@ const openBroker = id => {
 const cashItems = computed(() =>
   props.cash.map(account => ({
     key: account.id,
-    icon: 'account_balance',
     name: account.name,
     ccy: account.ccy,
     value: money(account.base ?? account.balance),
@@ -727,7 +740,6 @@ const brokerItems = computed(() =>
 
     return {
       key: broker.id,
-      icon: 'show_chart',
       name: broker.name,
       ccy: broker.ccy,
       value: money(broker.market_value_base ?? broker.market_value),
@@ -748,25 +760,49 @@ const brokerItems = computed(() =>
   }),
 )
 
-const statementItems = computed(() =>
-  props.statements.map(statement => ({
-    key: `${statement.card.id}-${statement.due_date}`,
-    icon: 'credit_card',
-    name: statement.card.name,
-    ccy: statement.card.ccy,
-    value: money(statement.owed),
+// One row a card, whatever number of its statements are open: what it owes in all, from
+// the statement strings added exactly. Overdue if any of them is, and a line only for what
+// changes the figure -- a part paid, or charges not final yet -- as a statement had.
+const statementItems = computed(() => {
+  const cards = new Map()
+
+  for (const statement of props.statements) {
+    const id = statement.card.id
+    const card = cards.get(id) ?? {
+      card: statement.card,
+      owed: '0',
+      paid: '0',
+      pending: 0,
+      overdue: false,
+      count: 0,
+    }
+
+    cards.set(id, {
+      ...card,
+      owed: plus(card.owed, statement.owed),
+      paid: statement.payment_count ? plus(card.paid, statement.paid) : card.paid,
+      pending: card.pending + (statement.pending_count ?? 0),
+      overdue: card.overdue || statement.days_until_due < 0,
+      count: card.count + 1,
+    })
+  }
+
+  return [...cards.values()].map(entry => ({
+    key: entry.card.id,
+    name: entry.card.name,
+    ccy: entry.card.ccy,
+    value: money(entry.owed),
     valueClass: 'text-negative',
-    overdue: statement.days_until_due < 0,
-    badge: { ...dueBadge(statement), prefix: `Due ${formatDate(statement.due_date)}` },
-    // Only what changes what is owed: a part already paid, or charges not yet final.
+    overdue: entry.overdue,
     lines: [
-      ...(statement.payment_count ? [{ text: `${money(statement.paid)} paid` }] : []),
-      ...(statement.pending_count ? [{ text: `${statement.pending_count} not yet posted` }] : []),
+      ...(!isZero(entry.paid) ? [{ text: `${money(entry.paid)} paid` }] : []),
+      ...(entry.pending ? [{ text: `${entry.pending} not yet posted` }] : []),
     ],
+    // Every statement it has open, so the card's unpaid charges rather than one period's.
     open: () =>
       router.visit('/transactions', {
-        data: { filter: { account_id: statement.card.id, due_date: statement.due_date } },
+        data: { filter: { account_id: entry.card.id, unpaid: '1' } },
       }),
-  })),
-)
+  }))
+})
 </script>
