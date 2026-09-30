@@ -60,6 +60,12 @@ class AccountController extends Controller
         ['today' => $summary, 'trends' => $trends] = (new NetWorth)->accountTrends(today());
 
         $statements = $this->nextStatements();
+
+        // Each account's latest row, pending included: the day it was last used.
+        $lastUsed = Transaction::query()
+            ->selectRaw('account_id, MAX(date) AS last_date')
+            ->groupBy('account_id')
+            ->pluck('last_date', 'account_id');
         $base = Fx::BASE->value;
 
         $settlementOptions = Account::settlementOptions();
@@ -92,6 +98,7 @@ class AccountController extends Controller
             'summary',
             'trends',
             'statements',
+            'lastUsed',
             'base',
             'refusals',
             'settlementOptions',

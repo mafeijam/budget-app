@@ -516,7 +516,9 @@ body {
 /* The accounts page: who it is, how it has moved, what it holds, and what to do with it. */
 .app-account-row {
   display: grid;
-  grid-template-columns: minmax(200px, 1.3fr) 140px minmax(240px, 1fr) 120px;
+  /* Name, figures, then the line: right after the right-aligned figure it is the trend of,
+     however long that figure is, and the spare width is the name's. */
+  grid-template-columns: minmax(200px, 1fr) 300px 160px 80px;
   gap: 16px;
   align-items: center;
   padding: 10px 16px;

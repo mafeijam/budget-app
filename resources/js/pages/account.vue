@@ -79,16 +79,6 @@
           </div>
         </div>
 
-        <div class="app-account-row__trend">
-          <HomeSpark
-            v-if="hasTrend(account)"
-            :values="trends[account.id]"
-            :colour="typeColours[account.type]"
-            :label="`${account.name} over the last 12 months`"
-            class="app-account-spark"
-          />
-        </div>
-
         <!-- A security's value, cost and profit; a card's balance and its next bill. -->
         <div class="app-account-row__figures">
           <template v-if="account.type === 'security'">
@@ -143,22 +133,18 @@
           </template>
         </div>
 
+        <div class="app-account-row__trend">
+          <HomeSpark
+            v-if="hasTrend(account)"
+            :values="trends[account.id]"
+            :colour="typeColours[account.type]"
+            :label="`${account.name} over the last 12 months`"
+            class="app-account-spark"
+          />
+        </div>
+
         <!-- Stopped here, so an edit or a delete does not also open the transactions. -->
         <div class="app-account-row__actions row items-center justify-end no-wrap" @click.stop>
-          <q-btn
-            v-if="statements[account.id]"
-            flat
-            dense
-            no-caps
-            color="primary"
-            label="Pay"
-            class="q-mr-xs"
-            @click="openStatement(account)"
-          >
-            <q-tooltip :delay="500" :offset="[0, 6]"
-              >This statement, with its settle button</q-tooltip
-            >
-          </q-btn>
           <AppTableActions :cell="{ row: account }" />
         </div>
       </div>
@@ -188,6 +174,9 @@ const props = defineProps({
 
   // Card id => its earliest statement with something owed.
   statements: { type: Object, default: () => ({}) },
+
+  // Account id => the date of its latest transaction.
+  lastUsed: { type: Object, default: () => ({}) },
 
   typeOptions: { type: Array, default: () => ['cash', 'card', 'security'] },
   base: { type: String, default: 'HKD' },
@@ -234,13 +223,27 @@ const hidden = account => account.status !== 'active' && isEmpty(account)
 const hiddenCount = computed(() => props.data.data.filter(hidden).length)
 
 // typeOptions is AccountType::cases(), so a new type gets a section rather than vanishing.
+// Cards only: those with a bill first, the soonest due at the top, then the ones with
+// nothing due, the most recently used first. Every other section keeps its name order.
+const byBill = accounts =>
+  [...accounts].sort((a, b) => {
+    const [x, y] = [props.statements[a.id]?.due_date, props.statements[b.id]?.due_date]
+
+    if (x && y) return x.localeCompare(y)
+    if (x || y) return x ? -1 : 1
+
+    return (props.lastUsed[b.id] ?? '').localeCompare(props.lastUsed[a.id] ?? '')
+  })
+
 const sections = computed(() =>
   props.typeOptions
     .map(type => ({
       type,
       total: props.summary[totalKeys[type]] ?? '0',
-      accounts: props.data.data.filter(
-        account => account.type === type && (showClosed.value || !hidden(account)),
+      accounts: (type === 'card' ? byBill : list => list)(
+        props.data.data.filter(
+          account => account.type === type && (showClosed.value || !hidden(account)),
+        ),
       ),
     }))
     .filter(section => section.accounts.length),
@@ -288,16 +291,16 @@ const details = account => {
     parts.push(`${verb} ${accountName(meta.settlement_account_id)}`)
   }
 
+  // A card is the account most often left idle, so when it was last used is worth saying.
+  if (account.type === 'card') {
+    const last = props.lastUsed[account.id]
+
+    parts.push(last ? `last used ${formatDay(last)}` : 'never used')
+  }
+
   return parts
 }
 
 const openTransactions = account =>
   router.visit('/transactions', { data: { filter: { account_id: account.id } } })
-
-const openStatement = account =>
-  router.visit('/transactions', {
-    data: {
-      filter: { account_id: account.id, due_date: props.statements[account.id].due_date },
-    },
-  })
 </script>
