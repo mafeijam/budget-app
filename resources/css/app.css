@@ -1424,37 +1424,70 @@ body {
   background: #f1f5f9;
 }
 
+/*
+  Every year as a bar, and the captions that ride on it.
+
+  The track is a plain block of the bar's height and the plot inside it is what the
+  percentages are of. The bar and its expected top are taken out of the flow with
+  position: absolute, and the captions are placed from the bar's own height with calc --
+  because as flex items they were squeezed by whatever captions sat above them. Five years
+  asking 95% to 100% all rendered 72px, and a year with no change figure, one caption
+  rather than two, rendered taller than its neighbours on a smaller share, so two bars of
+  equal value in different columns were not the same height.
+
+  The captions are out of the flow for the same reason and are given their room above the
+  track: they still ride just above their own bar, which is where a figure belongs, but
+  nothing they take can come out of the bar below.
+*/
 .app-dividend-year__track {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: stretch;
+  position: relative;
   width: min(56%, 48px);
   height: 116px;
+  /* Room for two caption lines above the tallest bar, so the labels never ride up into
+     the heading when a year is at the peak. */
+  margin-top: 40px;
 }
 
-/* The total rides just above its bar rather than in a row across the top. */
-.app-dividend-year__track > .text-caption {
-  white-space: nowrap;
-  margin: 0 -12px 2px;
+.app-dividend-year__plot {
+  position: absolute;
+  inset: 0 0 0 0;
+}
+
+/* The expected sits on the paid part, so the paid part's top is square under it. */
+.app-dividend-year__expected + .app-dividend-year__fill {
+  border-radius: 0;
 }
 
 .app-dividend-year__fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--bar, 0%);
   min-height: 2px;
   background: #cbd5e1;
   border-radius: 4px 4px 0 0;
 }
 
 .app-dividend-year__expected {
+  position: absolute;
+  bottom: var(--bar, 0%);
+  left: 0;
+  right: 0;
+  height: var(--expect, 0%);
   background: #e0f2fe;
   border: 1px dashed #7dd3fc;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
 }
 
-/* The expected sits on the paid part, so the paid part's top is square under it. */
-.app-dividend-year__expected + .app-dividend-year__fill {
-  border-radius: 0;
+/* The total rides just above its own bar rather than in a row across the top. */
+.app-dividend-year__labels {
+  position: absolute;
+  left: -12px;
+  right: -12px;
+  bottom: calc(var(--bar, 0%) + var(--expect, 0%) + 2px);
+  white-space: nowrap;
 }
 
 .app-dividend-year--on .app-dividend-year__fill {
@@ -1540,6 +1573,17 @@ body {
 
 .app-year-select .q-field__native {
   font-weight: 700;
+}
+
+/*
+  The year's symbol filter. Wider than the year picker because its value is a symbol and
+  its options carry a name and an all-time figure, but far short of the page header's
+  260px: it sits on a card's own header row beside a heading, not in a toolbar.
+*/
+.app-symbol-select {
+  width: 220px;
+  max-width: 50%;
+  background: var(--app-surface);
 }
 
 /* Positions toolbar: a picker with its label over its value, as the fetch button is. */

@@ -93,6 +93,12 @@ class DividendController extends Controller
         );
 
         $symbols = $inYear->pluck('symbol')->merge($expected->pluck('symbol'))->unique()->values();
+
+        // Every symbol that has ever paid, not just this year's: a symbol no longer held
+        // is exactly the one whose line across the years is worth reading, so the year's
+        // bars are filtered by a list of all of them rather than of this year's.
+        $allSymbols = $paid->pluck('symbol')->unique()->sort()->values();
+        $allNames = Symbol::namesFor($allSymbols->all());
         $names = Symbol::namesFor($symbols->all());
         $brokerNames = Account::query()->whereIn('id', $paid->pluck('broker')->filter()->unique())->pluck('name', 'id');
 
@@ -119,6 +125,14 @@ class DividendController extends Controller
             'years' => $years->map(fn (int $y) => [
                 'year' => $y,
                 'total' => $money($sum($paid->where('year', $y))),
+                // What each symbol paid that year, so the year's bars can be read one
+                // symbol at a time. A pass over the rows already held rather than a
+                // query a year, which on a decade of dividends is the difference
+                // between one read and eleven.
+                'bySymbol' => $paid->where('year', $y)
+                    ->groupBy('symbol')
+                    ->map(fn ($list) => $money($sum($list)))
+                    ->all(),
             ])->all(),
             'base' => Fx::BASE->value,
             'today' => $today->toDateString(),
@@ -130,6 +144,28 @@ class DividendController extends Controller
             'expectedMonths' => $months($expected),
             'previousMonths' => $months($lastYear),
             'symbols' => $bySymbol,
+            // The picker's list, and the two figures that make an entry in it worth
+            // reading: the name it is known by, and everything it has ever paid, which is
+            // neither this year's total nor any one of the bars. Also the years it has
+            // paid in, so a symbol on one bar reads as a different thing from one on nine.
+            'allSymbols' => $allSymbols->map(function (string $code) use ($paid, $sum, $money, $allNames) {
+                $own = $paid->where('symbol', $code);
+
+                return [
+                    'symbol' => $code,
+                    'name' => $allNames[$code] ?? null,
+                    'total' => $money($sum($own)),
+                    'years' => $own->pluck('year')->unique()->count(),
+                ];
+            })->all(),
+            // What is still to come, per symbol. The dashed top on this year's bar is a
+            // whole-year figure, so a symbol filtered onto that bar needs its own share of
+            // it -- or the bar shows the expectation of every symbol at once, which is
+            // worse than not filtering. Empty on any other year, as `expected` is, and the
+            // bar that draws it is this year's alone.
+            'expectedBySymbol' => $expected->groupBy('symbol')
+                ->map(fn ($list) => $money($sum($list)))
+                ->all(),
             'unconverted' => array_values(array_unique($unconverted)),
         ]);
     }

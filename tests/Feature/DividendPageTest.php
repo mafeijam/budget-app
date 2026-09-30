@@ -56,10 +56,64 @@ class DividendPageTest extends TestCase
             // Not this year, so nothing is expected on it.
             ->where('expected', '0.0000')
             ->where('years', [
-                ['year' => 2026, 'total' => '0.0000'],
-                ['year' => 2025, 'total' => '150.0000'],
-                ['year' => 2024, 'total' => '40.0000'],
+                ['year' => 2026, 'total' => '0.0000', 'bySymbol' => []],
+                ['year' => 2025, 'total' => '150.0000', 'bySymbol' => ['0005.HK' => '120.0000', '0700.HK' => '30.0000']],
+                ['year' => 2024, 'total' => '40.0000', 'bySymbol' => ['0005.HK' => '40.0000']],
             ])
+        );
+    }
+
+    public function test_each_year_carries_what_each_symbol_paid_in_it(): void
+    {
+        $this->dividend('2025-03-10', '0005.HK', '50');
+        $this->dividend('2025-09-10', '0005.HK', '70');
+        $this->dividend('2025-09-12', '0700.HK', '30');
+        $this->dividend('2024-09-10', '0005.HK', '40');
+
+        $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
+            // The bars are filtered by symbol, so each year has to say what each symbol
+            // paid in it -- not only the year as a whole, which is all it carried before.
+            ->where('years.0.year', 2026)
+            ->where('years.0.bySymbol', [])
+            ->where('years.1.year', 2025)
+            ->where('years.1.total', '150.0000')
+            ->where('years.1.bySymbol', ['0005.HK' => '120.0000', '0700.HK' => '30.0000'])
+            ->where('years.2.bySymbol', ['0005.HK' => '40.0000'])
+            // A symbol that stopped paying is still in the filter's list, with what it
+            // paid in all and how many of the years it paid in.
+            ->where('allSymbols', [
+                ['symbol' => '0005.HK', 'name' => null, 'total' => '160.0000', 'years' => 2],
+                ['symbol' => '0700.HK', 'name' => null, 'total' => '30.0000', 'years' => 1],
+            ])
+        );
+    }
+
+    public function test_the_expected_top_on_the_current_year_is_split_by_symbol(): void
+    {
+        // The dashed top on this year's bar is a whole-year figure, so a symbol filtered
+        // onto that bar needs its own share: every symbol's on one bar would be a lie. It
+        // takes a holding to be expected at all -- the forecast projects last year's
+        // payment a year on for what is held now -- so both symbols are bought.
+        $this->buy('2025-01-01', '0005.HK', '100');
+        $this->buy('2025-01-01', '0700.HK', '100');
+        $this->dividend('2025-03-10', '0005.HK', '20');
+        $this->dividend('2025-07-10', '0005.HK', '20');
+        $this->dividend('2025-03-10', '0700.HK', '10');
+        // This year's own, already paid and in the bars rather than on top of them. Kept
+        // clear of both projected days: the forecast drops an expectation when a payment
+        // is already on file near the day it is projected, so a January payment here would
+        // silence 0005.HK's March one and the figures would be right for the wrong reason.
+        $this->dividend('2026-01-05', '0005.HK', '50');
+
+        $this->get('/dividends')->assertInertia(fn (Assert $page) => $page
+            ->where('year', 2026)
+            // A map keyed by symbol rather than the single figure the page carries, which
+            // is their sum and stays as it is.
+            ->where('expectedBySymbol', ['0005.HK' => '40.0000', '0700.HK' => '10.0000'])
+            ->where('expected', '50.0000')
+            ->where('years.0.year', 2026)
+            ->where('years.0.total', '50.0000')
+            ->where('years.0.bySymbol', ['0005.HK' => '50.0000'])
         );
     }
 
@@ -77,6 +131,21 @@ class DividendPageTest extends TestCase
             'account_id' => $this->bank->id, 'date' => $date, 'type' => 'dividend', 'description' => 'Dividend',
             'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
             'meta_data' => ['symbol' => $symbol, 'brokerage_account_id' => $this->broker->id],
+        ])->assertSessionHasNoErrors();
+    }
+
+    /**
+     * Held, because the forecast only expects a dividend for a position -- a symbol paid
+     * and no longer held projects nothing, so the page's expected figures stay empty.
+     */
+    private function buy(string $date, string $symbol, string $quantity): void
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id, 'date' => $date, 'type' => 'buy', 'description' => 'Buy',
+            'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => [
+                'symbol' => $symbol, 'quantity' => $quantity, 'unit_price' => '10', 'no_cash' => true,
+            ],
         ])->assertSessionHasNoErrors();
     }
 }

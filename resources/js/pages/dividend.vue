@@ -103,7 +103,41 @@
 
         <!-- Each year's total on one scale; a click shows that year. -->
         <q-card-section>
-          <div class="text-subtitle2 text-weight-medium q-mb-sm">Every year</div>
+          <div class="row items-center q-mb-sm">
+            <div class="text-subtitle2 text-weight-medium">Every year</div>
+            <q-space />
+            <!-- On the chart it changes, as the cash flow page keeps its: this filters the
+                 bars below and nothing else, so it belongs beside them rather than in the
+                 page header beside a year picker that filters the page. -->
+            <q-select
+              v-if="symbolOptions.length > 1"
+              v-model="onlySymbol"
+              :options="symbolOptions"
+              class="app-symbol-select"
+              dense
+              outlined
+              emit-value
+              map-options
+              options-dense
+            >
+              <template #prepend>
+                <q-icon name="show_chart" size="xs" color="grey-7" />
+              </template>
+              <template #option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section>
+                    {{ scope.opt.label }}
+                    <q-item-label v-if="scope.opt.caption" caption>{{
+                      scope.opt.caption
+                    }}</q-item-label>
+                  </q-item-section>
+                  <q-item-section side class="money text-caption">{{
+                    scope.opt.total
+                  }}</q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+          </div>
           <div class="app-dividend-years">
             <div
               v-for="entry in yearsWithChange"
@@ -112,27 +146,32 @@
               :class="{ 'app-dividend-year--on': entry.year === year }"
               @click="choose(entry.year)"
             >
+              <!-- The bar and the captions that ride on it, sharing one plot so the
+                   percentages are of the same height in every column. -->
               <div class="app-dividend-year__track">
                 <div
-                  v-if="entry.change"
-                  class="text-caption money text-center"
-                  :class="entry.change.class"
+                  class="app-dividend-year__plot"
+                  :style="{ '--bar': barHeight(entry.total), '--expect': expectHeight(entry) }"
                 >
-                  {{ entry.change.label }}
+                  <div class="app-dividend-year__labels">
+                    <div
+                      v-if="entry.change"
+                      class="text-caption money text-center"
+                      :class="entry.change.class"
+                    >
+                      {{ entry.change.label }}
+                    </div>
+                    <div class="text-caption money text-grey-8 text-center">
+                      {{ compact(entry.total) }}
+                    </div>
+                  </div>
+                  <!-- This year's still expected on top, dashed, as the month chart has it. -->
+                  <div
+                    v-if="entry.year === thisYear && Number(expectedThisYear) > 0"
+                    class="app-dividend-year__expected"
+                  />
+                  <div class="app-dividend-year__fill" />
                 </div>
-                <div class="text-caption money text-grey-8 text-center">
-                  {{ compact(entry.total) }}
-                </div>
-                <!-- This year's still expected on top, dashed, as the month chart has it. -->
-                <div
-                  v-if="entry.year === thisYear && Number(expectedThisYear) > 0"
-                  class="app-dividend-year__expected"
-                  :style="{ height: `${(Number(expectedThisYear) / yearPeak) * 100}%` }"
-                />
-                <div
-                  class="app-dividend-year__fill"
-                  :style="{ height: `${(Number(entry.total) / yearPeak) * 100}%` }"
-                />
               </div>
               <div class="text-caption text-weight-medium">{{ entry.year }}</div>
             </div>
@@ -237,11 +276,48 @@ const props = defineProps({
   expectedMonths: { type: Array, default: () => [] },
   previousMonths: { type: Array, default: () => [] },
   symbols: { type: Array, default: () => [] },
+  // Every symbol that has ever paid, with its name and its all-time total, for the year's
+  // bar filter. Not `symbols`, which is this year's only.
+  allSymbols: { type: Array, default: () => [] },
+  // This year's still-expected total for each symbol. Empty on any other year, as the
+  // dashed top on a bar only ever appears on this year's.
+  expectedBySymbol: { type: Object, default: () => ({}) },
   unconverted: { type: Array, default: () => [] },
 })
 
 const money = useMoney()
 const formatDay = useCalendarDay()
+
+// The symbol the year's bars are read one at a time for, or '' for every symbol. In the
+// browser and not the URL, as the Positions page's brokerage: it narrows one chart of data
+// already on the page, where the year above it is the page's own subject. Named for what
+// it does rather than `symbol`, which the by-symbol table's rows already take.
+const onlySymbol = useStorage('dividends.symbol', '')
+
+const symbolOptions = computed(() => [
+  { label: 'All symbols', value: '', total: money(yearsTotal.value), caption: null },
+  // Biggest first, since the figure beside each is what it has paid in all, and that is
+  // what the bars it filters are shares of.
+  ...[...props.allSymbols]
+    .sort((a, b) => Number(b.total) - Number(a.total))
+    .map(s => ({
+      label: s.symbol,
+      value: s.symbol,
+      total: money(s.total),
+      // What it is, and how long it has been paying: a symbol on one of the years is a
+      // different thing from one on all of them.
+      caption: [s.name, s.years > 1 ? `${s.years} years` : null].filter(Boolean).join(' · '),
+    })),
+])
+
+// A stored symbol that no longer pays anything would leave the select holding a value it
+// has no option for, which renders blank. Back to all of them, as a stored brokerage id
+// that no longer names one does on the Positions page.
+watchEffect(() => {
+  if (onlySymbol.value && !props.allSymbols.some(s => s.symbol === onlySymbol.value)) {
+    onlySymbol.value = ''
+  }
+})
 
 const choose = year =>
   router.get('/dividends', { year }, { preserveScroll: true, preserveState: true })
@@ -287,15 +363,23 @@ const change = (now, before) => {
 const monthsSoFar = computed(() => (isCurrent.value ? Number(props.today.slice(5, 7)) : 12))
 
 // Each year against the one before it, oldest first as the bars run, so the earliest has
-// none to compare and shows nothing rather than a change from nothing.
+// none to compare and shows nothing rather than a change from nothing. The comparison is
+// within the filtered series, so a symbol's "+61%" is that symbol against itself and not
+// the page against itself. A year the symbol did not pay in is zero rather than dropped:
+// the empty column is what says the year went by without it.
 const yearsWithChange = computed(() => {
-  const ordered = [...props.years].reverse()
+  const ordered = [...props.years].reverse().map(entry => ({ ...entry, total: yearTotal(entry) }))
 
   return ordered.map((entry, i) => ({
     ...entry,
     change: i === 0 ? null : change(entry.total, ordered[i - 1].total),
   }))
 })
+
+// A symbol paid nothing in a year: zero, not absent, or the bar would be missing rather
+// than empty and the years would not line up against each other.
+const yearTotal = entry =>
+  onlySymbol.value ? (entry.bySymbol?.[onlySymbol.value] ?? '0') : entry.total
 
 const tiles = computed(() => {
   const vsLast = change(props.total, props.previous)
@@ -355,13 +439,24 @@ const monthInitials = Array.from({ length: 12 }, (_, i) => {
 const years = computed(() => props.years)
 const thisYear = computed(() => Number(props.today.slice(0, 4)))
 
-// Only on this year's page does the server work out what is still expected.
-const expectedThisYear = computed(() => (isCurrent.value ? props.expected : '0'))
+// Only on this year's page does the server work out what is still expected, and a
+// filtered bar needs its own share of that: the whole year's figure on one symbol's bar
+// would be every symbol's expectation stacked on it, which is worse than not filtering.
+const expectedThisYear = computed(() => {
+  if (!isCurrent.value) return '0'
+
+  return onlySymbol.value ? (props.expectedBySymbol?.[onlySymbol.value] ?? '0') : props.expected
+})
+
+// The tallest bar, within the series being shown. Off the page's own years rather than
+// the filtered ones, one symbol's bars would be a sliver against a total ten times their
+// size and the years beside it would say nothing about it.
+const yearsTotal = computed(() => props.years.reduce((total, y) => total + Number(y.total), 0))
 
 const yearPeak = computed(() =>
   Math.max(
     1,
-    ...props.years.map(
+    ...yearsWithChange.value.map(
       y => Number(y.total) + (y.year === thisYear.value ? Number(expectedThisYear.value) : 0),
     ),
   ),
@@ -371,6 +466,15 @@ const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(
     Number(value),
   )
+
+// A bar's height as a share of the tallest one, handed to CSS as a custom property so the
+// bar, the expected top above it and the captions riding on that top are all placed off
+// the same figure.
+const barHeight = value => `${(Number(value) / yearPeak.value) * 100}%`
+
+// Only this year's bar carries the dashed top, so every other year's is nothing.
+const expectHeight = entry =>
+  entry.year === thisYear.value ? barHeight(expectedThisYear.value) : '0%'
 
 const share = amount =>
   Number(props.total) > 0 ? `${Math.round((Number(amount) / Number(props.total)) * 100)}%` : ''
