@@ -84,10 +84,15 @@ class ForecastTest extends TestCase
         $this->assertSame('2026-01-20', collect(Forecast::for(today(), 3)->upcoming())->firstWhere('kind', 'statement')['date']);
     }
 
-    public function test_typical_spending_is_the_years_average_less_what_the_rules_cover(): void
+    public function test_typical_spending_is_the_years_median_month_less_what_the_rules_cover(): void
     {
-        // 2400 spent across the last twelve months: 200 a month. A 50-a-month rule covers part.
-        $this->row('withdraw', '2025-06-01', '2400');
+        // 200 in each of the last twelve months, and a 5000 holiday in June: the median month
+        // is still 200, where the mean would be 616.67. A 50-a-month rule covers part.
+        foreach (range(0, 11) as $back) {
+            $this->row('withdraw', today()->startOfMonth()->subMonthsNoOverflow($back)->addDays(9)->toDateString(), '200');
+        }
+
+        $this->row('withdraw', '2025-06-15', '5000');
         $this->rule(['type' => 'withdraw', 'amount' => '50', 'start_date' => '2026-03-01']);
 
         $section = Forecast::for(today(), 3)->projection()[0];
@@ -160,10 +165,13 @@ class ForecastTest extends TestCase
     /** @return array<string, mixed> */
     public function test_a_cards_typical_charges_are_paid_on_its_own_due_dates(): void
     {
-        // 2400 on the card last June, paid off, and 120 this month: 210 a month of charges.
+        // 210 charged in each of the last twelve months and a 2400 one-off last June: the
+        // median month is 210, the one-off no larger a month than any other.
+        foreach (range(0, 11) as $back) {
+            $this->charge(today()->startOfMonth()->subMonthsNoOverflow($back)->addDays(4)->toDateString(), '210.0000');
+        }
+
         $this->charge('2025-06-01', '2400.0000');
-        $this->payment('2025-07-01', '2400.0000', '2025-07-10');
-        $this->charge('2026-01-05', '120.0000');
 
         $section = Forecast::for(today(), 3)->projection()[0];
         $points = collect($section['points'])->keyBy('date');

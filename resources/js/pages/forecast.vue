@@ -210,9 +210,10 @@
                 <span class="money app-text-estimate">{{ money(section.typical_monthly) }}</span>
               </div>
               <div class="app-basis__note">
-                For comparison, all spending averaged {{ money(section.typical_basis.average) }} a
-                month, and {{ money(section.typical_basis.recurring) }} of that is recurring rules,
-                which the chart already has as their own payments.
+                Each is the median month of the last 12, less the recurring rules the chart already
+                has as their own payments, so one large month does not set it. For comparison, all
+                spending averaged {{ money(section.typical_basis.average) }} a month,
+                {{ money(section.typical_basis.recurring) }} of it recurring rules.
               </div>
             </div>
           </div>

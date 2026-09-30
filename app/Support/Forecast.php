@@ -943,8 +943,8 @@ class Forecast
     }
 
     /**
-     * Each card's typical charges a month: its own charges over the last twelve months, by
-     * the day they were made, less its active recurring charges, which the forecast already
+     * Each card's typical charges a month: its median month of the last twelve, by the day
+     * the charges were made, less its active recurring charges, which the forecast already
      * places. Per card rather than per currency, because each card has its own cycle, and
      * a single start for them all left one card's charges in a gap and piled another's
      * into the month after.
@@ -979,12 +979,25 @@ class Forecast
 
         $typical = [];
 
+        $months = [];
+
+        for ($month = Carbon::parse($from); $month->lessThanOrEqualTo($this->today); $month->addMonthNoOverflow()) {
+            $months[] = $month->format('Y-m');
+        }
+
         foreach ($cards as $card) {
-            // card_amount, the figure the card owes, as the statements and CashFlow read it.
-            $total = ($charged[$card->id] ?? collect())->reduce(
-                fn (BigDecimal $sum, Transaction $row) => $sum->plus((string) ($row->meta?->meta['card_amount'] ?? $row->amount)),
-                BigDecimal::zero()
-            );
+            // card_amount, the figure the card owes, as the statements and CashFlow read it,
+            // summed by the month each was charged in, a month with none as nothing.
+            $byMonth = array_fill_keys($months, BigDecimal::zero());
+
+            foreach ($charged[$card->id] ?? [] as $row) {
+                $month = substr((string) $row->date, 0, 7);
+
+                if (isset($byMonth[$month])) {
+                    $byMonth[$month] = $byMonth[$month]->plus((string) ($row->meta?->meta['card_amount'] ?? $row->amount));
+                }
+            }
+
             $covered = ($rules[$card->id] ?? collect())->reduce(function (BigDecimal $sum, RecurringTransaction $rule) {
                 $amount = BigDecimal::of((string) ($rule->card_amount ?? $rule->amount));
 
@@ -993,7 +1006,7 @@ class Forecast
                     : $amount);
             }, BigDecimal::zero());
 
-            $monthly = $total->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)->minus($covered);
+            $monthly = self::median(array_values($byMonth))->minus($covered);
 
             if ($monthly->isPositive()) {
                 $typical[] = ['account' => $card, 'monthly' => $monthly];
@@ -1004,8 +1017,8 @@ class Forecast
     }
 
     /**
-     * Per currency: the last twelve months' average spending, less the monthly share of
-     * the active rules that spend, so rent recorded by a rule is not counted twice. Never
+     * Per currency: the last twelve months' median month of spending, less the monthly share
+     * of the active rules that spend, so rent recorded by a rule is not counted twice. Never
      * below zero.
      *
      * Split into cash and card, because they reach the bank at different times: cash the
@@ -1065,16 +1078,22 @@ class Forecast
         }
 
         foreach ($this->lastMonths() as $section) {
+            // The median month, not the mean: one month of a holiday's charges set the mean,
+            // and with it every month the forecast looked ahead at, a fifth above an ordinary
+            // one. The mean stays as the figure shown for comparison.
+            $cashMedian = self::median(array_map(
+                fn (array $month) => BigDecimal::of($month['cash_spending']),
+                $section['months']
+            ));
+
             $average = BigDecimal::of($section['totals']['spending'])
-                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
-            $cardAverage = BigDecimal::of($section['totals']['card_spending'])
                 ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
             $covered = $recurring[$section['ccy']] ?? BigDecimal::zero();
             $cardCovered = $cardRecurring[$section['ccy']] ?? BigDecimal::zero();
 
             $floor = fn (BigDecimal $value) => $value->isNegative() ? BigDecimal::zero() : $value;
             $card = $cards[$section['ccy']] ?? BigDecimal::zero();
-            $cash = $floor($average->minus($cardAverage)->minus($covered->minus($cardCovered)));
+            $cash = $floor($cashMedian->minus($covered->minus($cardCovered)));
 
             $incomeAverage = BigDecimal::of($section['totals']['income'])
                 ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
@@ -1098,6 +1117,26 @@ class Forecast
         }
 
         return $typical;
+    }
+
+    /**
+     * The middle of a list of figures, or the halfway point of the middle two. Nothing is
+     * zero.
+     *
+     * @param  list<BigDecimal>  $values
+     */
+    private static function median(array $values): BigDecimal
+    {
+        if ($values === []) {
+            return BigDecimal::zero();
+        }
+
+        usort($values, fn (BigDecimal $a, BigDecimal $b) => $a->compareTo($b));
+        $middle = intdiv(count($values), 2);
+
+        return count($values) % 2
+            ? $values[$middle]
+            : $values[$middle - 1]->plus($values[$middle])->dividedBy(2, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
     }
 
     private static function money(BigDecimal $value): string
