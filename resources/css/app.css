@@ -34,14 +34,14 @@ body {
   background: var(--app-ground);
 
   --app-primary-tint: #ebf1fd;
-  --app-positive-tint: #e1f2ed;
+  --app-positive-tint: #e1efeb;
   --app-warning-tint: #f4e5da;
   --app-negative-tint: #fce9e9;
   --app-info-tint: #e8f4fa;
 
   /* 60% of the brand for every ink: 80% reads thin on a tint at chip size. */
   --app-primary-ink: #163b8d;
-  --app-positive-ink: #035a3f;
+  --app-positive-ink: #024834;
   --app-warning-ink: #6c3205;
   --app-negative-ink: #841717;
   --app-info-ink: #014f77;
@@ -49,7 +49,7 @@ body {
   /* Mixed onto the surface, not transparency, so a fill is the same on the page as on a card. */
   --app-btn-tint: #e3ebfc;
   --app-btn-negative-tint: #fae3e3;
-  --app-btn-positive-tint: #dff1ec;
+  --app-btn-positive-tint: #deede9;
 }
 
 @supports (color: color-mix(in srgb, red, blue)) {
@@ -643,11 +643,15 @@ body {
 }
 
 /*
- * An estimate's figures, in the amber the charts draw them in but darker: Quasar's warning
- * amber on white is about 2:1, too faint to read a number in.
+ * An estimate's figures, a step lighter than the brand's amber, which read too heavy
+ * at the size these are set. It still sits darker than the amber the charts draw
+ * estimates in, which is what keeps an estimate apart from a known figure.
+ *
+ * It is 4.07:1 on white, under the 4.5:1 AA wants for text at this size. That is the
+ * trade, not an oversight to put right.
  */
 .app-text-estimate {
-  color: #b45309;
+  color: #c2650a;
 }
 
 /* How a forecast estimate is made up, as a short sum: its parts, then the total ruled off. */
