@@ -196,6 +196,7 @@
         <div class="app-dividend-heat">
           <span v-for="m in monthInitials" :key="m.key" class="text-center">{{ m.label }}</span>
         </div>
+        <span class="text-right">All time</span>
         <span class="text-right">{{ year }}</span>
         <span class="text-right">{{ year - 1 }}</span>
       </div>
@@ -234,6 +235,17 @@
                 ~{{ money(symbol.expected_months[i]) }} expected
               </template>
             </q-tooltip>
+          </div>
+        </div>
+
+        <!-- What it has paid in all, which is the figure the swatch is ranked on, so the
+             two can be read as one thing. Ahead of the two years because it is the total
+             they are shares of. The span is on every row rather than only the long ones,
+             so the column reads the same down its length. -->
+        <div class="text-right money">
+          <div class="text-grey-8">{{ money(symbol.allTime) }}</div>
+          <div v-if="symbol.years" class="text-caption text-grey-6">
+            over {{ symbol.years }} year{{ symbol.years === 1 ? '' : 's' }}
           </div>
         </div>
 
@@ -338,13 +350,16 @@ const smallest = 0.03
 
 // What each symbol has paid in all, which is the order its colour comes from, so a colour
 // means one symbol on every year rather than a different one each time the year changes.
-const rank = computed(() => new Map(props.allSymbols.map((s, i) => [s.symbol, i])))
+// The entry is kept whole rather than just its position, because the table's all-time
+// column is the same figure and one lookup should not be able to disagree with the other.
+const allTime = computed(() => new Map(props.allSymbols.map((s, i) => [s.symbol, { ...s, at: i }])))
 
 const ranked = computed(() =>
   props.symbols.map(symbol => {
     // A symbol the all-time list does not name is past the palette, so it reads as Others
     // rather than taking a colour from one that is.
-    const at = rank.value.get(symbol.symbol) ?? props.allSymbols.length
+    const entry = allTime.value.get(symbol.symbol)
+    const at = entry?.at ?? props.allSymbols.length
     const share = Number(props.total) > 0 ? Number(symbol.total) / Number(props.total) : 0
     const other = at >= named || share < smallest
 
@@ -355,6 +370,10 @@ const ranked = computed(() =>
       // to hand, and the table's swatch would claim it while the chart drew it grey.
       colour: other ? neutral : seriesColour(at),
       other,
+      // A symbol the forecast expects but that has never paid is not in the list at all,
+      // so this is zero rather than blank: nothing is what it has been paid.
+      allTime: entry?.total ?? '0',
+      years: entry?.years ?? 0,
     }
   }),
 )

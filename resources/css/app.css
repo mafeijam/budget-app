@@ -1502,7 +1502,11 @@ body {
 .app-dividend-head,
 .app-dividend-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.3fr) minmax(240px, 2fr) minmax(120px, 0.7fr) minmax(110px, 0.6fr);
+  /* Name, the twelve months, then all time and the two years beside it -- the all-time
+     figure first because it is the total the other two are shares of. */
+  grid-template-columns:
+    minmax(180px, 1.3fr) minmax(240px, 2fr)
+    minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(110px, 0.6fr);
   gap: 16px;
   align-items: center;
   padding: 10px 16px;
@@ -1549,10 +1553,12 @@ body {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  /* The months and the year before, by position: the second and the fifth of five. A
+     column added in the middle moves both, and the wrong one disappears instead. */
   .app-dividend-head > :nth-child(2),
-  .app-dividend-head > :nth-child(4),
+  .app-dividend-head > :nth-child(5),
   .app-dividend-row > :nth-child(2),
-  .app-dividend-row > :nth-child(4) {
+  .app-dividend-row > :nth-child(5) {
     display: none;
   }
 }
