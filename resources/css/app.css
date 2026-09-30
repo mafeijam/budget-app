@@ -403,6 +403,7 @@ body {
   background-color: #d4d4d8;
 }
 
+/* The search stays put and only the list scrolls, so it is there after a long scroll. */
 .app-template-menu {
   width: 380px;
   max-height: 440px;
