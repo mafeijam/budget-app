@@ -283,12 +283,19 @@
         The date below is the same shape, and for the same reason a field needs a calendar
         that a select cannot offer.
 
-        no-focus is what lets the menu open without costing the box its caret. A QMenu takes
-        focus as it opens, so the field that opened it lost the keystrokes that were meant to
-        narrow it: the click showed the hints, and the typing after it went to the menu, and
-        a second click was needed to get the caret back before anything could be written. The
-        date control's menu does not have it, and should not: a calendar is meant to take over
-        while it is open.
+        The menu is open while this box has the caret, which is what @focus and @blur between
+        them say. It was opened by the focus event alone, and that is not the same thing: a
+        QMenu closes itself asynchronously, so the close it raised on picking a hint landed
+        after the refocus had already reopened it and won -- leaving a focused box with a
+        shut menu, and no second click could fix that, because clicking a field that is
+        already focused raises no focus event at all. Hence v-close-popup is gone too: the
+        blur and refocus that picking a hint already causes reopens the menu by itself, and
+        the list narrows to the new text straight away.
+
+        no-focus is what lets the menu sit open beside a field that is still being typed
+        into. A QMenu takes focus as it opens, so without it the keystrokes meant to narrow
+        the list went to the menu instead of the box. The date control's menu does not have
+        it, and should not: a calendar is meant to take over while it is open.
       -->
       <q-input
         ref="descriptionInput"
@@ -300,36 +307,34 @@
         :error="!!form.errors.description"
         :error-message="form.errors.description"
         @focus="hintsOpen = true"
+        @blur="hintsOpen = false"
       >
         <template #prepend>
           <q-icon name="notes" color="grey-6" />
         </template>
         <template #append>
-          <q-btn flat dense icon="history" rounded @click="hintsOpen = !hintsOpen">
-            <q-menu
-              v-model="hintsOpen"
-              no-focus
-              :offset="[10, 15]"
-              anchor="bottom right"
-              self="top right"
-              class="app-desc-hints"
-            >
-              <q-list dense>
-                <q-item
-                  v-for="hint in shownDescriptions"
-                  :key="hint"
-                  v-close-popup
-                  clickable
-                  @click="useDescription(hint)"
-                >
-                  <q-item-section>{{ hint }}</q-item-section>
-                </q-item>
-                <q-item v-if="!shownDescriptions.length">
-                  <q-item-section class="text-grey">Nothing used before</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </q-btn>
+          <q-menu
+            v-model="hintsOpen"
+            no-focus
+            :offset="[10, 15]"
+            anchor="bottom right"
+            self="top right"
+            class="app-desc-hints"
+          >
+            <q-list dense>
+              <q-item
+                v-for="hint in shownDescriptions"
+                :key="hint"
+                clickable
+                @click="useDescription(hint)"
+              >
+                <q-item-section>{{ hint }}</q-item-section>
+              </q-item>
+              <q-item v-if="!shownDescriptions.length">
+                <q-item-section class="text-grey">Nothing used before</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
         </template>
       </q-input>
 
