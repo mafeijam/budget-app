@@ -350,7 +350,7 @@ const headlineFigures = computed(() => {
       value: h.net_worth,
       class: 'text-grey-9',
       ...onLastMonth('net_worth'),
-      items: shares.value,
+      items: movement.value,
     },
     {
       label: 'Cash',
@@ -364,16 +364,6 @@ const headlineFigures = computed(() => {
       empty: 'No cash account yet.',
     },
     {
-      label: 'Cards owe',
-      key: 'cards',
-      colour: colours.cards,
-      value: h.cards,
-      class: isZero(h.cards) ? 'text-grey-9' : 'text-negative',
-      ...onLastMonth('cards'),
-      items: statementItems.value,
-      empty: 'Nothing owed on any card.',
-    },
-    {
       label: 'Stocks',
       key: 'value',
       colour: colours.value,
@@ -383,29 +373,92 @@ const headlineFigures = computed(() => {
       ...onLastMonth('value'),
       items: brokerItems.value.filter(item => !item.empty),
     },
+    {
+      label: 'Cards owe',
+      key: 'cards',
+      colour: colours.cards,
+      value: h.cards,
+      class: isZero(h.cards) ? 'text-grey-9' : 'text-negative',
+      ...onLastMonth('cards'),
+      items: statementItems.value,
+      empty: 'Nothing owed on any card.',
+    },
   ]
 })
 
-// What net worth is made of, each as its share of it: the figures are the cards beside it.
-const shares = computed(() => {
-  const h = props.headline
+// Net worth's own story rather than its parts, which are the three cards beside it: how
+// it has moved over the trend's months, and its best and worst month. From the deferred
+// trend, so until it lands the rows hold their place, the card no taller once it does.
+const movement = computed(() => {
+  const points = props.trend
+  const open = () => go('/net-worth')
 
-  return [
-    ['cash', 'Cash', 'account_balance', h.cash],
-    ['value', 'Stocks', 'show_chart', h.value],
-    ['cards', 'Cards owe', 'credit_card', h.cards],
-  ]
-    .filter(([, , , value]) => !isZero(value))
-    .map(([key, name, icon, value]) => ({
+  if (points.length < 2) {
+    return ['3m', '6m', 'best'].map(key => ({
       key,
+      icon: 'more_horiz',
+      name: '…',
+      value: '—',
+      valueClass: 'text-grey-5',
+      lines: [{ text: '\u00a0' }],
+    }))
+  }
+
+  const now = points.at(-1).net_worth
+  const since = (point, name, icon) => {
+    const change = minus(now, point.net_worth)
+    const pct = percent(change, point.net_worth)
+
+    return {
+      key: name,
       icon,
       name,
-      value: percent(value, h.net_worth),
-      valueClass: negative(value) ? 'text-negative' : 'text-grey-9',
-      lines: [{ text: `${props.base} ${money(value)}` }],
-      open: () => go('/net-worth'),
-    }))
+      value: signed(change),
+      valueClass: signClass(change),
+      // Its share and the month it counts from; the starting figure was cut off here.
+      lines: [{ text: `${pct ? `${pct} ` : ''}since ${monthName(point.date.slice(0, 7))}` }],
+      open,
+    }
+  }
+
+  // Each month's change, the month named by the snapshot it ends on.
+  const months = points.slice(1).map((point, i) => ({
+    month: point.date.slice(0, 7),
+    change: minus(point.net_worth, points[i].net_worth),
+  }))
+  const byChange = [...months].sort((a, b) => Number(b.change) - Number(a.change))
+  const [best, worst] = [byChange[0], byChange.at(-1)]
+
+  return [
+    ...(points.length > 4 ? [since(points.at(-4), '3 months', 'history')] : []),
+    since(points[0], `${points.length - 1} months`, 'date_range'),
+    {
+      key: 'best',
+      icon: 'trending_up',
+      name: `Best, ${monthName(best.month)}`,
+      value: signed(best.change),
+      valueClass: signClass(best.change),
+      lines: [{ text: `worst ${monthName(worst.month)} ${signed(worst.change)}` }],
+      open,
+    },
+  ]
 })
+
+// One decimal string less another, exactly: BigInt at four places, so a change shown is
+// the difference of the two figures and not a float's rounding of it.
+const scaled = value => {
+  const [, sign, whole, fraction = ''] = String(value ?? '0').match(/^(-?)(\d*)\.?(\d*)$/) ?? []
+  const units = BigInt((whole || '0') + fraction.padEnd(4, '0').slice(0, 4))
+
+  return sign ? -units : units
+}
+
+const minus = (a, b) => {
+  const units = scaled(a) - scaled(b)
+  const digits = (units < 0n ? -units : units).toString().padStart(5, '0')
+
+  return `${units < 0n ? '-' : ''}${digits.slice(0, -4)}.${digits.slice(-4)}`
+}
 
 const monthFormat = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' })
 
