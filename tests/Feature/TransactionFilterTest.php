@@ -325,11 +325,29 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['due_month' => '2026-02']], ['Books', 'Coffee, tea']);
         $this->assertListed(['filter' => ['due_month' => '2026-03']], []);
 
+        // Several at once, as the month picker sends them; a bad one among them is dropped.
+        $this->assertListed(['filter' => ['due_month' => '2026-03,2026-02']], ['Books', 'Coffee, tea']);
+        $this->assertListed(['filter' => ['due_month' => '2026-02,2026-13']], ['Books', 'Coffee, tea']);
+
         // Not a month, so no filter rather than an empty list.
         $this->assertListed(
             ['filter' => ['due_month' => '2026-13']],
             ['Salary', 'Rent', 'Books', 'Coffee, tea']
         );
+    }
+
+    public function test_the_month_lists_what_is_dated_in_it(): void
+    {
+        $all = ['Salary', 'Rent', 'Books', 'Coffee, tea'];
+        $in = fn (string $months) => collect($this->get('/transactions?filter[month]='.$months)
+            ->viewData('page')['props']['data']['data'])->pluck('description')->sort()->values()->all();
+
+        // Cash accounts only: the months together are every bank row and no card charge.
+        $offered = $this->get('/transactions')->viewData('page')['props']['filterOptions']['months'];
+        $this->assertEqualsCanonicalizing(['Salary', 'Rent'], $in(implode(',', $offered)));
+
+        // Not a month, so no filter rather than an empty list.
+        $this->assertEqualsCanonicalizing($all, $in('2026-13'));
     }
 
     public function test_a_date_that_is_not_a_calendar_day_is_ignored(): void

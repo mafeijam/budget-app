@@ -24,6 +24,7 @@ use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -136,6 +137,25 @@ class TransactionController extends Controller
                 AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '<=', $value)
                     : $q),
+                // A cash account's months, YYYY-MM each, by the row's own date: a bank's month as
+                // its statement shows it, beside due_month, which is the cards'. Cash accounts
+                // only, so a month lists the bank's rows and not every card charge made in it.
+                // Ranges rather than a LEFT() on the column, so the date index still serves
+                // it; a malformed month is dropped, as in due_month.
+                AllowedFilter::callback('month', function (Builder $q, $value) {
+                    $months = self::months($value);
+
+                    return $months === []
+                        ? $q
+                        : $q->whereHas('account', fn ($a) => $a->where('type', AccountType::Cash->value))->where(function ($any) use ($months) {
+                            foreach ($months as $month) {
+                                $first = Carbon::createFromFormat('Y-m-d', "{$month}-01")->startOfDay();
+
+                                $any->orWhere(fn ($in) => $in->where('date', '>=', $first->toDateString())
+                                    ->where('date', '<', $first->copy()->addMonthNoOverflow()->toDateString()));
+                            }
+                        });
+                }),
                 // The day a cash flow month counts a row on, so its link lists what it summed.
                 AllowedFilter::callback('counted_from', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where(fn (Builder $q) => CashFlow::whereCounted($q, '>=', $value))
@@ -148,11 +168,20 @@ class TransactionController extends Controller
                 AllowedFilter::callback('due_date', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', $value))
                     : $q),
-                // Every card's statements due in a month, YYYY-MM: the month's card bills in
-                // one list. Anything else is ignored, as a malformed day is.
-                AllowedFilter::callback('due_month', fn (Builder $q, $value) => is_string($value) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value)
-                    ? $q->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', 'like', "{$value}-%"))
-                    : $q),
+                // Every card's statements due in the months given, YYYY-MM each: those months'
+                // card bills in one list. A malformed month is dropped, as a malformed day is
+                // ignored, and none left is no filter rather than an empty list.
+                AllowedFilter::callback('due_month', function (Builder $q, $value) {
+                    $months = self::months($value);
+
+                    return $months === []
+                        ? $q
+                        : $q->whereHas('meta', fn ($bag) => $bag->where(function ($any) use ($months) {
+                            foreach ($months as $month) {
+                                $any->orWhere('meta->due_date', 'like', "{$month}-%");
+                            }
+                        }));
+                }),
                 AllowedFilter::callback('unpaid', function (Builder $q, $value) use ($unpaid) {
                     // Off unless explicitly on: a stale filter[unpaid]=0 must not empty the list.
                     if (! in_array((string) $value, ['1', 'true'], true)) {
@@ -242,6 +271,13 @@ class TransactionController extends Controller
                     'ccy' => $account->ccy,
                 ]),
             // Every month a statement is due in, newest first, for the filter's month picker.
+            // Every month a cash account has a row in, newest first, for the month picker.
+            'months' => Transaction::query()
+                ->whereHas('account', fn ($a) => $a->where('type', AccountType::Cash->value))
+                ->selectRaw('DISTINCT LEFT(date, 7) AS month')
+                ->orderByDesc('month')
+                ->pluck('month')
+                ->values(),
             'dueMonths' => Meta::query()
                 ->where('model_type', Transaction::class)
                 ->selectRaw("DISTINCT LEFT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.due_date')), 7) AS month")
@@ -456,6 +492,20 @@ class TransactionController extends Controller
         return is_string($value)
             && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
             && checkdate((int) substr($value, 5, 2), (int) substr($value, 8, 2), (int) substr($value, 0, 4));
+    }
+
+    /**
+     * The well-formed months in a filter value, YYYY-MM each: a lone month, a comma list the
+     * query builder has split, or an array.
+     *
+     * @return list<string>
+     */
+    private static function months(mixed $value): array
+    {
+        return array_values(array_filter(
+            (array) $value,
+            fn ($month) => is_string($month) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) === 1,
+        ));
     }
 
     public function store(TransactionData $data)

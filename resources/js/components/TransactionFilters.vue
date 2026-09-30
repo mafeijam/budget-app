@@ -113,29 +113,32 @@
       map-options
       :display-value="shown(filters.account_id, accountOptions)"
     >
-      <!-- Each account's type and currency, since a card and its bank can share a name. -->
+      <!-- Under a heading per type, and each with its currency, since a card and its bank can
+        share a name. -->
       <template #option="scope">
-        <q-item v-bind="scope.itemProps" dense>
-          <q-item-section side>
-            <q-checkbox
-              :model-value="scope.selected"
-              dense
-              size="xs"
-              @update:model-value="scope.toggleOption(scope.opt)"
-            />
-          </q-item-section>
-          <q-item-section>{{ scope.opt.label }}</q-item-section>
-          <q-item-section side class="row no-wrap items-center">
-            <div class="row no-wrap items-center q-gutter-x-xs">
-              <q-badge
-                v-bind="accountTypeBadges[scope.opt.type] ?? {}"
-                class="text-weight-regular"
-                :label="scope.opt.type"
+        <div>
+          <q-item-label
+            v-if="scope.index === 0 || accountOptions[scope.index - 1].type !== scope.opt.type"
+            header
+            class="app-filter-group q-py-xs"
+          >
+            {{ accountTypeTitles[scope.opt.type] ?? scope.opt.type }}
+          </q-item-label>
+          <q-item v-bind="scope.itemProps" dense>
+            <q-item-section side>
+              <q-checkbox
+                :model-value="scope.selected"
+                dense
+                size="xs"
+                @update:model-value="scope.toggleOption(scope.opt)"
               />
+            </q-item-section>
+            <q-item-section>{{ scope.opt.label }}</q-item-section>
+            <q-item-section side>
               <span class="text-caption text-grey-6">{{ scope.opt.ccy }}</span>
-            </div>
-          </q-item-section>
-        </q-item>
+            </q-item-section>
+          </q-item>
+        </div>
       </template>
       <template #prepend>
         <q-icon name="account_balance" size="xs" color="grey-6" />
@@ -218,21 +221,30 @@
 
     <q-select
       v-model="filters.category_id"
-      :options="categoryOptions"
+      :options="shownCategories"
       class="col-12 col-sm-6 col-md-3"
       label="Category"
       dense
       outlined
       bg-color="white"
       options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="0"
       multiple
       clearable
       emit-value
       map-options
       :display-value="shown(filters.category_id, categoryOptions)"
+      @filter="filterCategories"
     >
       <template #prepend>
         <q-icon name="label" size="xs" color="grey-6" />
+      </template>
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey">Nothing matches</q-item-section>
+        </q-item>
       </template>
     </q-select>
 
@@ -267,22 +279,60 @@
       </template>
     </q-select>
 
-    <!-- Every card's statements due in one month, from every month there has been one. -->
+    <!-- A cash account's month by the row's own date, as the bank's statement shows it;
+         beside the cards' statement month, which goes by when a charge is paid. -->
+    <q-select
+      v-model="filters.month"
+      :options="shownMonths"
+      class="col-12 col-sm-6 col-md-3"
+      label="Cash month"
+      outlined
+      bg-color="white"
+      dense
+      options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="0"
+      multiple
+      clearable
+      :display-value="shown(filters.month)"
+      @filter="filterMonths"
+    >
+      <template #prepend>
+        <q-icon name="calendar_month" size="xs" color="grey-6" />
+      </template>
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey">Nothing matches</q-item-section>
+        </q-item>
+      </template>
+    </q-select>
+
+    <!-- Every card's statements due in the months picked, from every month there has been one. -->
     <q-select
       v-model="filters.due_month"
-      :options="dueMonthOptions"
+      :options="shownDueMonths"
       class="col-12 col-sm-6 col-md-3"
       label="Statement month"
       outlined
       bg-color="white"
       dense
       options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="0"
+      multiple
       clearable
-      emit-value
-      map-options
+      :display-value="shown(filters.due_month)"
+      @filter="filterDueMonths"
     >
       <template #prepend>
         <q-icon name="event_note" size="xs" color="grey-6" />
+      </template>
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey">Nothing matches</q-item-section>
+        </q-item>
       </template>
     </q-select>
   </div>
@@ -310,20 +360,27 @@ defineProps({
 const page = usePage()
 const pagination = inject('pagination')
 
-const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
+// In the enum's order of types, then by name as the server sent them, so each type's
+// accounts sit together under the heading the option slot draws.
+const accountOptions = computed(() => {
+  const order = page.props.filterOptions?.accountTypes ?? []
+  const rank = type => (order.includes(type) ? order.indexOf(type) : order.length)
 
-// Quasar's ramp, as the table's badges are: the hues only part card rows from bank rows.
-const accountTypeBadges = {
-  cash: { color: 'teal-1', textColor: 'teal-9' },
-  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
-  security: { color: 'orange-1', textColor: 'orange-10' },
-}
+  return [...(page.props.filterOptions?.accounts ?? [])].sort((a, b) => rank(a.type) - rank(b.type))
+})
 
-const dueMonthOptions = computed(() =>
-  (page.props.filterOptions?.dueMonths ?? []).map(month => ({
-    label: monthLabel(month),
-    value: month,
-  })),
+const accountTypeTitles = { cash: 'Cash', card: 'Cards', security: 'Securities' }
+
+const monthOptions = computed(() => page.props.filterOptions?.months ?? [])
+const shownMonths = ref([])
+const filterMonths = filterInto(shownMonths, monthOptions, (month, needle) =>
+  month.includes(needle),
+)
+
+const dueMonthOptions = computed(() => page.props.filterOptions?.dueMonths ?? [])
+const shownDueMonths = ref([])
+const filterDueMonths = filterInto(shownDueMonths, dueMonthOptions, (month, needle) =>
+  month.includes(needle),
 )
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
 const accountTypeOptions = computed(() => page.props.filterOptions?.accountTypes ?? [])
@@ -337,6 +394,10 @@ const filterSymbols = filterInto(shownSymbols, symbolOptions, (symbol, needle) =
 )
 const statusOptions = computed(() => page.props.statusOptions ?? [])
 const categoryOptions = computed(() => page.props.options?.categories ?? [])
+const shownCategories = ref([])
+const filterCategories = filterInto(shownCategories, categoryOptions, (category, needle) =>
+  category.label.toLowerCase().includes(needle),
+)
 const currencyOptions = computed(() => page.props.currencyOptions ?? [])
 
 const list = value => (value ? String(value).split(',') : [])
@@ -376,7 +437,8 @@ const parse = filter => ({
   date_from: filter.date_from ?? null,
   date_to: filter.date_to ?? null,
   due_date: filter.due_date ?? null,
-  due_month: filter.due_month ?? null,
+  month: list(filter.month),
+  due_month: list(filter.due_month),
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
   unpaid: filter.unpaid ?? '',
 })
@@ -431,6 +493,7 @@ const chips = computed(() => {
     ['ccy', 'Currency', null],
     ['category_id', 'Category', categoryOptions.value],
     ['symbol', 'Symbol', null],
+    ['month', 'Cash month', null],
   ]
     .filter(([key]) => on[key].length)
     .map(([key, name, options]) => ({
@@ -449,12 +512,12 @@ const chips = computed(() => {
       ]
     : []
 
-  const month = on.due_month
+  const month = on.due_month.length
     ? [
         {
           key: 'due_month',
-          label: `Statements due ${monthLabel(on.due_month)}`,
-          remove: () => (filters.due_month = null),
+          label: `Statements due ${on.due_month.join(', ')}`,
+          remove: () => (filters.due_month = []),
         },
       ]
     : []
@@ -476,13 +539,6 @@ const shownChips = computed(() =>
     ? chips.value.filter(chip => ['due_date', 'due_month'].includes(chip.key))
     : chips.value,
 )
-
-const monthFormat = new Intl.DateTimeFormat('en', {
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-})
-const monthLabel = month => monthFormat.format(new Date(`${month}-01T12:00:00Z`))
 
 const apply = () => {
   const { sort, dir, per_page: perPage } = page.props.params ?? {}
@@ -517,7 +573,8 @@ const clear = () => {
     date_from: null,
     date_to: null,
     due_date: null,
-    due_month: null,
+    month: [],
+    due_month: [],
     unpaid: '',
   })
 }
@@ -531,7 +588,7 @@ const showStatement = (cardId, dueDate) => {
 // The statement panel's month shortcut: every card's statements due that month.
 const showDueMonth = month => {
   clear()
-  filters.due_month = month
+  filters.due_month = [month]
 }
 
 defineExpose({ showStatement, showDueMonth, clear })
