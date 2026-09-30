@@ -217,7 +217,9 @@ const niceStep = raw => {
 
 const scale = computed(() => {
   const peak = Math.max(1, ...points.value.flatMap(m => [m.income, m.spending, Math.abs(m.net)]))
-  const tick = niceStep(peak / 2)
+  // A quarter of the tallest bar: at a half, a peak just past a round figure got steps of
+  // twice it, and a whole empty band below the last bar.
+  const tick = niceStep(peak / 4)
   const high =
     Math.ceil(Math.max(...points.value.map(m => Math.max(m.income, m.net)), 0) / tick) * tick
   const low =
