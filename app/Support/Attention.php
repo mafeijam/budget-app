@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\AccountType;
+use App\Enums\Frequency;
 use App\Enums\TransactionStatus;
 use App\Models\Price;
 use App\Models\RecurringTransaction;
@@ -19,6 +20,9 @@ class Attention
 {
     /** Prices older than this, in days, while shares are held, are called stale. */
     public const STALE_PRICES_DAYS = 3;
+
+    /** How far ahead a yearly recurring is worth naming, in days. */
+    public const YEARLY_SOON_DAYS = 90;
 
     /**
      * @param  iterable<array<string, mixed>>  $cash  Home's cash accounts, with balance
@@ -77,12 +81,37 @@ class Attention
         }
 
         // Recorded up to a refused occurrence and stopped there; see RecurringPayments.
+        $yearlySoon = $today->copy()->addDays(self::YEARLY_SOON_DAYS)->toDateString();
+
         foreach (RecurringTransaction::query()->where('active', true)->orderBy('description')->get() as $rule) {
             $next = $rule->nextDate();
 
-            if ($next !== null && $next < $day) {
+            if ($next === null) {
+                continue;
+            }
+
+            if ($next < $day) {
                 $items[] = self::item('warning', 'event_repeat',
                     "Recurring [{$rule->description}] has not been recorded since {$next}", '/recurring');
+
+                continue;
+            }
+
+            // A yearly rule this close, and only a yearly one: a monthly rule is always
+            // inside any window worth naming, so listing them would say nothing on any day
+            // and drown the notices that are about this week. A year is the one bill whose
+            // coming due is worth being told about before it lands.
+            if ($rule->frequency === Frequency::Yearly->value && $next <= $yearlySoon) {
+                $items[] = self::item('warning', 'event_repeat',
+                    sprintf(
+                        'Yearly recurring [%s], %s %s, is due on %s, in %d days',
+                        $rule->description,
+                        self::money($rule->amount),
+                        $rule->ccy,
+                        $next,
+                        $today->diffInDays(Carbon::parse($next), false),
+                    ),
+                    '/recurring');
             }
         }
 

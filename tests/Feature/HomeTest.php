@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Account;
 use App\Models\Price;
+use App\Models\RecurringTransaction;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -226,6 +227,76 @@ class HomeTest extends TestCase
 
         $this->get('/')->assertInertia(fn (Assert $page) => $page
             ->where('attention', fn ($items) => $items->contains('message', 'Prices have never been fetched'))
+        );
+    }
+
+    public function test_a_yearly_recurring_coming_due_needs_attention_and_a_monthly_one_does_not(): void
+    {
+        // A year is the one bill worth being told about before it lands. A monthly rule is
+        // inside any window worth naming, so listing one would put an item here on every day
+        // of the year and say nothing on any of them -- and a section that always has
+        // something in it is read as noise, which is what the rest of this list is for.
+        $this->travelTo(Carbon::parse('2026-03-01 12:00', 'Asia/Hong_Kong'));
+        $this->deposit('2026-01-10', '1000.0000');
+
+        $rule = fn (string $description, string $frequency, string $start) => RecurringTransaction::create([
+            'account_id' => $this->bank->id,
+            'category_id' => $this->category,
+            'type' => 'deposit',
+            'description' => $description,
+            'amount' => '480.0000',
+            'ccy' => 'HKD',
+            'frequency' => $frequency,
+            'start_date' => $start,
+            'active' => true,
+        ]);
+
+        $rule('INSURANCE', 'yearly', '2026-05-20');
+        $rule('AUDIT', 'yearly', '2026-09-20');
+        $rule('PTCG', 'monthly', '2026-03-05');
+
+        $says = fn (string $text) => fn ($items) => collect($items)
+            ->contains(fn (array $item) => str_contains($item['message'], $text));
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('attention', $says('Yearly recurring [INSURANCE], 480.00 HKD, is due on 2026-05-20, in 80 days'))
+            // Beyond the window, so named in neither form: not as coming due, and not as
+            // overdue either, which is the other half of the same rule's story.
+            ->where('attention', fn ($items) => ! $says('AUDIT')($items))
+            ->where('attention', fn ($items) => ! $says('PTCG')($items))
+        );
+
+        // The link is the recurring page, where the rule is: there is nothing to fix here, and
+        // a year is a long way off for a list to sit in.
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('attention', fn ($items) => collect($items)
+                ->firstWhere('message', 'Yearly recurring [INSURANCE], 480.00 HKD, is due on 2026-05-20, in 80 days')['link']['path'] === '/recurring')
+        );
+    }
+
+    public function test_a_yearly_recurring_past_its_date_is_overdue_and_not_also_coming_due(): void
+    {
+        // The two notices are about opposite ends of the same gap, and a rule whose date has
+        // passed is only ever the first. Saying both would have the same bill on the list
+        // twice, once as money that should have gone out and once as money about to.
+        $this->travelTo(Carbon::parse('2026-03-01 12:00', 'Asia/Hong_Kong'));
+        $this->deposit('2026-01-10', '1000.0000');
+
+        RecurringTransaction::create([
+            'account_id' => $this->bank->id,
+            'category_id' => $this->category,
+            'type' => 'deposit',
+            'description' => 'INSURANCE',
+            'amount' => '480.0000',
+            'ccy' => 'HKD',
+            'frequency' => 'yearly',
+            'start_date' => '2025-06-01',
+            'active' => true,
+        ]);
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('attention', fn ($items) => collect($items)->contains(fn (array $item) => $item['message'] === 'Recurring [INSURANCE] has not been recorded since 2025-06-01'))
+            ->where('attention', fn ($items) => ! collect($items)->contains(fn (array $item) => str_contains($item['message'], 'is due on')))
         );
     }
 
