@@ -1128,15 +1128,21 @@ body {
   white-space: nowrap;
 }
 
-/* The currency a run of rows is in, and what the run comes to. The app's group heading type
-   at the weight of a caption, since this sits inside a card that is itself a heading; flush
-   with the rows' own padding so the two columns of figures line up. */
+/* The currency a run of rows is in, and what the run comes to. Flush with the rows' own
+   padding so the two columns of figures line up. */
 .app-home-list__group {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 16px 2px;
+}
+
+/* The currency code alone takes the app's group heading type, at the weight of a caption
+   since this sits inside a card that is itself a heading. The figures beside it take the
+   rows' own treatment, so a heading reads like the rows under it rather than like a label
+   and a total. */
+.app-home-list__group-ccy {
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;

@@ -41,17 +41,25 @@
           <div v-if="figure.items.length" class="app-home-list">
             <!--
               A template for every card's rows, so the grouping below cannot become a second
-              copy of a row that has to be kept in step with this one.
+              copy of a row that has to be kept in step with this one. A card with no grouping
+              of its own is one group with nothing to head.
             -->
             <template
               v-for="group in figure.groups ?? [{ ccy: null, items: figure.items }]"
               :key="group.ccy ?? 'all'"
             >
-              <!-- Only where there is something to tell apart: a header over one currency
-                   says the currency the rows beneath it already show. -->
-              <div v-if="figure.groups?.length > 1" class="app-home-list__group">
-                <span>{{ group.ccy }}</span>
-                <span class="money">{{ money(group.total) }}</span>
+              <div v-if="group.headed" class="app-home-list__group">
+                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                <span class="row items-baseline no-wrap">
+                  <!-- How much there is in this currency, beside what it is worth: the rows
+                       beneath carry the same pair, so a heading reads like its rows. -->
+                  <span v-if="group.native" class="text-caption text-grey-6 money q-mr-sm">
+                    {{ money(group.native) }}
+                  </span>
+                  <span class="text-caption text-weight-medium text-grey-8 money">
+                    {{ money(group.total) }}
+                  </span>
+                </span>
               </div>
 
               <div
@@ -101,13 +109,12 @@
                   >
                     {{ item.ccy }} {{ item.native }}
                   </div>
-                  <!-- Only when it is not the base: then the figure is not the card's currency.
-                       Under its group's header that is already said, so it is the group that
-                       carries it now and this only speaks for a card left ungrouped. -->
+                  <!-- Only when it is not the base: then the figure is not the card's
+                       currency. A header over this row's own group already says it, so the
+                       label is for a group with no header -- which is every group of one,
+                       where the row is the only thing naming its currency. -->
                   <div
-                    v-if="
-                      figure.groups?.length < 2 && !item.native && item.ccy && item.ccy !== base
-                    "
+                    v-if="!group.headed && !item.native && item.ccy && item.ccy !== base"
                     class="text-caption text-grey-6"
                   >
                     {{ item.ccy }}
@@ -748,9 +755,11 @@ const cashItems = computed(() =>
     key: account.id,
     name: account.name,
     ccy: account.ccy,
-    // The figure as it is shown, kept as a decimal string so the group's total is added as
-    // money rather than as a float.
+    // The figure as it is shown, and the native behind it, both as decimal strings: the
+    // group's totals are added from these, and a formatted figure carries its thousands
+    // separators into the sum.
     total: account.base ?? account.balance,
+    nativeTotal: account.base ? account.balance : null,
     value: money(account.base ?? account.balance),
     native: account.base ? money(account.balance) : null,
     valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
@@ -770,8 +779,9 @@ const brokerItems = computed(() =>
       key: broker.id,
       name: broker.name,
       ccy: broker.ccy,
-      // As shown, as a decimal string, for the group's total.
+      // As shown, and the native behind it, as decimal strings for the group's totals.
       total: broker.market_value_base ?? broker.market_value,
+      nativeTotal: broker.market_value_base ? broker.market_value : null,
       value: money(broker.market_value_base ?? broker.market_value),
       native: broker.market_value_base ? money(broker.market_value) : null,
       valueClass: 'text-grey-9',
@@ -795,11 +805,16 @@ const brokerItems = computed(() =>
 // currency first, since it is the currency the card's own figure is in, then the others in
 // the order they arrive.
 //
-// The group total is the sum of the figures already shown on its rows, which are all in the
-// base currency -- a USD account's bold figure is its HKD worth and the USD sits beside it as
-// the native. So the total is what adds up to the card, which is the arithmetic a reader
-// would do, and not a USD figure the card nowhere claims to be in. Adding the native figures
-// instead would answer a different question: how much there is in dollars.
+// A group is headed only where a heading does work: the card must hold more than one
+// currency, and the group must have more than one row. A group of one has nothing to be
+// separated from and its total is the row's own figure, already on screen.
+//
+// The base total is the sum of the figures already on the rows, all of which are in the
+// base currency -- a USD account's bold figure is its HKD worth and the dollars sit beside
+// it as the native. So it is what adds up to the card's own figure, and it leads the
+// heading for that reason. The native beside it answers the other question, how much there
+// is in dollars, and only where every row of the group has one: a partial native total is
+// not a subtotal of anything.
 const grouped = items => {
   const groups = []
   const byCcy = new Map()
@@ -810,15 +825,30 @@ const grouped = items => {
     if (existing) {
       existing.items.push(item)
       existing.total = plus(existing.total, item.total)
+      existing.native = item.nativeTotal ? plus(existing.native, item.nativeTotal) : null
+      existing.allNative = existing.allNative && item.nativeTotal !== null
       continue
     }
 
-    const group = { ccy: item.ccy, total: item.total, items: [item] }
+    const group = {
+      ccy: item.ccy,
+      total: item.total,
+      native: item.nativeTotal,
+      allNative: item.nativeTotal !== null,
+      items: [item],
+    }
     byCcy.set(item.ccy, group)
     groups.push(group)
   }
 
-  return groups.sort((a, b) => (a.ccy === props.base ? -1 : b.ccy === props.base ? 1 : 0))
+  const sorted = groups.sort((a, b) => (a.ccy === props.base ? -1 : b.ccy === props.base ? 1 : 0))
+
+  for (const group of sorted) {
+    group.headed = sorted.length > 1 && group.items.length > 1
+    group.native = group.allNative ? group.native : null
+  }
+
+  return sorted
 }
 
 // One row a card, whatever number of its statements are open: what it owes in all, from
