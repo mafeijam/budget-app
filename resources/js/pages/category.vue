@@ -47,6 +47,13 @@
           <div class="text-caption text-grey-6 ellipsis">{{ caption(row) }}</div>
         </div>
 
+        <div class="app-category-row__share text-grey-7 text-right">{{ share(row) }}</div>
+
+        <div class="app-category-row__figures">
+          <div class="money text-weight-medium">{{ base }} {{ money(row.total) }}</div>
+          <div class="text-caption text-grey-6 money">{{ money(row.average) }} a month</div>
+        </div>
+
         <div class="app-category-row__trend">
           <HomeSpark
             :values="row.months"
@@ -54,13 +61,6 @@
             :label="`${row.category?.name ?? 'Uncategorised'} spending by month`"
             class="app-account-spark"
           />
-        </div>
-
-        <div class="app-category-row__share text-grey-7 text-right">{{ share(row) }}</div>
-
-        <div class="app-category-row__figures">
-          <div class="money text-weight-medium">{{ base }} {{ money(row.total) }}</div>
-          <div class="text-caption text-grey-6 money">{{ money(row.average) }} a month</div>
         </div>
 
         <div class="app-category-row__actions row items-center justify-end no-wrap" @click.stop>
@@ -174,10 +174,17 @@ const categorised = computed(
   () => Number(props.spending.total) - Number(props.spending.categories[0]?.total ?? 0),
 )
 
-const share = row =>
-  row.category && categorised.value > 0
-    ? `${Math.round((Number(row.total) / categorised.value) * 100)}%`
-    : ''
+// Whole percents from 1% up; below it one place, or "<0.1%", so a category with spending
+// never reads 0%.
+const share = row => {
+  if (!row.category || categorised.value <= 0) return ''
+
+  const percent = (Number(row.total) / categorised.value) * 100
+
+  if (percent >= 1) return `${Math.round(percent)}%`
+
+  return percent >= 0.05 ? `${percent.toFixed(1)}%` : '<0.1%'
+}
 
 // The window the figures cover, so the list adds up to the row that was clicked.
 const openTransactions = category =>

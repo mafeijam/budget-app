@@ -570,7 +570,8 @@ body {
 /* The categories page: what a category is, how its spending moved, and its share. */
 .app-category-row {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 140px 60px 180px 80px;
+  /* Share, total, then the line right after it, as on the accounts page. */
+  grid-template-columns: minmax(200px, 1fr) 60px 180px 160px 80px;
   gap: 16px;
   align-items: center;
   padding: 10px 16px;
