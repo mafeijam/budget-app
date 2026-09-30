@@ -12,6 +12,7 @@ Setup and the two databases are in `README.md`. Read it before touching the DB.
 ./vendor/bin/phpunit                      # not `pest` — no pest binary is installed
 ./vendor/bin/phpunit --filter CardStatementTest
 ./vendor/bin/phpunit --filter 'FooTest|BarTest'
+./vendor/bin/phpunit --filter FormContractTest   # 21 tests, under a second
 ./vendor/bin/pint                         # --test to check without writing
 npm run lint                              # eslint; prettier runs through it
 npm run lint:fix
@@ -19,6 +20,29 @@ npm run build                             # or `npm run dev`
 ```
 
 The app is served on **port 9007** in this environment.
+
+**Which of those a change needs.** The full suite is not the default: it
+re-runs unchanged PHP against unchanged expectations, so on a change that
+cannot break it, it costs two minutes and says nothing. What decides it is
+not server versus client — `FormContractTest` reads `resources/js`, and
+`CsrfExpiryTest` reads a `.vue` file, so a template edit can fail a PHP
+test.
+
+- **PHP, or a route, DTO, query, migration or seeder:** the suite, and pint.
+- **A form template that gains or loses a `v-model`, an error binding, a
+  `v-if`, a `:disable` or any `form.` reference:** `FormContractTest` alone.
+  It counts every `form.` reference in a template and requires each to be a
+  binding it can parse, so an assignment inside a `@click` fails it. It has
+  done so here, on an edit that touched no PHP at all.
+- **Anything else in a `.vue` file** — a class, an offset, a handler that
+  writes a plain ref: `npm run lint` and `npm run build`, and then look at
+  it. There is no JS test runner in this project, so the browser is the only
+  check on whether a menu opens, where a list lands, or whether the caret
+  stays in a field. That is not a formality: the description field's hint
+  list was wrong five times in an afternoon, in ways every check here
+  passed, and each was caught by a person looking at the screen.
+- **The last commit before anyone relies on it:** the suite, whatever the
+  change was.
 
 ## Two databases, and this will bite you
 
