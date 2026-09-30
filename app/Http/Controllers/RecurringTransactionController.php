@@ -185,6 +185,7 @@ class RecurringTransactionController extends Controller
         $day = today()->toDateString();
         $zero = BigDecimal::zero();
         $totals = ['income' => $zero, 'bills' => $zero, 'cards' => $zero];
+        $annual = $zero;
         $each = [];
         $unconverted = [];
 
@@ -194,7 +195,8 @@ class RecurringTransactionController extends Controller
             $group = $sign > 0 ? 'income' : ($accountType === AccountType::Card ? 'cards' : 'bills');
 
             $amount = BigDecimal::of((string) $rule->amount);
-            $monthly = Frequency::from($rule->frequency) === Frequency::Yearly
+            $yearly = Frequency::from($rule->frequency) === Frequency::Yearly;
+            $monthly = $yearly
                 ? $amount->dividedBy(12, 4, RoundingMode::HalfUp)
                 : $amount;
             $base = $fx->toBase((string) $monthly, $rule->ccy, $day);
@@ -203,6 +205,10 @@ class RecurringTransactionController extends Controller
                 $unconverted[] = $rule->ccy;
             } elseif ($rule->active && ($rule->end_date === null || $rule->end_date >= $day)) {
                 $totals[$group] = $totals[$group]->plus($base);
+
+                if ($yearly && $group !== 'income') {
+                    $annual = $annual->plus($base);
+                }
             }
 
             $each[$rule->id] = [
@@ -213,6 +219,9 @@ class RecurringTransactionController extends Controller
         }
 
         $totals['net'] = $totals['income']->minus($totals['bills'])->minus($totals['cards']);
+        // The yearly bills and charges again, already inside bills and cards: the page lists
+        // them apart, and adding this to net would take them off twice.
+        $totals['annual'] = $annual;
 
         return [
             'rules' => $each,

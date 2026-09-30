@@ -131,6 +131,9 @@ class RecurringDetectTest extends TestCase
             ->where('costs.totals.cards', '88.8800')
             ->where('costs.totals.net', '901.1200')
             ->where('costs.yearly.cards', '1066.5600')
+            // The yearly rules apart, still counted once in bills and net.
+            ->where('costs.totals.annual', '10.0000')
+            ->where('costs.yearly.annual', '120.0000')
             ->where("health.{$netflix->id}.verdict", 'differs')
             ->where("health.{$netflix->id}.amount", '98.9800')
             ->where("health.{$netflix->id}.last", '2026-09-10')

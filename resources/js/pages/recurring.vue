@@ -6,7 +6,7 @@
       <div class="row items-center">
         <div class="text-h6 text-weight-medium q-mr-md">Recurring</div>
         <q-space />
-        <div class="row items-center q-gutter-sm">
+        <div class="row items-center q-gutter-sm no-wrap">
           <RecurringFindDialog v-model="findOpen" :findings="findings ?? []" />
           <!-- The two runs as one toolbar, as the other pages keep their controls. -->
           <div class="app-toolbar row items-center no-wrap">
@@ -123,7 +123,11 @@
         <div class="text-subtitle1 text-weight-medium">{{ section.title }}</div>
         <div class="text-caption text-grey-6 q-ml-sm">{{ section.rules.length }}</div>
         <q-space />
-        <div v-if="section.total" class="text-right">
+        <div v-if="section.key === 'annual' && section.yearly" class="text-right">
+          <div class="money text-weight-bold">{{ base }} {{ money(section.yearly) }} a year</div>
+          <div class="text-caption text-grey-6 money">{{ money(section.total) }} a month</div>
+        </div>
+        <div v-else-if="section.total" class="text-right">
           <div class="money text-weight-bold">{{ base }} {{ money(section.total) }} a month</div>
           <div class="text-caption text-grey-6 money">{{ money(section.yearly) }} a year</div>
         </div>
@@ -346,6 +350,10 @@ const groupColours = { income: '#059669', bills: '#dc2626', cards: '#eb6834' }
 
 const groupOf = rule => props.costs.rules?.[rule.id]?.group ?? 'bills'
 
+// A yearly bill or charge, listed apart since a year apart it is easy to forget; a yearly
+// income stays with the income. The server's `annual` total is the same rules.
+const isAnnual = rule => rule.frequency === 'yearly' && groupOf(rule) !== 'income'
+
 // Soonest first within a group, so the next thing to leave the account is at the top.
 const bySoonest = (a, b) =>
   (props.nextDates[a.id] ?? '9999').localeCompare(props.nextDates[b.id] ?? '9999') ||
@@ -361,8 +369,18 @@ const sections = computed(() => {
       icon: groupIcons[group],
       total: props.costs.totals?.[group] ?? null,
       yearly: props.costs.yearly?.[group] ?? null,
-      rules: rules.filter(rule => isRunning(rule) && groupOf(rule) === group).sort(bySoonest),
+      rules: rules
+        .filter(rule => isRunning(rule) && !isAnnual(rule) && groupOf(rule) === group)
+        .sort(bySoonest),
     }))
+    .concat({
+      key: 'annual',
+      title: 'Yearly',
+      icon: 'event_repeat',
+      total: props.costs.totals?.annual ?? null,
+      yearly: props.costs.yearly?.annual ?? null,
+      rules: rules.filter(rule => isRunning(rule) && isAnnual(rule)).sort(bySoonest),
+    })
     .filter(section => section.rules.length)
 
   const idle = rules.filter(rule => !isRunning(rule))
