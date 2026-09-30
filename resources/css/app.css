@@ -1072,3 +1072,38 @@ body {
   border: 1px solid var(--app-border);
   width: 100%;
 }
+
+/* The home cards' breakdown: the accounts behind each figure, under its line. */
+.app-home-headline .app-home-spark {
+  height: 64px;
+  margin-top: 0;
+}
+
+.app-home-list {
+  border-top: 1px solid var(--app-border);
+  padding: 4px 0;
+}
+
+.app-home-list__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+}
+
+.app-home-list__row.cursor-pointer:hover {
+  background: #f8fafc;
+}
+
+.app-home-list__row--overdue {
+  background: #fef2f2;
+}
+
+.app-home-list__name {
+  min-width: 0;
+}
+
+.app-home-list__more {
+  padding: 6px 16px;
+}

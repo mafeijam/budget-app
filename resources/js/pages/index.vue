@@ -8,11 +8,11 @@
           :key="figure.label"
           flat
           bordered
-          class="app-home-link app-home-headline__card column no-wrap"
-          @click="go('/net-worth')"
+          class="app-home-headline__card column no-wrap"
         >
-          <q-card-section class="q-pb-none">
-            <div class="text-caption text-grey-7">{{ figure.label }}</div>
+          <!-- The figure and its line open the net worth page; a row below opens its own. -->
+          <q-card-section class="q-pb-none app-home-link" @click="go('/net-worth')">
+            <div class="text-subtitle1 text-weight-medium text-grey-8">{{ figure.label }}</div>
             <div class="text-h5 text-weight-bold money" :class="figure.class">
               {{ base }} {{ money(figure.value) }}
             </div>
@@ -36,6 +36,54 @@
               :label="`${figure.label}, ${trendCaption}`"
             />
           </Deferred>
+
+          <!-- What the figure is made of: the accounts, statements or brokerages behind it. -->
+          <div v-if="figure.items.length" class="app-home-list">
+            <div
+              v-for="item in figure.items"
+              :key="item.key"
+              class="app-home-list__row"
+              :class="{ 'app-home-list__row--overdue': item.overdue, 'cursor-pointer': item.open }"
+              @click="item.open?.()"
+            >
+              <div class="app-home-list__name">
+                <div class="row items-center no-wrap">
+                  <q-icon :name="item.icon" size="14px" color="grey-6" class="q-mr-xs" />
+                  <span class="text-body2 text-weight-medium text-grey-9 ellipsis">
+                    {{ item.name }}
+                  </span>
+                  <q-badge v-if="item.badge" v-bind="item.badge" class="q-ml-xs" />
+                </div>
+                <div
+                  v-for="line in item.lines"
+                  :key="line.text"
+                  class="text-caption ellipsis"
+                  :class="line.class ?? 'text-grey-6'"
+                >
+                  {{ line.text }}
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-body2 text-weight-bold money" :class="item.valueClass">
+                  {{ item.value }}
+                </div>
+                <!-- Held in another currency: that money under the base figure the card sums. -->
+                <div v-if="item.native" class="text-caption text-grey-6 money">
+                  {{ item.ccy }} {{ item.native }}
+                </div>
+                <div v-else-if="item.ccy" class="text-caption text-grey-6">{{ item.ccy }}</div>
+              </div>
+            </div>
+            <div v-if="figure.more" class="app-home-list__more text-caption text-grey-6">
+              {{ figure.more }}
+            </div>
+          </div>
+          <div
+            v-else-if="figure.empty"
+            class="app-home-list app-home-list__more text-caption text-grey-6"
+          >
+            {{ figure.empty }}
+          </div>
         </q-card>
       </div>
       <div v-if="headline.unconverted.length" class="text-caption text-grey-7 q-mt-sm">
@@ -209,31 +257,6 @@
         </div>
       </div>
     </div>
-
-    <HomeSection
-      title="Cash accounts"
-      :total="headline.cash"
-      :base="base"
-      :items="cashItems"
-      empty="No cash account yet."
-    />
-
-    <HomeSection
-      v-if="brokerages.length"
-      title="Brokerages"
-      :total="headline.value"
-      :base="base"
-      :items="brokerItems"
-    />
-
-    <HomeSection
-      title="Card statements owing"
-      :total="headline.owed"
-      :base="base"
-      :items="statementItems"
-      negative
-      empty="Nothing owed on any card."
-    />
   </div>
 </template>
 
@@ -315,6 +338,9 @@ const headlineFigures = computed(() => {
     }
   }
 
+  const held = cashItems.value.filter(item => !item.empty)
+  const emptyCash = cashItems.value.length - held.length
+
   return [
     {
       label: 'Net worth',
@@ -323,6 +349,7 @@ const headlineFigures = computed(() => {
       value: h.net_worth,
       class: 'text-grey-9',
       ...onLastMonth('net_worth'),
+      items: shares.value,
     },
     {
       label: 'Cash',
@@ -331,6 +358,9 @@ const headlineFigures = computed(() => {
       value: h.cash,
       class: negative(h.cash) ? 'text-negative' : 'text-positive',
       ...onLastMonth('cash'),
+      items: held,
+      more: emptyCash ? `+${emptyCash} empty` : null,
+      empty: 'No cash account yet.',
     },
     {
       label: 'Cards owe',
@@ -339,6 +369,8 @@ const headlineFigures = computed(() => {
       value: h.cards,
       class: isZero(h.cards) ? 'text-grey-9' : 'text-negative',
       ...onLastMonth('cards'),
+      items: statementItems.value,
+      empty: 'Nothing owed on any card.',
     },
     {
       label: 'Stocks',
@@ -346,11 +378,32 @@ const headlineFigures = computed(() => {
       colour: colours.value,
       value: h.value,
       class: 'text-primary',
-      // The same note as the others. The unrealised gain wants a line of its own rather
-      // than a share of this one, and the grid below already carries it per brokerage.
+      // The same note as the others: the unrealised gain is on each brokerage's row.
       ...onLastMonth('value'),
+      items: brokerItems.value.filter(item => !item.empty),
     },
   ]
+})
+
+// What net worth is made of, each as its share of it: the figures are the cards beside it.
+const shares = computed(() => {
+  const h = props.headline
+
+  return [
+    ['cash', 'Cash', 'account_balance', h.cash],
+    ['value', 'Stocks', 'show_chart', h.value],
+    ['cards', 'Cards owe', 'credit_card', h.cards],
+  ]
+    .filter(([, , , value]) => !isZero(value))
+    .map(([key, name, icon, value]) => ({
+      key,
+      icon,
+      name,
+      value: percent(value, h.net_worth),
+      valueClass: negative(value) ? 'text-negative' : 'text-grey-9',
+      lines: [{ text: `${props.base} ${money(value)}` }],
+      open: () => go('/net-worth'),
+    }))
 })
 
 const monthFormat = new Intl.DateTimeFormat('en', { month: 'long', timeZone: 'UTC' })
@@ -424,7 +477,8 @@ const cashItems = computed(() =>
     icon: 'account_balance',
     name: account.name,
     ccy: account.ccy,
-    value: account.balance,
+    value: money(account.base ?? account.balance),
+    native: account.base ? money(account.balance) : null,
     valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
     empty: isZero(account.balance),
     lines: account.status !== 'active' ? [{ text: `${account.status}, still holding money` }] : [],
@@ -443,16 +497,17 @@ const brokerItems = computed(() =>
       icon: 'show_chart',
       name: broker.name,
       ccy: broker.ccy,
-      value: broker.market_value,
+      value: money(broker.market_value_base ?? broker.market_value),
+      native: broker.market_value_base ? money(broker.market_value) : null,
       valueClass: 'text-grey-9',
       empty: broker.open === 0 && isZero(broker.market_value),
       lines: [
         {
-          text: `${signed(broker.unrealised)} unrealised${pct ? ` (${pct})` : ''}`,
+          text: `${signed(broker.unrealised_base ?? broker.unrealised)} unrealised${pct ? ` (${pct})` : ''}`,
           class: signClass(broker.unrealised),
         },
         {
-          text: `${count(broker.open, 'holding')} · cost ${money(broker.open_cost)}${
+          text: `${count(broker.open, 'holding')} · cost ${broker.market_value_base ? `${broker.ccy} ` : ''}${money(broker.open_cost)}${
             broker.unpriced ? ` · ${broker.unpriced} unpriced` : ''
           }`,
         },
@@ -468,7 +523,7 @@ const statementItems = computed(() =>
     icon: 'credit_card',
     name: statement.card.name,
     ccy: statement.card.ccy,
-    value: statement.owed,
+    value: money(statement.owed),
     valueClass: 'text-negative',
     overdue: statement.days_until_due < 0,
     badge: { ...dueBadge(statement), prefix: `Due ${formatDate(statement.due_date)}` },

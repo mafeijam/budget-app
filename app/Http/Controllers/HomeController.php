@@ -75,6 +75,12 @@ class HomeController extends Controller
 
         $balances = AccountBalance::forAccounts($cashAccounts);
 
+        // Today's rate for every currency here, so a row held in another shows its base too.
+        $rates = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
+        $inBase = fn (string $amount, string $ccy) => $ccy === Fx::BASE->value
+            ? null
+            : $rates->toBase($amount, $ccy, today()->toDateString())?->__toString();
+
         $cash = $cashAccounts
             ->filter(fn (Account $account) => $account->status === 'active'
                 || ! BigDecimal::of($balances[$account->id])->isZero())
@@ -84,6 +90,7 @@ class HomeController extends Controller
                 'ccy' => $account->ccy,
                 'status' => $account->status,
                 'balance' => $balances[$account->id],
+                'base' => $inBase($balances[$account->id], $account->ccy),
             ])
             ->values();
 
@@ -110,13 +117,19 @@ class HomeController extends Controller
             ->where('type', AccountType::Security->value)
             ->orderBy('name')
             ->get()
-            ->map(fn (Account $broker) => [
-                'id' => $broker->id,
-                'name' => $broker->name,
-                'ccy' => $broker->ccy,
-                'status' => $broker->status,
-                ...Positions::valued($broker)['totals'],
-            ])
+            ->map(function (Account $broker) use ($inBase) {
+                $totals = Positions::valued($broker)['totals'];
+
+                return [
+                    'id' => $broker->id,
+                    'name' => $broker->name,
+                    'ccy' => $broker->ccy,
+                    'status' => $broker->status,
+                    ...$totals,
+                    'market_value_base' => $inBase($totals['market_value'], $broker->ccy),
+                    'unrealised_base' => $inBase($totals['unrealised'], $broker->ccy),
+                ];
+            })
             ->filter(fn (array $broker) => $broker['status'] === 'active' || $broker['open'] > 0)
             ->values();
 
