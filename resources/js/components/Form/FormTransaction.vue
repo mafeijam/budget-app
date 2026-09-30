@@ -14,24 +14,30 @@
         class="text-weight-medium"
       >
         <q-menu anchor="bottom right" self="top right" :offset="[0, 6]" @show="templateSearch = ''">
-          <div class="app-template-menu">
-            <q-input
-              v-model="templateSearch"
-              class="q-pa-sm"
-              dense
-              outlined
-              autofocus
-              clearable
-              placeholder="Search templates"
-            >
-              <template #prepend>
-                <q-icon name="search" />
-              </template>
-            </q-input>
+          <div class="app-template-menu column no-wrap">
+            <div class="app-template-menu__search">
+              <q-input
+                v-model="templateSearch"
+                dense
+                outlined
+                autofocus
+                clearable
+                placeholder="Search templates"
+              >
+                <template #prepend>
+                  <q-icon name="search" />
+                </template>
+              </q-input>
+            </div>
 
-            <q-list dense class="q-pb-sm">
+            <q-list dense class="app-template-menu__list col">
               <template v-for="group in templateGroups" :key="group.account">
-                <q-item-label header class="q-pt-sm q-pb-xs">{{ group.account }}</q-item-label>
+                <q-item-label header class="app-filter-group row items-center no-wrap q-py-xs">
+                  <q-icon :name="group.icon" size="14px" class="q-mr-xs" />
+                  {{ group.account }}
+                  <q-space />
+                  <span class="text-weight-regular">{{ group.templates.length }}</span>
+                </q-item-label>
                 <q-item
                   v-for="template in group.templates"
                   :key="template.key"
@@ -40,27 +46,37 @@
                   class="app-template-item"
                   @click="applyTemplate(template)"
                 >
+                  <!-- Where the figure comes from: a recurring rule is kept up to date from
+                       the history and has no row to edit or delete; a saved one is a copy. -->
+                  <q-item-section avatar class="app-template-item__avatar">
+                    <q-avatar
+                      size="28px"
+                      :class="
+                        template.derived ? 'app-tint app-tint--info' : 'app-tint app-tint--muted'
+                      "
+                      :icon="template.derived ? 'autorenew' : 'bookmark'"
+                    >
+                      <q-tooltip :delay="500" :offset="[0, 6]">
+                        {{ template.derived ? 'From a recurring rule' : 'A saved template' }}
+                      </q-tooltip>
+                    </q-avatar>
+                  </q-item-section>
                   <q-item-section>
-                    <!-- A row, or the icon and the name sit on two lines: a bare icon beside
-                         text in a section wraps, and the name is what identifies the
-                         template. The repeat icon says where the figure came from -- it is
-                         read off a recurring rule, and there is no row to delete or edit. -->
-                    <div class="row items-center no-wrap">
-                      <q-icon
-                        v-if="template.derived"
-                        name="autorenew"
-                        size="xs"
-                        color="grey-6"
-                        class="q-mr-xs"
-                      >
-                        <q-tooltip :delay="500" :offset="[0, 6]">From a recurring rule</q-tooltip>
-                      </q-icon>
-                      <span class="ellipsis">{{ template.name }}</span>
+                    <q-item-label class="ellipsis text-weight-medium">{{
+                      template.name
+                    }}</q-item-label>
+                    <q-item-label caption class="ellipsis">{{
+                      templateCaption(template)
+                    }}</q-item-label>
+                  </q-item-section>
+                  <q-item-section side class="text-right">
+                    <div v-if="template.payload.amount" class="money text-grey-9">
+                      {{ money(template.payload.amount) }}
                     </div>
+                    <div class="text-caption text-grey-6">{{ template.payload.ccy }}</div>
                   </q-item-section>
                   <q-item-section v-if="template.id" side>
                     <q-btn
-                      v-if="template.id"
                       flat
                       dense
                       round
@@ -77,7 +93,7 @@
               </template>
 
               <q-item v-if="!templateGroups.length">
-                <q-item-section class="text-grey">
+                <q-item-section class="text-grey text-center q-py-md">
                   {{ templates.length ? 'No template matches' : 'No templates saved yet' }}
                 </q-item-section>
               </q-item>
@@ -144,53 +160,99 @@
       <q-select
         v-model="form.account_id"
         :options="accountOptionList"
-        class="col-6"
+        class="col-12 col-sm-6"
         label="Account"
-        filled
+        outlined
         emit-value
         map-options
         :disable="locked('account_id')"
         :error="!!form.errors.account_id"
         :error-message="form.errors.account_id"
       >
+        <template #prepend>
+          <q-icon :name="accountIcon" :color="chosenAccount ? 'primary' : 'grey-6'" />
+        </template>
         <template #option="scope">
-          <q-item
+          <q-item-label
             v-if="scope.opt.heading"
+            header
+            class="app-filter-group q-py-xs"
             v-bind="scope.itemProps"
-            dense
-            class="app-tint app-tint--muted"
           >
-            <q-item-section class="text-caption">{{ scope.opt.label }}</q-item-section>
-          </q-item>
-          <q-item v-else v-bind="scope.itemProps">
-            <q-item-section>
-              {{ scope.opt.label }}
-              <q-item-label caption>{{ scope.opt.ccy }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-badge v-bind="accountTypeBadges[scope.opt.type] ?? {}" :label="scope.opt.type" />
-            </q-item-section>
+            {{ accountTypeTitles[scope.opt.label] ?? scope.opt.label }}
+          </q-item-label>
+          <q-item v-else v-bind="scope.itemProps" dense>
+            <q-item-section>{{ scope.opt.label }}</q-item-section>
+            <q-item-section side class="text-caption">{{ scope.opt.ccy }}</q-item-section>
           </q-item>
         </template>
       </q-select>
 
-      <q-select
-        v-model="form.type"
-        :options="typeOptions"
+      <!-- Buttons rather than a list: an account allows two to four types, all worth seeing. -->
+      <q-field
+        class="col-12 col-sm-6 app-segment"
+        borderless
         :disable="!form.account_id || locked('type')"
-        class="col-6"
-        label="Type"
-        filled
         :error="!!form.errors.type"
         :error-message="form.errors.type"
+        :hint="typeButtons.length ? '' : 'Pick an account first'"
+      >
+        <template #control>
+          <div class="app-segment__box">
+            <div class="app-segment__label">Type</div>
+            <q-btn-toggle
+              v-model="form.type"
+              :options="typeButtons"
+              class="app-segment__buttons"
+              spread
+              unelevated
+              no-caps
+              color="white"
+              text-color="grey-8"
+              toggle-color="blue-1"
+              toggle-text-color="primary"
+            />
+          </div>
+        </template>
+      </q-field>
+
+      <q-input
+        v-model="form.amount"
+        class="col-12 col-sm-5 app-form-amount"
+        label="Amount"
+        outlined
+        type="number"
+        step="0.01"
+        min="0"
+        :prefix="amountPrefix"
+        :disable="derivesAmount || locked('amount')"
+        :hint="derivesAmount ? 'Derived from quantity and price' : ''"
+        :error="!!form.errors.amount"
+        :error-message="form.errors.amount"
+      />
+
+      <q-select
+        v-model="form.ccy"
+        :options="currencyOptions"
+        class="col-5 col-sm-3"
+        label="Currency"
+        outlined
+        emit-value
+        map-options
+        :disable="locked('ccy') || currencyLocked"
+        :hint="
+          currencyLocked && chosenAccount ? 'Only a card charge may be in another currency' : ''
+        "
+        :error="!!form.errors.ccy"
+        :error-message="form.errors.ccy"
       />
 
       <!-- The mask goes on q-date only; on q-input it breaks. FormContractTest pins this. -->
       <q-input
         v-model="form.date"
-        class="col-4"
+        class="col-7 col-sm-4"
         label="Date"
-        filled
+        outlined
         :disable="locked('date')"
         :error="!!form.errors.date"
         :error-message="form.errors.date"
@@ -210,45 +272,13 @@
         </template>
       </q-input>
 
-      <q-input
-        v-model="form.amount"
-        class="col-4"
-        label="Amount"
-        filled
-        type="number"
-        step="0.01"
-        min="0"
-        :disable="derivesAmount || locked('amount')"
-        :hint="derivesAmount ? 'Derived from quantity and price' : ''"
-        :error="!!form.errors.amount"
-        :error-message="form.errors.amount"
-      />
-
-      <q-select
-        v-model="form.ccy"
-        :options="currencyOptions"
-        class="col-4"
-        label="Currency"
-        filled
-        emit-value
-        map-options
-        :disable="locked('ccy') || currencyLocked"
-        :hint="
-          currencyLocked && chosenAccount
-            ? 'Only a charge on a card may be in another currency'
-            : ''
-        "
-        :error="!!form.errors.ccy"
-        :error-message="form.errors.ccy"
-      />
-
       <!-- Without @filter, QSelect never narrows the list. -->
       <q-select
         v-model="form.description"
         :options="shownDescriptions"
         class="col-12"
         label="Description"
-        filled
+        outlined
         autocomplete="off"
         use-input
         input-debounce="0"
@@ -258,6 +288,9 @@
         :error-message="form.errors.description"
         @filter="filterDescriptions"
       >
+        <template #prepend>
+          <q-icon name="notes" color="grey-6" />
+        </template>
         <template #no-option>
           <q-item>
             <q-item-section class="text-grey"> Nothing matches; Enter adds it </q-item-section>
@@ -267,147 +300,197 @@
 
       <q-select
         v-model="form.category_id"
-        :options="categoryOptions"
-        class="col-6"
+        :options="shownCategories"
+        class="col-12 col-sm-7"
         label="Category"
-        filled
+        outlined
         emit-value
         map-options
         clearable
+        autocomplete="off"
+        use-input
+        fill-input
+        hide-selected
+        input-debounce="0"
         :error="!!form.errors.category_id"
         :error-message="form.errors.category_id"
-      />
+        @filter="filterCategories"
+      >
+        <template #prepend>
+          <q-icon name="label" color="grey-6" />
+        </template>
+        <template #no-option>
+          <q-item>
+            <q-item-section class="text-grey">No category matches</q-item-section>
+          </q-item>
+        </template>
+      </q-select>
 
-      <q-select
-        v-model="form.status"
-        :options="statusOptions"
-        class="col-6"
-        label="Status"
-        filled
+      <q-field
+        class="col-12 col-sm-5 app-segment"
+        borderless
         :disable="locked('status')"
         hint="A pending charge does not count toward what the card owes"
         :error="!!form.errors.status"
         :error-message="form.errors.status"
-      />
+      >
+        <template #control>
+          <div class="app-segment__box">
+            <div class="app-segment__label">Status</div>
+            <q-btn-toggle
+              v-model="form.status"
+              :options="statusButtons"
+              class="app-segment__buttons"
+              spread
+              unelevated
+              no-caps
+              color="white"
+              text-color="grey-8"
+              toggle-color="blue-1"
+              toggle-text-color="primary"
+            />
+          </div>
+        </template>
+      </q-field>
 
-      <q-input
-        v-if="needsCardAmount"
-        v-model="form.meta_data.card_amount"
-        class="col-6"
-        label="Amount in the card's currency"
-        filled
-        type="number"
-        step="0.01"
-        :disable="locked('meta_data.card_amount')"
-        :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
-        :error="!!form.errors['meta_data.card_amount']"
-        :error-message="form.errors['meta_data.card_amount']"
-      />
+      <!-- The fields only some types have, set apart so the everyday form stays short. -->
+      <div v-if="hasExtras" class="col-12">
+        <div class="app-form-panel">
+          <div class="row items-center text-caption text-weight-medium text-grey-8 q-mb-sm">
+            <q-icon :name="extrasIcon" size="xs" class="q-mr-xs" />
+            {{ extrasTitle }}
+          </div>
+          <div class="row q-col-gutter-md">
+            <q-input
+              v-if="needsCardAmount"
+              v-model="form.meta_data.card_amount"
+              class="col-6"
+              label="Amount in the card's currency"
+              outlined
+              bg-color="white"
+              type="number"
+              step="0.01"
+              :disable="locked('meta_data.card_amount')"
+              :hint="`What the card owes for this, in ${chosenAccount?.ccy}`"
+              :error="!!form.errors['meta_data.card_amount']"
+              :error-message="form.errors['meta_data.card_amount']"
+            />
 
-      <template v-if="showsSymbol">
-        <q-select
-          v-if="isDividend"
-          v-model="form.meta_data.brokerage_account_id"
-          :options="brokerageOptions"
-          class="col-6"
-          label="Brokerage"
-          filled
-          emit-value
-          map-options
-          :error="!!form.errors['meta_data.brokerage_account_id']"
-          :error-message="form.errors['meta_data.brokerage_account_id']"
-        >
-          <template #no-option>
-            <q-item>
-              <q-item-section class="text-grey">
-                No brokerage settles into this account
-              </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+            <template v-if="showsSymbol">
+              <q-select
+                v-if="isDividend"
+                v-model="form.meta_data.brokerage_account_id"
+                :options="brokerageOptions"
+                class="col-6"
+                label="Brokerage"
+                outlined
+                bg-color="white"
+                emit-value
+                map-options
+                :error="!!form.errors['meta_data.brokerage_account_id']"
+                :error-message="form.errors['meta_data.brokerage_account_id']"
+              >
+                <template #no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      No brokerage settles into this account
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
 
-        <!-- No fill-input: QSelect already draws the value, so it would show twice. -->
-        <q-select
-          v-if="isDividend"
-          v-model="form.meta_data.symbol"
-          :options="shownSymbols"
-          class="col-6"
-          label="Symbol"
-          filled
-          emit-value
-          map-options
-          autocomplete="off"
-          use-input
-          input-debounce="0"
-          new-value-mode="add-unique"
-          :clearable="false"
-          :error="!!form.errors['meta_data.symbol']"
-          :error-message="form.errors['meta_data.symbol']"
-          @filter="filterSymbols"
-        >
-          <template #no-option>
-            <q-item>
-              <q-item-section class="text-grey"> Not held here; Enter adds it </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+              <!-- No fill-input: QSelect already draws the value, so it would show twice. -->
+              <q-select
+                v-if="isDividend"
+                v-model="form.meta_data.symbol"
+                :options="shownSymbols"
+                class="col-6"
+                label="Symbol"
+                outlined
+                bg-color="white"
+                emit-value
+                map-options
+                autocomplete="off"
+                use-input
+                input-debounce="0"
+                new-value-mode="add-unique"
+                :clearable="false"
+                :error="!!form.errors['meta_data.symbol']"
+                :error-message="form.errors['meta_data.symbol']"
+                @filter="filterSymbols"
+              >
+                <template #no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      Not held here; Enter adds it
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
 
-        <q-input
-          v-else
-          v-model="form.meta_data.symbol"
-          class="col-6"
-          label="Symbol"
-          filled
-          :error="!!form.errors['meta_data.symbol']"
-          :error-message="form.errors['meta_data.symbol']"
-        />
+              <q-input
+                v-else
+                v-model="form.meta_data.symbol"
+                class="col-6"
+                label="Symbol"
+                outlined
+                bg-color="white"
+                :error="!!form.errors['meta_data.symbol']"
+                :error-message="form.errors['meta_data.symbol']"
+              />
 
-        <!-- false-value null, or unticking stores false. -->
-        <q-toggle
-          v-if="derivesAmount"
-          v-model="form.meta_data.no_cash"
-          :false-value="null"
-          class="col-6"
-          label="No cash side"
-          color="primary"
-          dense
-          :error="!!form.errors['meta_data.no_cash']"
-          :error-message="form.errors['meta_data.no_cash']"
-        />
-      </template>
+              <!-- false-value null, or unticking stores false. -->
+              <q-toggle
+                v-if="derivesAmount"
+                v-model="form.meta_data.no_cash"
+                :false-value="null"
+                class="col-6"
+                label="No cash side"
+                color="primary"
+                dense
+                :error="!!form.errors['meta_data.no_cash']"
+                :error-message="form.errors['meta_data.no_cash']"
+              />
+            </template>
 
-      <template v-if="derivesAmount">
-        <q-input
-          v-model="form.meta_data.quantity"
-          class="col-4"
-          label="Quantity"
-          filled
-          type="number"
-          step="0.00000001"
-          :error="!!form.errors['meta_data.quantity']"
-          :error-message="form.errors['meta_data.quantity']"
-        />
-        <q-input
-          v-model="form.meta_data.unit_price"
-          class="col-4"
-          label="Unit price"
-          filled
-          type="number"
-          step="0.0001"
-          :error="!!form.errors['meta_data.unit_price']"
-          :error-message="form.errors['meta_data.unit_price']"
-        />
-        <q-input
-          v-model="form.meta_data.fees"
-          class="col-4"
-          label="Fees"
-          filled
-          type="number"
-          step="0.0001"
-          :error="!!form.errors['meta_data.fees']"
-          :error-message="form.errors['meta_data.fees']"
-        />
-      </template>
+            <template v-if="derivesAmount">
+              <q-input
+                v-model="form.meta_data.quantity"
+                class="col-4"
+                label="Quantity"
+                outlined
+                bg-color="white"
+                type="number"
+                step="0.00000001"
+                :error="!!form.errors['meta_data.quantity']"
+                :error-message="form.errors['meta_data.quantity']"
+              />
+              <q-input
+                v-model="form.meta_data.unit_price"
+                class="col-4"
+                label="Unit price"
+                outlined
+                bg-color="white"
+                type="number"
+                step="0.0001"
+                :error="!!form.errors['meta_data.unit_price']"
+                :error-message="form.errors['meta_data.unit_price']"
+              />
+              <q-input
+                v-model="form.meta_data.fees"
+                class="col-4"
+                label="Fees"
+                outlined
+                bg-color="white"
+                type="number"
+                step="0.0001"
+                :error="!!form.errors['meta_data.fees']"
+                :error-message="form.errors['meta_data.fees']"
+              />
+            </template>
+          </div>
+        </div>
+      </div>
     </q-form>
   </FormDialog>
 </template>
@@ -423,12 +506,17 @@ const props = defineProps({
 
 const pagination = inject('pagination')
 
-// Repeated rather than shared: an auto-imported const of this shape has come through the
-// build undefined, silently dropping the colours.
-const accountTypeBadges = {
-  cash: { color: 'teal-1', textColor: 'teal-9' },
-  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
-  security: { color: 'orange-1', textColor: 'orange-10' },
+const accountTypeTitles = { cash: 'Cash', card: 'Cards', security: 'Securities' }
+const accountTypeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
+
+const typeLabels = {
+  withdraw: 'Withdraw',
+  deposit: 'Deposit',
+  charge: 'Charge',
+  payment: 'Payment',
+  buy: 'Buy',
+  sell: 'Sell',
+  dividend: 'Dividend',
 }
 
 const { schema, form } = useFormEmpty()
@@ -479,6 +567,12 @@ const accountOptionList = computed(() =>
 
 const categoryOptions = computed(() => props.options?.categories ?? [])
 
+const shownCategories = ref([])
+
+const filterCategories = filterInto(shownCategories, categoryOptions, (category, needle) =>
+  category.label.toLowerCase().includes(needle),
+)
+
 const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).includes(form.type))
 
 const showsSymbol = computed(() => (usePage().props.symbolTypes ?? []).includes(form.type))
@@ -513,11 +607,42 @@ const typeOptions = computed(() => {
   return type ? (typeOptionsByAccountType.value[type] ?? []) : []
 })
 
+// A label for a type the map has not met yet, rather than a blank button.
+const typeButtons = computed(() =>
+  typeOptions.value.map(type => ({ label: typeLabels[type] ?? type, value: type })),
+)
+
+const statusButtons = computed(() =>
+  statusOptions.value.map(status => ({
+    label: status.charAt(0).toUpperCase() + status.slice(1),
+    value: status,
+  })),
+)
+
+const accountIcon = computed(
+  () => accountTypeIcons[chosenAccount.value?.type] ?? 'account_balance_wallet',
+)
+
+const amountPrefix = computed(() => (form.ccy ? `${form.ccy} ` : ''))
+
 const needsCardAmount = computed(
   () =>
     form.type === 'charge' &&
     Boolean(chosenAccount.value?.ccy) &&
     chosenAccount.value.ccy !== form.ccy,
+)
+
+const hasExtras = computed(() => needsCardAmount.value || showsSymbol.value || derivesAmount.value)
+
+const extrasTitle = computed(() => {
+  if (derivesAmount.value) return 'The trade'
+  if (isDividend.value) return 'Where the dividend is from'
+
+  return "The card's currency"
+})
+
+const extrasIcon = computed(() =>
+  derivesAmount.value ? 'candlestick_chart' : isDividend.value ? 'savings' : 'currency_exchange',
 )
 
 const title = computed(() => {
@@ -546,8 +671,25 @@ const templateGroups = computed(() => {
     groups.get(account).push(template)
   }
 
-  return [...groups].map(([account, list]) => ({ account, templates: list }))
+  return [...groups].map(([account, list]) => ({
+    account,
+    icon:
+      accountTypeIcons[accountOptions.value.find(a => a.value === list[0].account_id)?.type] ??
+      'account_balance_wallet',
+    templates: list,
+  }))
 })
+
+const money = useMoney()
+
+// The category and the type, what a name alone does not say.
+const templateCaption = template =>
+  [
+    categoryOptions.value.find(category => category.value === template.category_id)?.label,
+    typeLabels[template.payload.type] ?? template.payload.type,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
 const shownDescriptions = ref([])
 
@@ -635,6 +777,20 @@ const saveTemplate = () => {
   })
 }
 
+// The rule's day in the month the date is in, or for a yearly rule its month and day in the
+// date's year. Past a short month's end it is the last day, as the server schedules it: an
+// unclamped 31st in September would be 1 October, a month the user never picked.
+const onScheduleDay = (date, schedule) => {
+  if (!schedule?.day || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return date
+
+  const year = Number(date.slice(0, 4))
+  const month = schedule.frequency === 'yearly' ? schedule.month : Number(date.slice(5, 7))
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const pad = n => String(n).padStart(2, '0')
+
+  return `${year}-${pad(month)}-${pad(Math.min(schedule.day, last))}`
+}
+
 const applyTemplate = template => {
   if (!template) return
 
@@ -646,8 +802,9 @@ const applyTemplate = template => {
     account_id: template.account_id,
     category_id: template.category_id,
 
-    // A template holds no date, so the day already chosen is kept rather than reset to today.
-    date: form.date || schema.date,
+    // A saved template holds no date, so the day already chosen is kept rather than reset to
+    // today. A recurring rule's has its day, so the date moves to it within that month.
+    date: onScheduleDay(form.date || schema.date, template.schedule),
 
     // Merged: a template stores only the keys it keeps, and the form binds the rest.
     meta_data: {

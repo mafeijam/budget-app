@@ -307,6 +307,9 @@ class TransactionTemplateTest extends TestCase
                     'status' => 'posted',
                 ], $derived['payload']);
 
+                // The rule's day, so the form can date the payment to it.
+                $this->assertSame(['frequency' => 'monthly', 'day' => 1, 'month' => 10], $derived['schedule']);
+
                 // And nothing to write to. An id here is what the form's update and the
                 // menu's delete buttons are both keyed on, so an id is a row that can be
                 // overwritten or removed by a button meant for a template.

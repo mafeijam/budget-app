@@ -5,11 +5,15 @@
         v-model="form.name"
         class="col-12"
         label="Name"
-        filled
+        outlined
         :error="!!form.errors.name"
         :error-message="form.errors.name"
         autofocus
-      />
+      >
+        <template #prepend>
+          <q-icon name="label" color="grey-6" />
+        </template>
+      </q-input>
     </q-form>
   </FormDialog>
 </template>

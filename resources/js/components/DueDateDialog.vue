@@ -29,7 +29,7 @@
         <q-input
           v-model="stated"
           label="Due on the statement"
-          filled
+          outlined
           bottom-slots
           :error="!!fieldError"
           :error-message="fieldError"

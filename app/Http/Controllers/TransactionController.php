@@ -392,6 +392,13 @@ class TransactionController extends Controller
                 'account_name' => $rule->account?->name,
                 'category_id' => $rule->category_id,
                 'derived' => true,
+                // When the rule lands, outside the payload since the payload fills the form's
+                // fields. The form moves the date to this day, in the month it already has.
+                'schedule' => [
+                    'frequency' => $rule->frequency,
+                    'day' => (int) substr((string) $rule->start_date, 8, 2),
+                    'month' => (int) substr((string) $rule->start_date, 5, 2),
+                ],
                 'payload' => [
                     'type' => $rule->type,
                     'description' => $rule->description,

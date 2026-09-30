@@ -33,7 +33,7 @@
             v-model="amount"
             class="col-12"
             label="Pay"
-            filled
+            outlined
             inputmode="decimal"
             :suffix="group.card.ccy"
             :hint="amountHint"
@@ -50,7 +50,7 @@
             :options="options"
             class="col-12 col-sm-6"
             label="Pay from"
-            filled
+            outlined
             emit-value
             map-options
             :error="!!bankError"
@@ -67,7 +67,7 @@
             v-model="paidOn"
             class="col-12 col-sm-6"
             label="On"
-            filled
+            outlined
             bottom-slots
             :error="!!fieldError"
             :error-message="fieldError"
