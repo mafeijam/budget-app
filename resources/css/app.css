@@ -155,17 +155,32 @@ body {
   white-space: normal;
 }
 
-.app-flow-breakdown__row {
-  display: grid;
-  grid-template-columns: minmax(120px, 220px) minmax(80px, 1fr) 110px 48px 24px;
-  align-items: center;
-  gap: 16px;
-  padding: 5px 8px;
-  border-radius: 6px;
+/* Not a row to point at: the tiles inside it are, and a tint over the lot hid theirs. */
+.q-table tbody tr.app-flow-breakdown > td::before {
+  background: none !important;
 }
 
-.app-flow-breakdown__row:hover {
+/* A month's categories as tiles, as many across as fit, under the bar they share. */
+.app-flow-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.app-flow-tile {
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
   background: var(--app-surface);
+  transition: border-color 0.15s;
+}
+
+.app-flow-tile:hover {
+  border-color: #94a3b8;
+}
+
+.app-flow-tile__open {
+  color: #94a3b8;
 }
 
 @media (max-width: 599px) {
@@ -173,12 +188,8 @@ body {
     padding-left: 16px !important;
   }
 
-  .app-flow-breakdown__row {
-    grid-template-columns: minmax(0, 1fr) 90px 40px 20px;
-  }
-
-  .app-flow-breakdown__row .q-linear-progress {
-    display: none;
+  .app-flow-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
