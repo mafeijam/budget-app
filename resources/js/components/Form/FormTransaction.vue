@@ -306,7 +306,10 @@
 
         Anchored bottom right / self top right, so the list grows leftwards from the span's
         line rather than rightwards: the span sits at the field's trailing edge, and a menu
-        growing to the right of that hangs off the side of the dialog.
+        growing to the right of that hangs off the side of the dialog. The offset's second
+        number is a few pixels because the anchor is the field's own edge -- the date
+        control's fifteen is measured from a button in the middle of its field, and from a
+        field's edge it reads as a gap.
       -->
       <q-input
         ref="descriptionInput"
@@ -329,7 +332,7 @@
             <q-menu
               v-model="hintsOpen"
               no-focus
-              :offset="[10, 15]"
+              :offset="[10, 4]"
               anchor="bottom right"
               self="top right"
               class="app-desc-hints"
