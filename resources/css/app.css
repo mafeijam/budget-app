@@ -421,10 +421,20 @@ body {
 }
 
 /* The description menu, which is the template menu's shape for the same reason: a couple of
-   years of descriptions sit behind that button. */
+   years of descriptions sit behind that field. Wide enough to read a description in. */
 .app-desc-hints {
+  min-width: 320px;
   max-height: 320px;
   overflow-y: auto;
+}
+
+/* The element the menu hangs from, and the reason it exists -- see the field's template.
+   Zero-sized, because it is an anchor and not a control: the list appears at the field's
+   trailing edge, and a visible button there would be one more thing to click. */
+.app-desc-hints-anchor {
+  display: block;
+  width: 0;
+  height: 0;
 }
 
 .app-template-item__avatar {

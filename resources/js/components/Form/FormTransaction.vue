@@ -296,6 +296,15 @@
         into. A QMenu takes focus as it opens, so without it the keystrokes meant to narrow
         the list went to the menu instead of the box. The date control's menu does not have
         it, and should not: a calendar is meant to take over while it is open.
+
+        The span is the anchor, and it is not decoration. A menu positions itself against its
+        own parent element, and a menu is teleported to the body, so a menu written straight
+        into this slot measured itself against the teleport wrapper -- a full-width box at the
+        top of the page, which put the list in the corner of the screen. Naming the field with
+        :target does not work either: the element it finds wraps the box, and the menu then
+        dismisses itself a moment after opening. A real element to hang from inside the field
+        does, and the list is right-aligned to the field's trailing edge because that is where
+        the element sits.
       -->
       <q-input
         ref="descriptionInput"
@@ -313,28 +322,30 @@
           <q-icon name="notes" color="grey-6" />
         </template>
         <template #append>
-          <q-menu
-            v-model="hintsOpen"
-            no-focus
-            :offset="[10, 15]"
-            anchor="bottom right"
-            self="top right"
-            class="app-desc-hints"
-          >
-            <q-list dense>
-              <q-item
-                v-for="hint in shownDescriptions"
-                :key="hint"
-                clickable
-                @click="useDescription(hint)"
-              >
-                <q-item-section>{{ hint }}</q-item-section>
-              </q-item>
-              <q-item v-if="!shownDescriptions.length">
-                <q-item-section class="text-grey">Nothing used before</q-item-section>
-              </q-item>
-            </q-list>
-          </q-menu>
+          <span class="app-desc-hints-anchor">
+            <q-menu
+              v-model="hintsOpen"
+              no-focus
+              :offset="[10, 15]"
+              anchor="bottom left"
+              self="top left"
+              class="app-desc-hints"
+            >
+              <q-list dense>
+                <q-item
+                  v-for="hint in shownDescriptions"
+                  :key="hint"
+                  clickable
+                  @click="useDescription(hint)"
+                >
+                  <q-item-section>{{ hint }}</q-item-section>
+                </q-item>
+                <q-item v-if="!shownDescriptions.length">
+                  <q-item-section class="text-grey">Nothing used before</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </span>
         </template>
       </q-input>
 
