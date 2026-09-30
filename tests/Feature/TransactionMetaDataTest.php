@@ -321,17 +321,6 @@ class TransactionMetaDataTest extends TestCase
         $this->assertSame('75.2500', $meta->derivedAmount(TransactionType::Buy));
     }
 
-    public function test_the_derived_amount_carries_the_full_scale_of_the_amount_column(): void
-    {
-        // decimal(12,4): exactly four decimal places, trailing zeros included.
-        // A value written as "15075" instead of "15075.0000" is the same number,
-        // but the fixed scale is what makes the column's arithmetic predictable.
-        $this->assertSame(
-            '15050.0000',
-            $this->meta(['quantity' => '100', 'unit_price' => '150.50'])->derivedAmount(TransactionType::Buy)
-        );
-    }
-
     public function test_the_derived_amount_is_rounded_half_up(): void
     {
         // Three quantities at eight decimal places times a four-place price

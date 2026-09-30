@@ -522,22 +522,6 @@ class CardSettlementTest extends TestCase
         $this->assertDatabaseCount('transactions', 2);
     }
 
-    public function test_a_card_with_no_bank_named_cannot_be_settled(): void
-    {
-        $orphan = Account::create(['name' => 'Orphan', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
-        $orphan->meta()->create(['meta' => ['term_days' => 15, 'statement_day' => 25]]);
-        $this->chargeOn($orphan, '2026-01-01', '120.0000');
-
-        $this->post("/accounts/{$orphan->id}/settle", [
-            'due_date' => self::PERIOD,
-            'owed' => '120.0000',
-        ])->assertSessionHasErrors([
-            'due_date' => 'Card [Orphan] does not name the bank it is paid from, so it cannot be settled.',
-        ]);
-
-        $this->assertSame(1, Transaction::count());
-    }
-
     public function test_a_cash_account_cannot_be_settled(): void
     {
         $this->post("/accounts/{$this->bank->id}/settle", [

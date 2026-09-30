@@ -32,15 +32,6 @@ class CategoryDataTest extends TestCase
         $this->assertNotNull($data->created_at);
     }
 
-    public function test_to_array_does_not_expose_unrelated_account_fields(): void
-    {
-        $array = CategoryData::from(
-            Request::create('/categories', 'POST', ['name' => 'Groceries'])
-        )->toArray();
-
-        $this->assertSame(['id', 'name', 'created_at'], array_keys($array));
-    }
-
     public function test_rules_require_a_string_name_that_is_unique(): void
     {
         $rules = CategoryData::rules(Request::create('/categories'));

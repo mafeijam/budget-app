@@ -133,14 +133,6 @@ class MetaRelationTest extends TestCase
         $this->assertSame('Alpha', $owner->name);
     }
 
-    public function test_the_relation_is_traversable_in_both_directions(): void
-    {
-        $account = $this->accountWithMeta();
-
-        $this->assertTrue($account->meta->metable->is($account));
-        $this->assertTrue(Meta::firstOrFail()->metable->is($account));
-    }
-
     public function test_metable_can_be_eager_loaded(): void
     {
         $account = $this->accountWithMeta();

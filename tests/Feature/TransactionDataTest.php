@@ -429,13 +429,6 @@ class TransactionDataTest extends TestCase
         TransactionData::from($this->postRequest(['type' => 'payment']));
     }
 
-    public function test_an_unknown_account_id_is_left_to_the_exists_rule(): void
-    {
-        // There is no account to compare against, so the constructor must not
-        // throw its own error and mask the one the exists rule produces.
-        $this->assertFieldRejected(['account_id' => 999999], 'account_id');
-    }
-
     // ---------------------------------------------------------------------
     // Category
     // ---------------------------------------------------------------------

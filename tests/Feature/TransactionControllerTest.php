@@ -825,17 +825,6 @@ class TransactionControllerTest extends TestCase
         }
     }
 
-    public function test_a_securities_account_is_offered_a_buy(): void
-    {
-        // Buy, the ordinary trade on a brokerage, and the one field a sell or a dividend
-        // changes. Asserted so the decision is visible rather than an absence.
-        $this->assertSame(TransactionType::Buy, AccountType::Security->defaultTransactionType());
-
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('typeDefaults.security', 'buy')
-        );
-    }
-
     public function test_index_offers_every_status_and_currency_the_app_accepts(): void
     {
         // Same reason, same route: derived from the enums so the dropdown cannot

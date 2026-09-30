@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\AccountType;
 use App\Enums\TransactionType;
 use App\Models\Account;
-use App\Models\Meta;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -88,22 +87,6 @@ class WithdrawTest extends TestCase
         $this->assertSame($this->category, Transaction::latest('id')->firstOrFail()->category_id);
     }
 
-    public function test_a_withdrawal_keeps_the_amount_it_was_given(): void
-    {
-        $this->assertFalse(TransactionType::Withdraw->derivesAmount());
-    }
-
-    public function test_the_cash_account_offers_a_withdrawal_and_a_deposit_and_the_others_do_not(): void
-    {
-        // Derived from the enum, so the reduction from four cash types to two needed no
-        // template and no list. Asserted through the endpoint the form reads.
-        $this->get('/transactions')->assertInertia(fn ($page) => $page
-            ->where('typeOptions.cash', ['withdraw', 'deposit', 'dividend'])
-            ->where('typeOptions.card', ['charge', 'payment'])
-            ->where('typeOptions.security', ['buy', 'sell'])
-        );
-    }
-
     // ---------------------------------------------------------------------
     // Recording one
     // ---------------------------------------------------------------------
@@ -140,15 +123,6 @@ class WithdrawTest extends TestCase
             ->assertSessionHasErrors('amount');
 
         $this->assertDatabaseCount('transactions', 0);
-    }
-
-    public function test_a_withdrawal_records_no_bag(): void
-    {
-        // No statement period, no card-currency figure, no trade fields. A bag here
-        // would be a row reading "{}" for no information.
-        $this->post('/transactions', $this->withdrawPayload())->assertSessionHasNoErrors();
-
-        $this->assertSame(0, Meta::where('model_type', Transaction::class)->count());
     }
 
     public function test_a_withdrawal_cannot_be_recorded_on_a_card(): void

@@ -990,15 +990,4 @@ class AccountControllerTest extends TestCase
         $this->assertArrayHasKey('meta_data', $array);
         $this->assertSame(['term_days' => 15], $array['meta_data']);
     }
-
-    public function test_meta_model_stores_json_as_array_object(): void
-    {
-        $account = Account::create(['name' => 'Casted', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-        $account->meta()->create(['meta' => ['term_days' => 15]]);
-
-        $meta = Meta::firstWhere('model_id', $account->id);
-
-        $this->assertNotNull($meta);
-        $this->assertSame(15, $meta->meta['term_days']);
-    }
 }

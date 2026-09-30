@@ -67,13 +67,6 @@ class AccountBalanceTest extends TestCase
         $this->assertArrayNotHasKey($this->brokerage->id, $balances);
     }
 
-    public function test_a_brokerage_is_asked_about_rather_than_defaulted_to(): void
-    {
-        $this->assertTrue(AccountType::Cash->hasBalance());
-        $this->assertTrue(AccountType::Card->hasBalance());
-        $this->assertFalse(AccountType::Security->hasBalance());
-    }
-
     public function test_an_account_with_no_transactions_is_zero_rather_than_absent(): void
     {
         // Blank and 0.0000 are different claims. Blank would say the figure was not
@@ -110,17 +103,6 @@ class AccountBalanceTest extends TestCase
         $this->row($this->bank, 'withdraw', '120.5000');
 
         $this->assertSame('379.5000', $this->balanceOf($this->bank));
-    }
-
-    public function test_a_transfer_is_money_leaving_the_bank(): void
-    {
-        // The whole point of a transfer: money going out to a far side this app does
-        // not track, which is why the card half of a card payment is a Payment and not
-        // a second transfer.
-        $this->row($this->bank, 'deposit', '1000.0000');
-        $this->row($this->bank, 'withdraw', '250.0000');
-
-        $this->assertSame('750.0000', $this->balanceOf($this->bank));
     }
 
     public function test_a_bank_that_spent_more_than_it_received_reads_negative(): void

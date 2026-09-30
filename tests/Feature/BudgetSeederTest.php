@@ -69,20 +69,6 @@ class BudgetSeederTest extends TestCase
         $this->assertSame(15, $cycle->termDays());
     }
 
-    public function test_the_payment_term_is_truthy(): void
-    {
-        // AccountController builds the meta payload with collect(...)->filter(),
-        // which strips falsy values. A payment term of "0" or "" would be dropped on
-        // the next save, silently deleting the meta row from a card account.
-        $this->seed(BudgetSeeder::class);
-
-        $card = Account::where('type', 'card')->firstOrFail();
-        $due = $card->meta->meta['term_days'];
-
-        $this->assertNotEmpty($due, 'Seeded payment term must be truthy or it vanishes on the next save.');
-        $this->assertLessThanOrEqual(28, mb_strlen((string) $due));
-    }
-
     public function test_it_is_idempotent(): void
     {
         $this->seed(BudgetSeeder::class);

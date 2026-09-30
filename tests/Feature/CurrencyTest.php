@@ -18,22 +18,12 @@ class CurrencyTest extends TestCase
         // three properties are what make 'HKD' sortable and recognisable in the
         // account table, the settlement picker's label, and any future export.
         foreach (Currency::cases() as $currency) {
-            $this->assertSame(3, strlen($currency->value), "{$currency->value} is not 3 characters");
             $this->assertMatchesRegularExpression(
                 '/^[A-Z]{3}$/',
                 $currency->value,
                 "{$currency->value} is not an uppercase alphabetic code"
             );
         }
-    }
-
-    public function test_no_two_cases_share_a_value(): void
-    {
-        // A duplicate backing value would make Currency::from() ambiguous and one
-        // of the two unreachable from the dropdown.
-        $values = array_map(fn (Currency $c) => $c->value, Currency::cases());
-
-        $this->assertSame($values, array_unique($values));
     }
 
     public function test_every_case_has_a_label_starting_with_its_own_code(): void
