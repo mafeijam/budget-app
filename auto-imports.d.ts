@@ -62,6 +62,7 @@ declare global {
   const monotoneCurve: typeof import('./resources/js/composables/curve.js').monotoneCurve
   const neutral: typeof import('./resources/js/composables/palette.js').neutral
   const nextTick: typeof import('vue').nextTick
+  const notifyFailure: typeof import('./resources/js/composables/notify.js').notifyFailure
   const notifySuccess: typeof import('./resources/js/composables/notify.js').notifySuccess
   const onActivated: typeof import('vue').onActivated
   const onBeforeMount: typeof import('vue').onBeforeMount
@@ -245,6 +246,7 @@ declare global {
   const usePointer: typeof import('@vueuse/core').usePointer
   const usePointerLock: typeof import('@vueuse/core').usePointerLock
   const usePointerSwipe: typeof import('@vueuse/core').usePointerSwipe
+  const usePost: typeof import('./resources/js/composables/form-helpers.js').usePost
   const usePreferredColorScheme: typeof import('@vueuse/core').usePreferredColorScheme
   const usePreferredContrast: typeof import('@vueuse/core').usePreferredContrast
   const usePreferredDark: typeof import('@vueuse/core').usePreferredDark

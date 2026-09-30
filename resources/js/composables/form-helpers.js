@@ -142,6 +142,58 @@ export function useDestroy(pagination) {
   return { loading, destroy }
 }
 
+// The status a row counts toward a balance by, as the value the form starts in: the
+// controller seeds formEmpty.status with TransactionStatus::Posted, so a row that is not
+// already there is one waiting to be posted. Read from the page rather than written out
+// here, so the enum is not restated on the frontend -- and a row with no status at all, an
+// account or a category, is not one of these.
+const countedStatus = () => usePage().props.formEmpty?.status
+
+// Posting a pending row, without opening the form for it. It is the same save, and the row
+// is the payload: the table is handed the DTOs themselves, so sending one back with its
+// status changed is what FormTransaction would have put on the wire, with nothing else on
+// it moved.
+export function usePost(pagination) {
+  const loading = ref(null)
+  const meta = usePage().props.meta
+
+  /** The status this row would be posted to, or null when there is nothing to post here. */
+  function canPost(row) {
+    // A card's charge, and nothing else. It is the pending row a list is full of, and the
+    // one whose posting moves a figure somebody is waiting on -- the card's owed. A pending
+    // withdrawal, deposit or dividend is a different question, and the form answers it.
+    if (row?.type !== 'charge' || row?.account_type !== 'card') return null
+
+    return row.status === countedStatus() ? null : countedStatus()
+  }
+
+  function post(row) {
+    router.put(
+      `${meta.path}/${row.id}`,
+      { ...row, status: countedStatus() },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        // The row's own spinner, as the delete beside it -- see app.js.
+        showProgress: false,
+        onBefore: () => (loading.value = row.id),
+        onSuccess: resp => {
+          notifySuccess()
+          syncPagination(pagination, resp)
+        },
+        // Every guard a dialog would have shown beside the field still runs, and there is no
+        // field here to show it on, so the first refusal is the toast. Its wording is a
+        // field's -- "The category id field is required..." -- which is worse than a sentence
+        // written for this, and better than a click that appears to do nothing.
+        onError: errors => notifyFailure(Object.values(errors)[0] ?? 'Not saved'),
+        onFinish: () => (loading.value = null),
+      },
+    )
+  }
+
+  return { loading, post, canPost }
+}
+
 export function useFormEmpty() {
   const page = usePage()
   const schema = useCloneForm(page.props.formEmpty)
