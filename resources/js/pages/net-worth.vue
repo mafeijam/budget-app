@@ -195,17 +195,20 @@
             A snapshot at the end of each {{ periodName }}, and today's.
           </div>
         </div>
-        <div class="col-auto row items-center q-gutter-md">
+        <!-- The Positions page's toolbar, so the pages' controls read alike. -->
+        <div class="col-auto app-toolbar row items-center no-wrap">
+          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
           <q-btn-toggle
             :model-value="months"
             :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
             no-caps
             unelevated
             dense
-            toggle-color="primary"
-            color="grey-2"
+            toggle-color="blue-1"
+            toggle-text-color="primary"
             text-color="grey-8"
             padding="xs md"
+            class="app-toolbar__toggle text-weight-bold"
             @update:model-value="choose"
           />
         </div>
@@ -235,7 +238,7 @@ const props = defineProps({
   lastMonth: { type: Object, default: null },
   since: { type: Object, default: null },
   history: { type: Array, default: () => [] },
-  months: { type: Number, default: 1 },
+  months: { type: Number, default: 12 },
   periods: { type: Array, default: () => [1, 3, 6, 12] },
   at: { type: String, default: null },
 })
@@ -245,7 +248,7 @@ const visit = ({ months = props.months, at = props.at }) =>
   router.get(
     '/net-worth',
     {
-      ...(months === 1 ? {} : { months }),
+      ...(months === 12 ? {} : { months }),
       ...(at ? { at } : {}),
     },
     { preserveScroll: true, replace: true },
@@ -262,7 +265,7 @@ const periodName = computed(
   () => ({ 1: 'month', 3: 'quarter', 6: 'half-year', 12: 'year' })[props.months],
 )
 
-// Monthly is the default, so it stays off the URL.
+// Yearly is the default, so it stays off the URL.
 const choose = n => visit({ months: n })
 
 // On the decimal string, not a float.

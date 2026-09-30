@@ -146,7 +146,7 @@ class NetWorthTest extends TestCase
         );
 
         $this->get('/net-worth?months=9')->assertInertia(fn (Assert $page) => $page
-            ->where('months', 1)
+            ->where('months', 12)
             ->where('periods', [1, 3, 6, 12])
         );
     }

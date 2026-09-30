@@ -13,8 +13,8 @@ class NetWorthController extends Controller
 {
     public function index(Request $r)
     {
-        // One of the offered spacings, or monthly: anything else is a hand-edited URL.
-        $months = in_array((int) $r->input('months'), NetWorth::PERIODS, true) ? (int) $r->input('months') : 1;
+        // One of the offered spacings, or yearly: anything else is a hand-edited URL.
+        $months = in_array((int) $r->input('months'), NetWorth::PERIODS, true) ? (int) $r->input('months') : 12;
 
         $worth = new NetWorth;
         $today = today();
