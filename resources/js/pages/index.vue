@@ -63,7 +63,7 @@
                   {{ line.text }}
                 </div>
               </div>
-              <div class="text-right">
+              <div class="app-home-list__figures text-right">
                 <div class="text-body2 text-weight-bold money" :class="item.valueClass">
                   {{ item.value }}
                 </div>
@@ -308,8 +308,6 @@ const trendRescue = () =>
     ),
   ])
 
-const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
-
 const negative = value => String(value).startsWith('-')
 const isZero = value => !/[1-9]/.test(String(value))
 
@@ -506,14 +504,12 @@ const brokerItems = computed(() =>
       empty: broker.open === 0 && isZero(broker.market_value),
       lines: [
         {
-          text: `${signed(broker.unrealised_base ?? broker.unrealised)} unrealised${pct ? ` (${pct})` : ''}`,
+          // The gain and its share, without the word: in a card this narrow it was cut off.
+          text: `${signed(broker.unrealised_base ?? broker.unrealised)}${pct ? ` (${pct})` : ''}`,
           class: signClass(broker.unrealised),
         },
-        {
-          text: `${count(broker.open, 'holding')} · cost ${broker.market_value_base ? `${broker.ccy} ` : ''}${money(broker.open_cost)}${
-            broker.unpriced ? ` · ${broker.unpriced} unpriced` : ''
-          }`,
-        },
+        // Only when it matters: a holding with no price is missing from the value above.
+        ...(broker.unpriced ? [{ text: `${broker.unpriced} unpriced, left out` }] : []),
       ],
       open: () => openBroker(broker.id),
     }
@@ -530,12 +526,10 @@ const statementItems = computed(() =>
     valueClass: 'text-negative',
     overdue: statement.days_until_due < 0,
     badge: { ...dueBadge(statement), prefix: `Due ${formatDate(statement.due_date)}` },
+    // Only what changes what is owed: a part already paid, or charges not yet final.
     lines: [
-      {
-        text: `${count(statement.charge_count, 'charge')}${
-          statement.payment_count ? ` · ${money(statement.paid)} paid` : ''
-        }${statement.pending_count ? ` · ${statement.pending_count} not yet posted` : ''}`,
-      },
+      ...(statement.payment_count ? [{ text: `${money(statement.paid)} paid` }] : []),
+      ...(statement.pending_count ? [{ text: `${statement.pending_count} not yet posted` }] : []),
     ],
     open: () =>
       router.visit('/transactions', {

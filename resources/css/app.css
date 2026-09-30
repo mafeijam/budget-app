@@ -1139,7 +1139,14 @@ body {
 }
 
 .app-home-list__name {
+  flex: 1;
   min-width: 0;
+}
+
+/* The figures keep their width and the name gives way, so a value never breaks in two. */
+.app-home-list__figures {
+  flex: none;
+  white-space: nowrap;
 }
 
 .app-home-list__more {
