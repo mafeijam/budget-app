@@ -124,7 +124,7 @@
         </div>
         <div class="app-tx-totals__figure">
           <div class="app-tx-totals__label">Net</div>
-          <div class="money text-subtitle1 text-weight-bold" :class="netClass(total.net)">
+          <div class="money text-body2 text-weight-bold" :class="netClass(total.net)">
             {{ signedNet(total.net) }}
           </div>
         </div>
