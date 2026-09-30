@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="open" transition-show="jump-down" transition-hide="jump-up" persistent>
-    <q-card flat style="width: 1000px; max-width: 95vw">
+    <q-card flat style="width: 860px; max-width: 95vw">
       <q-card-section>
         <div class="row items-center no-wrap q-gutter-x-sm">
           <q-icon name="manage_search" size="sm" color="grey-6" />
@@ -16,54 +16,95 @@
 
       <q-separator />
 
-      <q-card-section class="scroll q-pa-none">
-        <q-markup-table flat dense>
-          <thead>
-            <tr class="text-grey-7">
-              <th class="text-left">Pattern</th>
-              <th class="text-left">Account</th>
-              <th class="text-right">Payments</th>
-              <th class="text-right">History</th>
-              <th class="text-right">The rule</th>
-              <th class="text-left">What changes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="finding in findings"
-              :key="finding.rule_id ?? finding.description"
-              :class="{ 'text-grey-6': finding.verdict === 'unclear' }"
-            >
-              <td>
-                <div class="row items-center no-wrap q-gutter-xs">
+      <!-- How the findings split, before any one of them is read. -->
+      <q-card-section class="q-pb-sm">
+        <div class="app-find-counts">
+          <div
+            v-for="tile in tiles"
+            :key="tile.verdict"
+            class="app-find-count"
+            :class="`app-find-count--${tile.verdict}`"
+          >
+            <div class="text-h5 text-weight-bold">{{ tile.count }}</div>
+            <div class="text-caption">{{ tile.label }}</div>
+          </div>
+        </div>
+      </q-card-section>
+
+      <q-card-section class="scroll q-pt-sm app-find-body">
+        <!-- What applying would do, one card each, the change said in words. -->
+        <div v-if="actions.length" class="column q-gutter-sm">
+          <div
+            v-for="finding in actions"
+            :key="finding.rule_id ?? finding.description"
+            class="app-find-item"
+            :class="`app-find-item--${finding.verdict}`"
+          >
+            <div class="row items-start no-wrap">
+              <div class="col">
+                <div class="row items-center no-wrap q-gutter-x-sm">
                   <q-badge :class="tint(finding.verdict)" :label="label(finding.verdict)" />
-                  <span class="text-weight-medium text-grey-9">{{ finding.description }}</span>
+                  <span class="text-subtitle2 text-weight-bold text-grey-9 ellipsis">
+                    {{ finding.description }}
+                  </span>
                 </div>
-                <div class="text-caption text-grey-6">
-                  {{ finding.type }}<span v-if="finding.cadence">, {{ finding.cadence }}</span>
+                <div class="text-caption text-grey-7 q-mt-xs">
+                  {{ finding.account }} · {{ finding.type
+                  }}<span v-if="finding.cadence">, {{ finding.cadence }}</span> ·
+                  {{ finding.occurrences }} payment{{ finding.occurrences === 1 ? '' : 's' }}
                 </div>
-              </td>
-              <td class="text-grey-8">{{ finding.account }}</td>
-              <td class="text-right">
-                {{ finding.occurrences }}<span class="text-grey-6">x</span>
-              </td>
-              <td class="text-right money text-grey-9">
-                {{ finding.amount === null ? '' : money(finding.amount) }}
-                <div class="text-caption text-grey-6">
-                  day {{ finding.day }}
-                  <span v-if="finding.tied_days.length"> or {{ finding.tied_days[1] }}</span>
-                </div>
-              </td>
-              <td class="text-right money text-grey-7">
-                <template v-if="finding.rule_amount !== null">
+                <div class="text-body2 text-grey-9 q-mt-xs">{{ change(finding) }}</div>
+              </div>
+              <!-- The figure and day the rule has, and the ones it would have. -->
+              <div v-if="finding.amount !== null" class="app-find-figures money text-right">
+                <span v-if="finding.rule_amount !== null" class="text-grey-6">
                   {{ money(finding.rule_amount) }}
-                  <div class="text-caption">day {{ finding.rule_day }}</div>
-                </template>
-              </td>
-              <td class="text-grey-8">{{ change(finding) }}</td>
-            </tr>
-          </tbody>
-        </q-markup-table>
+                  <span class="text-caption">day {{ finding.rule_day }}</span>
+                  <q-icon name="arrow_forward" size="xs" class="q-mx-xs" />
+                </span>
+                <span class="text-weight-bold text-grey-9">{{ money(finding.amount) }}</span>
+                <span class="text-caption text-grey-7">
+                  day {{ finding.day
+                  }}<span v-if="finding.tied_days.length"> or {{ finding.tied_days[1] }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="app-find-clear row items-center no-wrap">
+          <q-icon name="check_circle" size="sm" color="positive" class="q-mr-sm" />
+          Every rule agrees with the history, and nothing new recurs.
+        </div>
+
+        <!-- Nothing to do for these, so a list to look down rather than cards to read. -->
+        <q-expansion-item
+          v-for="fold in folds"
+          :key="fold.verdict"
+          dense
+          dense-toggle
+          :label="fold.label"
+          header-class="text-grey-8 text-weight-medium q-px-none q-mt-sm"
+          :default-opened="!actions.length && fold.verdict === 'matches'"
+        >
+          <div class="app-find-quiet">
+            <div
+              v-for="finding in fold.findings"
+              :key="finding.rule_id ?? finding.description"
+              class="app-find-quiet__row"
+            >
+              <span class="text-grey-9 ellipsis">{{ finding.description }}</span>
+              <span class="text-grey-6 ellipsis">{{ finding.account }}</span>
+              <span class="money text-grey-8 text-right">
+                {{ finding.amount === null ? '' : money(finding.amount) }}
+              </span>
+              <span class="text-grey-6 text-right">
+                {{ finding.cadence ?? '' }}{{ finding.day ? `, day ${finding.day}` : '' }}
+              </span>
+              <span class="text-grey-6 text-right">{{ finding.occurrences }}x</span>
+            </div>
+          </div>
+        </q-expansion-item>
       </q-card-section>
 
       <q-separator />
@@ -165,6 +206,46 @@ const change = finding => {
 
   return parts.join('. ') + '.'
 }
+
+const order = { new: 0, differs: 1, stopped: 2 }
+
+// What applying would change, adding first, then updating, then removing.
+const actions = computed(() =>
+  props.findings
+    .filter(f => f.verdict in order)
+    .sort(
+      (a, b) => order[a.verdict] - order[b.verdict] || a.description.localeCompare(b.description),
+    ),
+)
+
+const folds = computed(() =>
+  [
+    ['matches', 'already agree'],
+    ['unclear', 'not on a cadence, so left alone'],
+  ]
+    .map(([verdict, noun]) => {
+      const findings = props.findings
+        .filter(f => f.verdict === verdict)
+        .sort((a, b) => a.description.localeCompare(b.description))
+
+      return { verdict, findings, label: `${findings.length} ${noun}` }
+    })
+    .filter(fold => fold.findings.length),
+)
+
+const tiles = computed(() =>
+  [
+    ['new', 'to add'],
+    ['differs', 'to update'],
+    ['stopped', 'to remove'],
+    ['unclear', 'unclear'],
+    ['matches', 'agree'],
+  ].map(([verdict, label]) => ({
+    verdict,
+    label,
+    count: props.findings.filter(f => f.verdict === verdict).length,
+  })),
+)
 
 const actionable = computed(() =>
   props.findings.some(f => ['new', 'differs', 'stopped'].includes(f.verdict)),

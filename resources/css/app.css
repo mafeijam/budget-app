@@ -888,3 +888,86 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* Find from history: the split at a glance, then what would change, then the rest. */
+.app-find-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.app-find-count {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.app-find-count--new {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.app-find-count--differs {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.app-find-count--stopped {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.app-find-body {
+  max-height: 60vh;
+}
+
+.app-find-item {
+  border: 1px solid var(--app-border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.app-find-item--new {
+  border-left-color: #059669;
+}
+
+.app-find-item--differs {
+  border-left-color: #d97706;
+}
+
+.app-find-item--stopped {
+  border-left-color: #dc2626;
+}
+
+.app-find-figures {
+  white-space: nowrap;
+  padding-left: 16px;
+}
+
+.app-find-clear {
+  border-radius: 8px;
+  padding: 12px;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.app-find-quiet__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 90px 110px 40px;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 13px;
+}
+
+.app-find-quiet__row:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 599px) {
+  .app-find-counts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
