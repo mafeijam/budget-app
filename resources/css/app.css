@@ -1073,8 +1073,12 @@ body {
   width: 100%;
 }
 
-/* The home cards' breakdown: the accounts behind each figure, under its line. */
-.app-home-headline .app-home-spark {
+/*
+ * The home cards' breakdown: the accounts behind each figure, under its line. The
+ * placeholder shrinks with the line, or the lists under it jump up 24px as the trend lands.
+ */
+.app-home-headline .app-home-spark,
+.app-home-headline .app-home-spark-placeholder {
   height: 64px;
   margin-top: 0;
 }
