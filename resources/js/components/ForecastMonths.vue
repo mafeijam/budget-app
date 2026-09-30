@@ -20,103 +20,142 @@
       </div>
     </div>
 
-    <div class="relative-position">
-      <svg :viewBox="`0 0 ${width} ${height}`" class="full-width" role="img" :aria-label="label">
-        <rect
-          v-if="hovered !== null"
-          :x="band(hovered)"
-          :y="top"
-          :width="step"
-          :height="bottom - top"
-          :fill="colours.hover"
-        />
+    <!-- A chart too short for the width shares it with the months as figures, rather than
+         leaving the rest of the card empty; a hover on either marks the month in both. -->
+    <div class="app-months">
+      <div
+        class="relative-position app-months__chart"
+        :style="{ flexBasis: `${(width / widest) * 100}%` }"
+      >
+        <svg :viewBox="`0 0 ${width} ${height}`" class="full-width" role="img" :aria-label="label">
+          <rect
+            v-if="hovered !== null"
+            :x="band(hovered)"
+            :y="top"
+            :width="step"
+            :height="bottom - top"
+            :fill="colours.hover"
+          />
 
-        <g v-for="tick in ticks" :key="tick">
-          <line
-            :x1="left"
-            :x2="width - right"
-            :y1="y(tick)"
-            :y2="y(tick)"
-            :stroke="tick === 0 ? colours.baseline : colours.grid"
-            stroke-width="1"
-          />
-          <text
-            :x="left - 8"
-            :y="y(tick)"
-            text-anchor="end"
-            dominant-baseline="middle"
-            class="cash-flow-chart__tick"
-          >
-            {{ compact(tick) }}
-          </text>
-        </g>
+          <g v-for="tick in ticks" :key="tick">
+            <line
+              :x1="left"
+              :x2="width - right"
+              :y1="y(tick)"
+              :y2="y(tick)"
+              :stroke="tick === 0 ? colours.baseline : colours.grid"
+              stroke-width="1"
+            />
+            <text
+              :x="left - 8"
+              :y="y(tick)"
+              text-anchor="end"
+              dominant-baseline="middle"
+              class="cash-flow-chart__tick"
+            >
+              {{ compact(tick) }}
+            </text>
+          </g>
 
-        <g v-for="(month, i) in bars" :key="month.month">
-          <path
-            v-if="month.in > 0"
-            :d="column(i, 0, month.in, 1, !typical || month.typicalIn <= 0)"
-            :fill="colours.in"
-          />
-          <path
-            v-if="typical && month.typicalIn > 0"
-            :d="column(i, month.in, month.in + month.typicalIn, 1, true)"
-            :fill="colours.typicalIn"
-          />
-          <path
-            v-if="month.out > 0"
-            :d="column(i, 0, month.out, -1, !typical || month.typical <= 0)"
-            :fill="colours.out"
-          />
-          <!-- Lighter, beyond the known figure: an estimate, and drawn to look like one. -->
-          <path
-            v-if="typical && month.typical > 0"
-            :d="column(i, month.out, month.out + month.typical, -1, true)"
-            :fill="colours.typical"
-          />
-          <text :x="centre(i)" :y="height - 18" text-anchor="middle" class="cash-flow-chart__tick">
-            {{ month.short }}
-          </text>
-          <text
-            v-if="month.caption"
-            :x="centre(i)"
-            :y="height - 4"
-            text-anchor="middle"
-            class="cash-flow-chart__tick"
-          >
-            {{ month.caption }}
-          </text>
-        </g>
+          <g v-for="(month, i) in bars" :key="month.month">
+            <path
+              v-if="month.in > 0"
+              :d="column(i, 0, month.in, 1, !typical || month.typicalIn <= 0)"
+              :fill="colours.in"
+            />
+            <path
+              v-if="typical && month.typicalIn > 0"
+              :d="column(i, month.in, month.in + month.typicalIn, 1, true)"
+              :fill="colours.typicalIn"
+            />
+            <path
+              v-if="month.out > 0"
+              :d="column(i, 0, month.out, -1, !typical || month.typical <= 0)"
+              :fill="colours.out"
+            />
+            <!-- Lighter, beyond the known figure: an estimate, and drawn to look like one. -->
+            <path
+              v-if="typical && month.typical > 0"
+              :d="column(i, month.out, month.out + month.typical, -1, true)"
+              :fill="colours.typical"
+            />
+            <text
+              :x="centre(i)"
+              :y="height - 18"
+              text-anchor="middle"
+              class="cash-flow-chart__tick"
+            >
+              {{ month.short }}
+            </text>
+            <text
+              v-if="month.caption"
+              :x="centre(i)"
+              :y="height - 4"
+              text-anchor="middle"
+              class="cash-flow-chart__tick"
+            >
+              {{ month.caption }}
+            </text>
+          </g>
 
-        <polyline
-          :points="netLine"
-          fill="none"
-          :stroke="colours.net"
-          stroke-width="2"
-          stroke-linejoin="round"
-          stroke-linecap="round"
-        />
+          <polyline
+            :points="netLine"
+            fill="none"
+            :stroke="colours.net"
+            stroke-width="2"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+          />
 
-        <!-- Last, so the whole band is the hover target rather than the thin marks. -->
-        <rect
+          <!-- Last, so the whole band is the hover target rather than the thin marks. -->
+          <rect
+            v-for="(month, i) in bars"
+            :key="`hit-${month.month}`"
+            :x="band(i)"
+            :y="top"
+            :width="step"
+            :height="bottom - top"
+            fill="transparent"
+            @mouseenter="hovered = i"
+            @mouseleave="hovered = null"
+          />
+        </svg>
+
+        <div v-if="hovered !== null" class="cash-flow-chart__tooltip" :style="tooltipStyle">
+          <div class="text-weight-bold q-mb-xs">{{ bars[hovered].label }}</div>
+          <div v-for="row in tooltipRows" :key="row.label" class="row no-wrap items-center">
+            <span class="cash-flow-chart__swatch" :style="{ background: row.colour }" />
+            <span class="q-mr-md">{{ row.label }}</span>
+            <q-space />
+            <span class="money text-weight-medium">{{ row.value }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="width < widest" class="app-months__list">
+        <div
           v-for="(month, i) in bars"
-          :key="`hit-${month.month}`"
-          :x="band(i)"
-          :y="top"
-          :width="step"
-          :height="bottom - top"
-          fill="transparent"
+          :key="month.month"
+          class="app-months__row"
+          :class="{ 'app-months__row--on': hovered === i }"
           @mouseenter="hovered = i"
           @mouseleave="hovered = null"
-        />
-      </svg>
-
-      <div v-if="hovered !== null" class="cash-flow-chart__tooltip" :style="tooltipStyle">
-        <div class="text-weight-bold q-mb-xs">{{ bars[hovered].label }}</div>
-        <div v-for="row in tooltipRows" :key="row.label" class="row no-wrap items-center">
-          <span class="cash-flow-chart__swatch" :style="{ background: row.colour }" />
-          <span class="q-mr-md">{{ row.label }}</span>
-          <q-space />
-          <span class="money text-weight-medium">{{ row.value }}</span>
+        >
+          <div class="row items-baseline no-wrap">
+            <div class="text-weight-medium text-grey-9">{{ month.label }}</div>
+            <q-space />
+            <div class="money text-weight-bold" :class="signClass(netOf(months[i]))">
+              {{ signed(netOf(months[i])) }}
+            </div>
+          </div>
+          <div class="row items-baseline no-wrap text-caption text-grey-6 money">
+            <span class="text-positive">+{{ money(months[i].in) }}</span>
+            <span class="q-mx-xs">·</span>
+            <span class="text-negative">−{{ money(months[i].out) }}</span>
+            <span class="q-ml-xs">known</span>
+            <q-space />
+            <span>ends at {{ money(typical ? months[i].end_typical : months[i].end_known) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -148,7 +187,15 @@ const colours = {
   hover: '#f1f5f9',
 }
 
-const width = 960
+const widest = 960
+
+// A month's band at most this wide, and the chart only as wide as its months need: three
+// months across the full width left each bar alone in a third of the card. Narrower rather
+// than rescaled, so a bar and its labels are the same size at every horizon.
+const widestStep = 160
+const width = computed(() =>
+  Math.min(widest, left + right + Math.max(bars.value.length, 1) * widestStep),
+)
 const height = 240
 const left = 64
 const right = 12
@@ -226,7 +273,7 @@ const y = value => {
   return top + ((high - value) / (high + low)) * (bottom - top)
 }
 
-const step = computed(() => (width - left - right) / Math.max(bars.value.length, 1))
+const step = computed(() => (width.value - left - right) / Math.max(bars.value.length, 1))
 const band = i => left + i * step.value
 const centre = i => band(i) + step.value / 2
 
@@ -255,6 +302,14 @@ const netLine = computed(() =>
     .join(' '),
 )
 
+const netOf = month => (props.typical ? month.net_typical : month.net_known)
+
+// On the decimal string, not a float.
+const isNegative = value => String(value).startsWith('-') && !/^-0*(\.0*)?$/.test(String(value))
+const signClass = value => (isNegative(value) ? 'text-negative' : 'text-positive')
+const signed = value =>
+  isNegative(value) ? `−${money(String(value).slice(1))}` : `+${money(value)}`
+
 const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 
@@ -269,6 +324,9 @@ const tooltipRows = computed(() => {
     ...(props.typical
       ? [
           { label: 'Typical income', value: money(month.typical_in), colour: colours.typicalIn },
+          ...(Number(month.dividends) > 0
+            ? [{ label: 'of it, dividends', value: money(month.dividends), colour: 'transparent' }]
+            : []),
           { label: 'Typical spending', value: money(month.typical), colour: colours.typical },
         ]
       : []),
@@ -287,7 +345,7 @@ const tooltipRows = computed(() => {
 
 // Flipped to the left of the band past the middle, so it never runs off the card.
 const tooltipStyle = computed(() => {
-  const x = (centre(hovered.value) / width) * 100
+  const x = (centre(hovered.value) / width.value) * 100
   const flip = x > 60
 
   return {

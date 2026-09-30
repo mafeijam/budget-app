@@ -76,103 +76,49 @@
     </div>
 
     <!-- Near a month's end the month is decided, so the one ahead is the outlook. -->
-    <q-card v-if="nextMonth" flat bordered>
-      <q-card-section class="q-pb-sm">
-        <div class="text-subtitle1 text-weight-medium">{{ monthName(nextMonth.month) }} ahead</div>
-        <div class="text-caption text-grey-7">
-          {{ monthName(outlook[0].month) }} has {{ outlook[0].days_left }} day{{
-            outlook[0].days_left === 1 ? '' : 's'
-          }}
-          left, so this is next month: what is known to come in and go out, and the typical income
-          and spending beside it.
+    <q-card v-if="outlookCard" flat bordered>
+      <q-card-section class="row items-center no-wrap q-pb-none">
+        <q-icon name="event_note" size="sm" color="grey-7" class="q-mr-sm" />
+        <div>
+          <div class="text-subtitle1 text-weight-medium">{{ outlookCard.title }}</div>
+          <div class="text-caption text-grey-7">{{ outlookCard.caption }}</div>
         </div>
       </q-card-section>
-      <q-markup-table flat dense>
-        <thead>
-          <tr class="text-grey-7">
-            <th class="text-left">Currency</th>
-            <th class="text-right">Known in</th>
-            <th class="text-right">Known out</th>
-            <th v-if="withTypical" class="text-right">Typical</th>
-            <th class="text-right">Likely net</th>
-            <th class="text-right">Monthly average</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="text-weight-medium">{{ projection[0].ccy }}</td>
-            <td class="text-right money text-positive">+{{ money(nextMonth.in) }}</td>
-            <td class="text-right money text-negative">−{{ money(nextMonth.out) }}</td>
-            <td v-if="withTypical" class="text-right money app-text-estimate">
-              +{{ money(nextMonth.typical_in) }}
-              <span class="q-mx-xs text-grey-5">/</span>
-              −{{ money(nextMonth.typical) }}
-            </td>
-            <td class="text-right money text-weight-bold" :class="signClass(nextNet)">
-              {{ signed(nextNet) }}
-            </td>
-            <td class="text-right money text-grey-7">
-              {{ signed(outlook[0].average_net) }}
-              <span
-                v-if="against(nextNet, outlook[0])"
-                class="q-ml-xs"
-                :class="against(nextNet, outlook[0]).class"
-              >
-                ({{ against(nextNet, outlook[0]).label }})
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </q-markup-table>
-    </q-card>
 
-    <q-card v-else-if="outlook.length" flat bordered>
-      <q-card-section class="q-pb-sm">
-        <div class="text-subtitle1 text-weight-medium">
-          {{ monthName(outlook[0].month) }} outlook
+      <q-card-section v-for="row in outlookCard.rows" :key="row.ccy" class="q-pt-md">
+        <div v-if="outlookCard.rows.length > 1" class="text-caption text-weight-bold q-mb-xs">
+          {{ row.ccy }}
         </div>
-        <div class="text-caption text-grey-7">
-          This month so far, what is known still to come, and typical spending for the
-          {{ outlook[0].days_left }} day{{ outlook[0].days_left === 1 ? '' : 's' }} left.
+        <div class="app-outlook">
+          <div
+            v-for="tile in row.tiles"
+            :key="tile.label"
+            class="app-outlook__tile"
+            :class="{ 'app-outlook__tile--total': tile.total }"
+          >
+            <div class="text-caption text-grey-7">{{ tile.label }}</div>
+            <div class="text-h6 text-weight-bold money" :class="tile.class">{{ tile.value }}</div>
+            <div class="text-caption money" :class="tile.noteClass ?? 'text-grey-6'">
+              {{ tile.note }}
+            </div>
+          </div>
+        </div>
+
+        <!-- In against out on one scale: the solid part known, the pale part typical. -->
+        <div class="q-mt-md">
+          <div
+            v-for="bar in row.bars"
+            :key="bar.label"
+            class="app-outlook__bar row items-center no-wrap"
+          >
+            <div class="app-outlook__bar-label text-caption text-grey-7">{{ bar.label }}</div>
+            <div class="app-outlook__track col">
+              <div :style="{ width: `${bar.known}%`, background: bar.colours[0] }" />
+              <div :style="{ width: `${bar.typical}%`, background: bar.colours[1] }" />
+            </div>
+          </div>
         </div>
       </q-card-section>
-      <q-markup-table flat dense>
-        <thead>
-          <tr class="text-grey-7">
-            <th class="text-left">Currency</th>
-            <th class="text-right">Net so far</th>
-            <th class="text-right">Still to come</th>
-            <th v-if="withTypical" class="text-right">Typical</th>
-            <th class="text-right">Likely month end</th>
-            <th class="text-right">Monthly average</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in outlook" :key="row.ccy">
-            <td class="text-weight-medium">{{ row.ccy }}</td>
-            <td class="text-right money">{{ signed(row.so_far.net) }}</td>
-            <td class="text-right money text-grey-8">
-              <span class="text-positive">+{{ money(row.to_come.income) }}</span>
-              <span class="q-mx-xs text-grey-5">/</span>
-              <span class="text-negative">−{{ money(row.to_come.spending) }}</span>
-            </td>
-            <td v-if="withTypical" class="text-right money app-text-estimate">
-              +{{ money(row.typical_income_rest) }}
-              <span class="q-mx-xs text-grey-5">/</span>
-              −{{ money(row.typical_rest) }}
-            </td>
-            <td class="text-right money text-weight-bold" :class="signClass(likely(row))">
-              {{ signed(likely(row)) }}
-            </td>
-            <td class="text-right money text-grey-7">
-              {{ signed(row.average_net) }}
-              <span v-if="versus(row)" class="q-ml-xs" :class="versus(row).class">
-                ({{ versus(row).label }})
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </q-markup-table>
     </q-card>
 
     <div v-if="!projection.length" class="text-grey-6">No cash accounts to forecast.</div>
@@ -281,12 +227,18 @@
                 <span>Less what the recurring rules bring</span>
                 <span class="money">−{{ money(section.typical_income_basis.recurring) }}</span>
               </div>
+              <div class="app-basis__row">
+                <span>Less dividends, expected by holding instead</span>
+                <span class="money">−{{ money(section.typical_income_basis.dividends) }}</span>
+              </div>
               <div class="app-basis__row app-basis__row--total">
                 <span>A month, from tomorrow</span>
                 <span class="money app-text-estimate">{{ money(section.typical_income) }}</span>
               </div>
               <div class="app-basis__note">
-                Bonuses, dividends, refunds and other deposits no rule records.
+                Bonuses, refunds and other deposits no rule records. Dividends are each holding's
+                last year of payments a year on, {{ money(section.expected_dividends) }} over the
+                {{ months }} months.
               </div>
             </div>
           </div>
@@ -307,41 +259,63 @@
 
       <q-separator />
 
-      <q-markup-table flat dense>
-        <thead>
-          <tr class="text-grey-7">
-            <th class="text-left">Account</th>
-            <th class="text-right">Today</th>
-            <th class="text-right">Lowest</th>
-            <th class="text-left">On</th>
-            <th class="text-right">In {{ months }} months</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="account in section.accounts" :key="account.id">
-            <td class="text-weight-medium">
-              {{ account.name }}
-              <q-badge v-if="foreign(account)" outline color="grey-7" :label="account.ccy" />
-            </td>
-            <td class="text-right money">
-              {{ money(account.opening) }}
-              <div v-if="foreign(account)" class="text-caption text-grey-6">
-                {{ money(account.native.opening) }} {{ account.ccy }}
-              </div>
-            </td>
-            <td class="text-right money text-weight-bold" :class="lowClass(account.lowest.amount)">
-              {{ money(account.lowest.amount) }}
-            </td>
-            <td class="text-grey-7">{{ formatDate(account.lowest.date) }}</td>
-            <td class="text-right money">
-              {{ money(account.closing) }}
-              <div v-if="foreign(account)" class="text-caption text-grey-6">
-                {{ money(account.native.closing) }} {{ account.ccy }}
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </q-markup-table>
+      <!-- Each account from today to the horizon: where it ends, by how much, and how low it
+           goes on the way, with a bar on one scale across them all. -->
+      <div class="app-runway-accounts">
+        <div class="app-runway-accounts__head text-caption text-grey-7">
+          <span>Account</span>
+          <span>Month ends</span>
+          <span class="text-right">Today</span>
+          <span class="text-right">In {{ months }} months</span>
+        </div>
+        <div v-for="account in section.accounts" :key="account.id" class="app-runway-account">
+          <div class="app-runway-account__name">
+            <div class="text-weight-medium text-grey-9 ellipsis">{{ account.name }}</div>
+            <div
+              class="text-caption ellipsis"
+              :class="lowClass(account.lowest.amount) || 'text-grey-6'"
+            >
+              <template v-if="fallsBelowToday(account)">
+                {{ withTypical ? 'known lowest' : 'lowest' }} {{ money(account.lowest.amount) }} on
+                {{ formatDate(account.lowest.date) }}
+              </template>
+              <template v-else>never below today</template>
+            </div>
+          </div>
+
+          <!-- Today and each month end, so a dip on the way and the direction both show. -->
+          <div class="app-runway-account__bar">
+            <HomeSpark
+              v-if="account.path.length > 1"
+              :values="account.path.map(point => (withTypical ? point.expected : point.known))"
+              :colour="negative(change(account)) ? '#dc2626' : '#059669'"
+              :label="`${account.name}, today and each month end`"
+              class="app-account-spark"
+            />
+          </div>
+
+          <div class="text-right money">
+            <div class="text-grey-8">{{ money(account.opening) }}</div>
+            <div v-if="foreign(account)" class="text-caption text-grey-6">
+              {{ account.ccy }} {{ money(account.native.opening) }}
+            </div>
+          </div>
+
+          <div class="text-right money">
+            <div class="text-weight-bold text-grey-9">{{ money(closingOf(account)) }}</div>
+            <div class="text-caption" :class="signClass(change(account))">
+              {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
+            </div>
+            <div v-if="expects(account)" class="text-caption app-text-estimate">
+              with ~{{ money(account.dividends) }} dividends
+            </div>
+            <div v-if="foreign(account)" class="text-caption text-grey-6">
+              {{ account.ccy }}
+              {{ money(withTypical ? account.native.closing_expected : account.native.closing) }}
+            </div>
+          </div>
+        </div>
+      </div>
     </q-card>
 
     <q-card flat bordered>
@@ -376,7 +350,9 @@
               {{ signed(event.amount) }}
               <span class="text-caption text-grey-7">{{ event.ccy }}</span>
             </td>
-            <td class="text-right money" :class="lowClass(event.balance)">
+            <!-- An estimate moves only the typical line, so it has no known balance of its own. -->
+            <td v-if="event.estimate" class="text-right text-grey-5">—</td>
+            <td v-else class="text-right money" :class="lowClass(event.balance)">
               {{ money(event.balance) }}
             </td>
             <td v-if="withTypical" class="text-right money app-text-estimate">
@@ -506,6 +482,123 @@ const nextNet = computed(() =>
   withTypical.value ? nextMonth.value.net_typical : nextMonth.value.net_known,
 )
 
+const inColours = ['#059669', '#86efac']
+const outColours = ['#dc2626', '#fca5a5']
+
+// Widths only, on one scale for the in and out bars, so a float is fine. known and typical
+// are [in, out] pairs; the typical part is left off when the page is showing known only.
+const flowBars = (known, typical) => {
+  const extra = i => (withTypical.value ? typical[i] : 0)
+  const scale = Math.max(1, known[0] + extra(0), known[1] + extra(1))
+  const bar = (label, i, colours) => ({
+    label,
+    known: (known[i] / scale) * 100,
+    typical: (extra(i) / scale) * 100,
+    colours,
+  })
+
+  return [bar('In', 0, inColours), bar('Out', 1, outColours)]
+}
+
+const averageTile = (value, row) => {
+  const change = against(value, row)
+
+  return {
+    label: 'Against an average month',
+    value: change?.label ?? '—',
+    class: change?.class ?? 'text-grey-7',
+    note: `an average month nets ${signed(row.average_net)}`,
+  }
+}
+
+// One shape for both outlooks, the month ahead and the rest of this one, so they read alike.
+const outlookCard = computed(() => {
+  if (nextMonth.value) {
+    const month = nextMonth.value
+    const row = props.outlook[0]
+
+    return {
+      title: `${monthName(month.month)} ahead`,
+      caption: `${monthName(row.month)} is all but over, so this is next month.`,
+      rows: [
+        {
+          ccy: props.projection[0].ccy,
+          tiles: [
+            {
+              label: 'Known in',
+              value: `+${money(month.in)}`,
+              class: 'text-positive',
+              note: withTypical.value ? `and +${money(month.typical_in)} typical income` : '',
+            },
+            {
+              label: 'Known out',
+              value: `−${money(month.out)}`,
+              class: 'text-negative',
+              note: withTypical.value ? `and −${money(month.typical)} typical spending` : '',
+            },
+            {
+              label: 'Likely net',
+              value: signed(nextNet.value),
+              class: signClass(nextNet.value),
+              note: withTypical.value ? 'known and typical together' : 'the known figures only',
+              total: true,
+            },
+            averageTile(nextNet.value, row),
+          ],
+          bars: flowBars(
+            [Number(month.in), Number(month.out)],
+            [Number(month.typical_in), Number(month.typical)],
+          ),
+        },
+      ],
+    }
+  }
+
+  if (!props.outlook.length) return null
+
+  const first = props.outlook[0]
+  const days = `${first.days_left} day${first.days_left === 1 ? '' : 's'}`
+
+  return {
+    title: `${monthName(first.month)} outlook`,
+    caption: `This month so far, and what is still to come in the ${days} left.`,
+    rows: props.outlook.map(row => ({
+      ccy: row.ccy,
+      tiles: [
+        {
+          label: 'Net so far',
+          value: signed(row.so_far.net),
+          class: signClass(row.so_far.net),
+          note: `+${money(row.so_far.income)} in · −${money(row.so_far.spending)} out`,
+        },
+        {
+          label: 'Still to come',
+          value: `+${money(row.to_come.income)} / −${money(row.to_come.spending)}`,
+          class: 'text-grey-9',
+          note: withTypical.value
+            ? `and +${money(row.typical_income_rest)} / −${money(row.typical_rest)} typical`
+            : 'known only',
+        },
+        {
+          label: 'Likely month end',
+          value: signed(likely(row)),
+          class: signClass(likely(row)),
+          note: withTypical.value ? 'known and typical together' : 'the known figures only',
+          total: true,
+        },
+        averageTile(likely(row), row),
+      ],
+      bars: flowBars(
+        [
+          Number(row.so_far.income) + Number(row.to_come.income),
+          Number(row.so_far.spending) + Number(row.to_come.spending),
+        ],
+        [Number(row.typical_income_rest), Number(row.typical_rest)],
+      ),
+    })),
+  }
+})
+
 // The events the projection placed within the list's reach, with the balance each leaves.
 const soon = computed(() => {
   const section = props.projection[0]
@@ -514,7 +607,10 @@ const soon = computed(() => {
 
   const until = section.points[Math.min(props.upcomingDays, section.points.length - 1)]?.date
 
-  return section.events.filter(event => event.date <= until)
+  // An expected dividend is an estimate, so only while the estimates are shown.
+  return section.events.filter(
+    event => event.date <= until && (withTypical.value || !event.estimate),
+  )
 })
 
 // The month the forecast starts in, left off when nothing is left of it: on its last day
@@ -545,6 +641,30 @@ const soonEarned = computed(() => soonPoint.value?.earned ?? '0')
 
 // Three months is the default, so it stays off the URL.
 const choose = n => visit({ months: n })
+
+// Closing less opening, on the decimal strings: BigInt at four places, so the change shown
+// is the exact difference of the two figures beside it and not a float's rounding of it.
+const scaled = value => {
+  const [, sign, whole, fraction = ''] = String(value ?? '0').match(/^(-?)(\d*)\.?(\d*)$/) ?? []
+  const units = BigInt((whole || '0') + fraction.padEnd(4, '0').slice(0, 4))
+
+  return sign ? -units : units
+}
+
+// With the estimates shown, an account's end has its expected dividends in it; the known
+// closing alone otherwise, as the chart's two lines are.
+const expects = account => withTypical.value && !isZero(account.dividends)
+const closingOf = account => (expects(account) ? account.closing_expected : account.closing)
+
+const change = account => {
+  const units = scaled(closingOf(account)) - scaled(account.opening)
+  const negative = units < 0n
+  const digits = (negative ? -units : units).toString().padStart(5, '0')
+
+  return `${negative ? '-' : ''}${digits.slice(0, -4)}.${digits.slice(-4)}`
+}
+
+const fallsBelowToday = account => Number(account.lowest.amount) < Number(account.opening)
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
@@ -632,14 +752,17 @@ const kinds = {
   pending: { label: 'pending', class: 'app-tint app-tint--warning' },
   recurring: { label: 'recurring', class: 'app-tint app-tint--positive' },
   statement: { label: 'card statement', class: 'app-tint app-tint--negative' },
+  'expected dividend': { label: 'expected dividend', class: 'app-tint app-tint--muted' },
 }
 
 const openLabel = event =>
-  event.link.recurring
-    ? 'Open the recurring rules'
-    : event.link.card
-      ? "This statement's transactions"
-      : 'Open the transaction'
+  event.estimate
+    ? "Last year's payment it is expected from"
+    : event.link.recurring
+      ? 'Open the recurring rules'
+      : event.link.card
+        ? "This statement's transactions"
+        : 'Open the transaction'
 
 const open = event => {
   if (event.link.recurring) return router.visit('/recurring')

@@ -1287,6 +1287,115 @@ body {
   border-radius: 10px;
   padding: 12px 16px 8px;
 }
+
+/* Forecast outlook: four figures across, the likely net set off as the one they add to. */
+.app-outlook {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1023px) {
+  .app-outlook {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.app-outlook__tile {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.app-outlook__tile--total {
+  background: #f8fafc;
+}
+
+.app-outlook__bar + .app-outlook__bar {
+  margin-top: 6px;
+}
+
+.app-outlook__bar-label {
+  width: 32px;
+  flex: none;
+}
+
+.app-outlook__track {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+/* Forecast months: the chart at its own width, the months as figures in what is left. */
+.app-months {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 32px;
+}
+
+.app-months__chart {
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: min(100%, 420px);
+}
+
+.app-months__list {
+  flex: 1 1 260px;
+  border-left: 1px solid var(--app-border);
+  padding-left: 24px;
+}
+
+.app-months__row {
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.app-months__row + .app-months__row {
+  border-top: 1px solid var(--app-border);
+}
+
+.app-months__row--on {
+  background: #f1f5f9;
+}
+
+/* Forecast accounts: name, its line, today and the horizon, in one grid so columns line up. */
+.app-runway-accounts__head,
+.app-runway-account {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 2fr) minmax(110px, 0.8fr) minmax(130px, 0.9fr);
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+}
+
+.app-runway-accounts__head {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-runway-account + .app-runway-account {
+  border-top: 1px solid var(--app-border);
+}
+
+.app-runway-account__name {
+  min-width: 0;
+}
+
+@media (max-width: 599px) {
+  .app-runway-accounts__head,
+  .app-runway-account {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .app-runway-accounts__head > :nth-child(2),
+  .app-runway-account__bar {
+    display: none;
+  }
+}
 /* The Add button on every page with a form: compact, with the toolbars' corners. */
 .app-create-btn {
   min-height: 36px;

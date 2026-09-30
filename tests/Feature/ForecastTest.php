@@ -210,10 +210,55 @@ class ForecastTest extends TestCase
         $points = collect($section['points'])->keyBy('date');
 
         $this->assertSame('200.0000', $section['typical_income']);
-        $this->assertSame(['average' => '300.0000', 'recurring' => '100.0000'], $section['typical_income_basis']);
+        $this->assertSame(['average' => '300.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
         // Earned from tomorrow, and on the typical line only.
         $this->assertSame('0.0000', $points['2026-01-20']['earned']);
         $this->assertTrue((float) $points['2026-02-20']['typical'] > (float) $points['2026-02-20']['known']);
+    }
+
+    public function test_a_holdings_dividends_are_expected_a_year_on_scaled_to_what_is_held_now(): void
+    {
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $buy = fn (string $date, string $quantity) => $this->post('/transactions', [
+            'account_id' => $broker->id, 'date' => $date, 'type' => 'buy', 'description' => 'Buy',
+            'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => ['symbol' => '0005.HK', 'quantity' => $quantity, 'unit_price' => '10', 'no_cash' => true],
+        ])->assertSessionHasNoErrors();
+        $dividend = fn (string $date, string $amount) => $this->post('/transactions', [
+            'account_id' => $this->bank->id, 'date' => $date, 'type' => 'dividend', 'description' => 'Dividend',
+            'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => ['symbol' => '0005.HK', 'brokerage_account_id' => $broker->id],
+        ])->assertSessionHasNoErrors();
+
+        $buy('2025-01-01', '100');
+        $dividend('2025-02-01', '40');
+        $dividend('2025-03-10', '50');
+        $buy('2025-06-01', '100');
+        $dividend('2025-09-10', '100');
+        // This year's February payment, declared and entered ahead of last year's date.
+        $dividend('2026-01-25', '45');
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+        $expected = collect($section['events'])->where('kind', 'expected dividend')->values();
+
+        // March's paid on 100 shares and 200 are held now, so twice it; February is already on
+        // file, so not expected again.
+        $this->assertSame(['2026-03-10', '2026-09-10'], $expected->pluck('date')->all());
+        $this->assertSame(['100.0000', '100.0000'], $expected->pluck('base')->all());
+        $this->assertSame('200.0000', $section['expected_dividends']);
+
+        // An estimate beside the known closing, never in it: last year's 190 and the declared
+        // 45 are known.
+        $account = $section['accounts'][0];
+        $this->assertSame('1235.0000', $account['closing']);
+        $this->assertSame('200.0000', $account['dividends']);
+        $this->assertSame('1435.0000', $account['closing_expected']);
+
+        // Taken out of typical income, which would otherwise count them a second time: the
+        // year's 235, the declared row included as the cash flow month counts it.
+        $this->assertSame('19.5833', $section['typical_income_basis']['dividends']);
     }
 
     private function account(): array
