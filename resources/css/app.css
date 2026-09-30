@@ -1405,7 +1405,10 @@ body {
 /* Every year as a column across the card's width, the one shown marked. */
 .app-dividend-years {
   display: grid;
-  grid-auto-columns: minmax(48px, 1fr);
+  /* Sixty per cent of the column is the bar, so the column's floor has to be wide enough
+     for a bar to look like one: at 48px the bar was 24px on a phone. The grid scrolls
+     there, so a wider column costs nothing but a swipe. */
+  grid-auto-columns: minmax(64px, 1fr);
   grid-auto-flow: column;
   gap: 8px;
   overflow-x: auto;
@@ -1441,7 +1444,12 @@ body {
 */
 .app-dividend-year__track {
   position: relative;
-  width: min(56%, 48px);
+  /* Sixty per cent of the column, not a fixed 48px. The column is a share of the card, so
+     on a wide screen it was 121px while the bar stayed 48 -- a bar with 81px of white
+     either side of it, which reads as ten sticks in a field rather than ten bars. The cap
+     is left for the narrow end, where the columns stop growing and 60% of 48 is what a
+     bar gets on a phone. */
+  width: min(60%, 72px);
   height: 116px;
   /* Room for two caption lines above the tallest bar, so the labels never ride up into
      the heading when a year is at the peak. */
