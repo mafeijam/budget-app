@@ -80,36 +80,69 @@
       </template>
     </AppTable>
 
-    <!-- Every filtered row, not just this page. Under the table rather than over its
-         footer, which the left of is only empty while the figures fit beside it. -->
-    <div
-      v-if="totals.length"
-      class="row items-center wrap q-gutter-x-md q-gutter-y-xs text-caption text-grey-7"
-    >
-      <!-- One group per currency: nothing is converted, so HKD and USD never add up. A
-           group is its own flex child so a line break falls between currencies and never
-           between a label and its figure. -->
-      <div
-        v-for="total in totals"
-        :key="total.ccy"
-        class="row items-center no-wrap text-no-wrap q-gutter-x-md"
-      >
-        <q-badge outline color="grey-7" :label="total.ccy" />
-        <span v-if="!isZero(total.in)">
-          In <span class="money text-positive">+{{ formatMoney(total.in) }}</span>
-        </span>
-        <span v-if="!isZero(total.out)">
-          Out <span class="money text-negative">−{{ formatMoney(total.out) }}</span>
-        </span>
-        <span v-if="!isZero(total.trades)">
-          Trades <span class="money text-grey-9">{{ formatMoney(total.trades) }}</span>
-        </span>
-        <span class="text-body2 text-weight-medium text-grey-9">
-          Net
-          <span class="money" :class="netClass(total.net)">{{ formatMoney(total.net) }}</span>
-        </span>
-      </div>
-    </div>
+    <!-- Every filtered row, not just this page, one line per currency: nothing is
+         converted, so HKD and USD never add up. -->
+    <q-card v-if="totals.length" flat bordered>
+      <q-card-section class="row items-center no-wrap q-py-sm">
+        <q-icon name="functions" size="sm" color="grey-7" class="q-mr-sm" />
+        <div class="text-subtitle1 text-weight-medium">What these add up to</div>
+        <div class="text-caption text-grey-6 q-ml-sm">
+          {{ rowCount }} row{{ rowCount === 1 ? '' : 's' }}, every page of them
+        </div>
+      </q-card-section>
+
+      <q-separator />
+
+      <q-card-section v-for="total in totals" :key="total.ccy">
+        <div class="row items-center q-mb-sm">
+          <q-badge outline color="grey-7" :label="total.ccy" />
+          <span v-if="totals.length > 1" class="text-caption text-grey-6 q-ml-sm">
+            {{ total.count }} row{{ total.count === 1 ? '' : 's' }}
+          </span>
+        </div>
+        <div class="app-outlook">
+          <div class="app-outlook__tile">
+            <div class="text-caption text-grey-7">In</div>
+            <div class="text-h6 text-weight-bold money text-positive">
+              +{{ formatMoney(total.in) }}
+            </div>
+          </div>
+          <div class="app-outlook__tile">
+            <div class="text-caption text-grey-7">Out</div>
+            <div class="text-h6 text-weight-bold money text-negative">
+              −{{ formatMoney(total.out) }}
+            </div>
+          </div>
+          <div class="app-outlook__tile app-outlook__tile--total">
+            <div class="text-caption text-grey-7">Net</div>
+            <div class="text-h6 text-weight-bold money" :class="netClass(total.net)">
+              {{ signedNet(total.net) }}
+            </div>
+          </div>
+          <div v-if="!isZero(total.trades)" class="app-outlook__tile">
+            <div class="text-caption text-grey-7">Trades</div>
+            <div class="text-h6 text-weight-bold money text-grey-9">
+              {{ formatMoney(total.trades) }}
+            </div>
+            <div class="text-caption text-grey-6">bought and sold, in neither</div>
+          </div>
+        </div>
+
+        <!-- In against out on one scale, as the forecast's outlook draws them. -->
+        <div v-if="!isZero(total.in) || !isZero(total.out)" class="q-mt-md">
+          <div
+            v-for="bar in flowBars(total)"
+            :key="bar.label"
+            class="app-outlook__bar row items-center no-wrap"
+          >
+            <div class="app-outlook__bar-label text-caption text-grey-7">{{ bar.label }}</div>
+            <div class="app-outlook__track col">
+              <div :style="{ width: `${bar.width}%`, background: bar.colour }" />
+            </div>
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 
@@ -120,6 +153,23 @@ const totals = computed(() => usePage().props.totals ?? [])
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
+
+const rowCount = computed(() => totals.value.reduce((n, total) => n + total.count, 0))
+
+const signedNet = value =>
+  String(value).startsWith('-') && !isZero(value)
+    ? `−${formatMoney(String(value).slice(1))}`
+    : `${isZero(value) ? '' : '+'}${formatMoney(value)}`
+
+// Widths only, so floats: in and out against the larger of the two.
+const flowBars = total => {
+  const scale = Math.max(Number(total.in), Number(total.out), 1)
+
+  return [
+    { label: 'In', width: (Number(total.in) / scale) * 100, colour: '#059669' },
+    { label: 'Out', width: (Number(total.out) / scale) * 100, colour: '#dc2626' },
+  ]
+}
 
 const netClass = value =>
   isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'
