@@ -333,6 +333,9 @@ const tooltipRows = computed(() => {
     ...(props.typical
       ? [
           { label: 'Typical income', value: money(month.typical_in), colour: colours.typicalIn },
+          ...(Number(month.bonuses) > 0
+            ? [{ label: 'of it, the bonus', value: money(month.bonuses), colour: 'transparent' }]
+            : []),
           ...(Number(month.dividends) > 0
             ? [{ label: 'of it, dividends', value: money(month.dividends), colour: 'transparent' }]
             : []),

@@ -224,24 +224,24 @@
             <div class="app-basis">
               <div class="app-basis__title">Typical income</div>
               <div class="app-basis__row">
-                <span>Last 12 months' average</span>
-                <span class="money">{{ money(section.typical_income_basis.average) }}</span>
+                <span>Last 12 months' median month</span>
+                <span class="money">{{ money(section.typical_income_basis.median) }}</span>
               </div>
               <div class="app-basis__row">
                 <span>Less what the recurring rules bring</span>
                 <span class="money">−{{ money(section.typical_income_basis.recurring) }}</span>
-              </div>
-              <div class="app-basis__row">
-                <span>Less dividends, expected by holding instead</span>
-                <span class="money">−{{ money(section.typical_income_basis.dividends) }}</span>
               </div>
               <div class="app-basis__row app-basis__row--total">
                 <span>A month, from tomorrow</span>
                 <span class="money app-text-estimate">{{ money(section.typical_income) }}</span>
               </div>
               <div class="app-basis__note">
-                Bonuses, refunds and other deposits no rule records. Dividends are each holding's
-                last year of payments a year on, {{ money(section.expected_dividends) }} over the
+                The median month of the last 12, less the recurring rules the chart already has as
+                their own payments, so a bonus or a refund month does not set it. For comparison,
+                income averaged {{ money(section.typical_income_basis.average) }} a month. Dividends
+                are each holding's last year of payments a year on,
+                {{ money(section.expected_dividends) }} over the {{ months }} months, and a bonus is
+                placed on the date it was paid, {{ money(section.expected_bonuses) }} over the
                 {{ months }} months.
               </div>
             </div>
@@ -611,7 +611,7 @@ const soon = computed(() => {
 
   const until = section.points[Math.min(props.upcomingDays, section.points.length - 1)]?.date
 
-  // An expected dividend is an estimate, so only while the estimates are shown.
+  // An expected dividend or bonus is an estimate, so only while the estimates are shown.
   return section.events.filter(
     event => event.date <= until && (withTypical.value || !event.estimate),
   )
@@ -757,6 +757,7 @@ const kinds = {
   recurring: { label: 'recurring', class: 'app-tint app-tint--positive' },
   statement: { label: 'card statement', class: 'app-tint app-tint--negative' },
   'expected dividend': { label: 'expected dividend', class: 'app-tint app-tint--muted' },
+  'expected bonus': { label: 'expected bonus', class: 'app-tint app-tint--muted' },
 }
 
 const openLabel = event =>

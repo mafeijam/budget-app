@@ -91,6 +91,7 @@ class Forecast
         $this->recurring();
         $this->statements();
         $this->expectedDividends();
+        $this->expectedBonuses();
 
         usort($this->events, fn (array $a, array $b) => [$a['date'], $a['description']] <=> [$b['date'], $b['description']]);
     }
@@ -155,7 +156,7 @@ class Forecast
         $base = fn (int $id, BigDecimal $amount) => $amount->multipliedBy($rates[$id])->toScale(4, RoundingMode::HalfUp);
 
         $monthly = $average = $covered = $cashMonthly = $cardMonthly = BigDecimal::zero();
-        $incomeMonthly = $incomeAverage = $incomeCovered = $incomeDividends = BigDecimal::zero();
+        $incomeMonthly = $incomeAverage = $incomeCovered = $incomeDividends = $incomeMedian = BigDecimal::zero();
 
         foreach ($typical as $ccy => $figures) {
             if ($only !== null && $ccy !== $only) {
@@ -174,6 +175,7 @@ class Forecast
             $incomeAverage = $incomeAverage->plus(BigDecimal::of($figures['income_average'])->multipliedBy($rate));
             $incomeCovered = $incomeCovered->plus(BigDecimal::of($figures['income_recurring'])->multipliedBy($rate));
             $incomeDividends = $incomeDividends->plus(BigDecimal::of($figures['income_dividends'])->multipliedBy($rate));
+            $incomeMedian = $incomeMedian->plus(BigDecimal::of($figures['income_median'])->multipliedBy($rate));
             $average = $average->plus(BigDecimal::of($figures['average'])->multipliedBy($rate));
             $covered = $covered->plus(BigDecimal::of($figures['recurring'])->multipliedBy($rate));
         }
@@ -246,7 +248,7 @@ class Forecast
         for ($cursor = $this->today->copy(); $cursor->lessThanOrEqualTo($this->end); $cursor->addDay()) {
             $date = $cursor->toDateString();
             $month = substr($date, 0, 7);
-            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'typical_in' => $zero, 'dividends' => $zero];
+            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'typical_in' => $zero, 'dividends' => $zero, 'bonuses' => $zero];
 
             // From tomorrow: today's spending is in today's balance already.
             if ($cursor->greaterThan($this->today)) {
@@ -286,13 +288,18 @@ class Forecast
             }
 
             // An estimate, so on the typical line only, as typical income is: the known balance
-            // does not move, and the row says it is expected rather than coming.
+            // does not move, and the row says it is expected rather than coming. A bonus
+            // lands the same way, on the date it was paid rather than spread across the year.
             foreach ($dividendsByDay[$date] ?? [] as $dividend) {
                 $amount = $base($dividend['account_id'], $dividend['amount']);
                 $earned = $earned->plus($amount);
                 $expectedBy[$dividend['account_id']] = $expectedBy[$dividend['account_id']]->plus($dividend['amount']);
                 $monthsAhead[$month]['typical_in'] = $monthsAhead[$month]['typical_in']->plus($amount);
-                $monthsAhead[$month]['dividends'] = $monthsAhead[$month]['dividends']->plus($amount);
+
+                $bonus = $dividend['kind'] === 'expected bonus';
+                $bucket = $bonus ? 'bonuses' : 'dividends';
+
+                $monthsAhead[$month][$bucket] = $monthsAhead[$month][$bucket]->plus($amount);
 
                 $events[] = [
                     'date' => $date,
@@ -301,8 +308,10 @@ class Forecast
                     'ccy' => $this->cash[$dividend['account_id']]->ccy,
                     'amount' => self::money($dividend['amount']),
                     'base' => self::money($amount),
-                    'description' => "Dividend {$dividend['symbol']}, as paid {$dividend['paid']}",
-                    'kind' => 'expected dividend',
+                    'description' => $bonus
+                        ? "Bonus, as paid {$dividend['paid']}"
+                        : "Dividend {$dividend['symbol']}, as paid {$dividend['paid']}",
+                    'kind' => $dividend['kind'],
                     'link' => ['transaction' => $dividend['transaction']],
                     'balance' => self::money($running),
                     'with_typical' => self::money($running->minus($allowance)->plus($earned)),
@@ -368,12 +377,17 @@ class Forecast
             'typical_income' => self::money($incomeMonthly),
             'typical_income_basis' => [
                 'average' => self::money($incomeAverage),
+                'median' => self::money($incomeMedian),
                 'recurring' => self::money($incomeCovered),
                 'dividends' => self::money($incomeDividends),
             ],
             // What the holdings are expected to pay over the whole horizon, on the typical line.
             'expected_dividends' => self::money(collect($events)
                 ->where('kind', 'expected dividend')
+                ->reduce(fn (BigDecimal $sum, array $e) => $sum->plus($e['base']), BigDecimal::zero())),
+            // And the bonuses, placed on the dates they were paid rather than spread.
+            'expected_bonuses' => self::money(collect($events)
+                ->where('kind', 'expected bonus')
                 ->reduce(fn (BigDecimal $sum, array $e) => $sum->plus($e['base']), BigDecimal::zero())),
             'typical_basis' => [
                 'average' => self::money($average),
@@ -399,8 +413,10 @@ class Forecast
                 'out' => self::money($m['out']),
                 'typical' => self::money($m['typical']),
                 'typical_in' => self::money($m['typical_in']),
-                // Of typical_in, what the holdings are expected to pay.
+                // Of typical_in, what the holdings are expected to pay, and the bonus
+                // expected on the date it was paid last.
                 'dividends' => self::money($m['dividends']),
+                'bonuses' => self::money($m['bonuses']),
                 'net_known' => self::money($m['in']->minus($m['out'])),
                 'net_typical' => self::money($m['in']->minus($m['out'])->minus($m['typical'])->plus($m['typical_in'])),
                 'end_known' => self::money($m['end_known']),
@@ -869,6 +885,7 @@ class Forecast
                 'account_id' => $row['account_id'],
                 'amount' => $amount,
                 'symbol' => $row['symbol'],
+                'kind' => 'expected dividend',
                 'paid' => $row['date'],
                 'transaction' => $row['id'],
             ];
@@ -902,6 +919,51 @@ class Forecast
         $this->expected = array_values($this->expected);
 
         usort($this->expected, fn (array $a, array $b) => [$a['date'], $a['symbol']] <=> [$b['date'], $b['symbol']]);
+    }
+
+    /**
+     * The bonuses expected by the end: every one a cash account was paid in the last year,
+     * a year on. A bonus is not a holding, so there is no share count to scale it by and
+     * last year's figure stands as it was -- the same assumption a dividend with no
+     * brokerage named is placed on.
+     *
+     * Matched on the description because that is all a bonus is: nothing in the data marks
+     * one, and every one of them on file is described exactly so, on the first of a month.
+     * A refund or a lone large deposit is left out, because nothing distinguishes the one
+     * that recurs from the one that happened, and projecting the second is a guess dressed
+     * as a date.
+     */
+    private function expectedBonuses(): void
+    {
+        $today = $this->today->toDateString();
+
+        $rows = Transaction::query()
+            ->whereIn('account_id', $this->cash->keys())
+            ->where('type', TransactionType::Deposit->value)
+            ->where('description', 'BONUS')
+            ->where('date', '>', $this->today->copy()->subYearNoOverflow()->toDateString())
+            ->where('date', '<=', $today)
+            ->get();
+
+        foreach ($rows as $row) {
+            $date = Carbon::parse($row->date)->addYearNoOverflow();
+
+            if ($date->lessThanOrEqualTo($this->today) || $date->greaterThan($this->end)) {
+                continue;
+            }
+
+            $this->expected[] = [
+                'date' => $date->toDateString(),
+                'account_id' => $row->account_id,
+                'amount' => BigDecimal::of((string) $row->amount),
+                // No holding, and said so: the near-duplicate pass and the sort both read
+                // this, and a symbol would put a bonus in a dividend's de-duplication.
+                'symbol' => '',
+                'kind' => 'expected bonus',
+                'paid' => $row->date,
+                'transaction' => $row->id,
+            ];
+        }
     }
 
     /** The dividends expected into one currency's accounts from tomorrow through a day. */
@@ -1101,17 +1163,35 @@ class Forecast
                 ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
             $earned = $earning[$section['ccy']] ?? BigDecimal::zero();
 
+            // The median month, not the mean, for the same reason spending takes one: a
+            // bonus, a month's double pay and a tax refund all fell inside the year, and
+            // the mean carried all three into every month the forecast looks ahead at --
+            // eleven times over for a payment that arrives once. The mean is kept below as
+            // the figure shown for comparison.
+            //
+            // What is left of each month is what its rules did not bring, and the rule is
+            // subtracted rather than what was actually paid: it is the figure the forecast
+            // places on future days, so the typical line comes to be the exact mirror of
+            // the known one. A raise inside the window therefore reads light by the
+            // difference, for as many months as it took to land.
+            $incomeMedian = self::median(array_map(
+                fn (array $month) => BigDecimal::of($month['other_income'])->minus($earned),
+                $section['months'],
+            ));
+
             $typical[$section['ccy']] = [
                 'monthly' => self::money($cash->plus($card)),
                 'cash' => self::money($cash),
                 'card' => self::money($card),
                 'average' => self::money($average),
                 'recurring' => self::money($covered),
-                // Income the rules do not bring, dividends aside as expectedDividends() places
-                // them: bonuses, refunds, the odd deposit.
-                'income' => self::money($floor($incomeAverage->minus($dividendAverage)->minus($earned))),
+                // Income the rules do not bring: the small deposits and the interest, which
+                // arrive every month. Dividends are aside, as expectedDividends() places
+                // them, and a bonus is placed on its date by expectedBonuses().
+                'income' => self::money($floor($incomeMedian)),
                 'income_average' => self::money($incomeAverage),
                 'income_dividends' => self::money($dividendAverage),
+                'income_median' => self::money($incomeMedian),
                 'income_recurring' => self::money($earned),
             ];
         }

@@ -208,20 +208,95 @@ class ForecastTest extends TestCase
         $this->assertSame('20.0', $section['runway_months']);
     }
 
-    public function test_typical_income_is_the_years_average_less_what_the_rules_bring(): void
+    public function test_typical_income_is_the_median_month_less_what_the_rules_bring(): void
     {
-        // 1000 from setUp and 2600 more in the year: 300 a month, 100 of it a salary rule.
-        $this->row('deposit', '2025-06-01', '2600');
+        // The window is the twelve months to today, 2025-01-21 onwards: a steady 250 a month
+        // of deposits no rule accounts for, one month carrying a 2600 lump on top of it, and
+        // 1000 in this month from setUp.
         $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+        $this->row('deposit', '2025-06-01', '2600');
+
+        foreach (range(2, 12) as $month) {
+            $this->row('deposit', sprintf('2025-%02d-15', $month), '250');
+        }
 
         $section = Forecast::for(today(), 3)->projection()[0];
         $points = collect($section['points'])->keyBy('date');
 
-        $this->assertSame('200.0000', $section['typical_income']);
-        $this->assertSame(['average' => '300.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
+        // Ten months at 250 with the rule's 100 off, so 150 an ordinary month. The mean is
+        // 529, because the 2600 and the 1000 each land in a single month of the twelve.
+        $this->assertSame('150.0000', $section['typical_income']);
+        $this->assertSame('150.0000', $section['typical_income_basis']['median']);
+        $this->assertSame(['average' => '529.1667', 'median' => '150.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
         // Earned from tomorrow, and on the typical line only.
         $this->assertSame('0.0000', $points['2026-01-20']['earned']);
         $this->assertTrue((float) $points['2026-02-20']['typical'] > (float) $points['2026-02-20']['known']);
+    }
+
+    public function test_a_month_that_pays_a_lump_does_not_set_the_typical_month(): void
+    {
+        // 1000 from setUp and 2600 more, both in single months, against ten months that pay
+        // nothing at all: there is no ordinary month to find, so the median is the rule's
+        // 100 taken off an empty month and the figure floors at nothing.
+        $this->row('deposit', '2025-06-01', '2600');
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+
+        $this->assertSame('0.0000', $section['typical_income']);
+        // The mean is still reported, so the reader can see what the month would be on it.
+        $this->assertSame('300.0000', $section['typical_income_basis']['average']);
+    }
+
+    public function test_a_bonus_is_placed_on_the_date_it_was_paid_rather_than_spread(): void
+    {
+        // A steady 250 a month, a 100 a month rule, and a bonus paid last June. The bonus
+        // must not reach the monthly figure, and must land on its own date a year on.
+        $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
+        $this->row('deposit', '2025-06-01', '2000', description: 'BONUS');
+
+        foreach (range(2, 12) as $month) {
+            $this->row('deposit', sprintf('2025-%02d-15', $month), '250');
+        }
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+        $months = collect($section['months'])->keyBy('month');
+
+        // Unmoved by the bonus: June is the one month that does not pay the steady 250 alone,
+        // and the median of the twelve is still an ordinary month.
+        $this->assertSame('150.0000', $section['typical_income']);
+        $this->assertSame('2000.0000', $section['expected_bonuses']);
+
+        // On the first of June a year on, in June's typical income and its own column of it,
+        // and on no other month.
+        $this->assertSame('2000.0000', $months['2026-06']['bonuses']);
+        $this->assertSame('0.0000', $months['2026-07']['bonuses']);
+        $this->assertGreaterThan(
+            (float) $months['2026-07']['typical_in'],
+            (float) $months['2026-06']['typical_in'],
+        );
+
+        // An estimate, on its own kind, linked to the row it came from.
+        $bonus = collect($section['events'])->firstWhere('kind', 'expected bonus');
+
+        $this->assertNotNull($bonus);
+        $this->assertSame('2026-06-01', $bonus['date']);
+        $this->assertSame('2000.0000', $bonus['base']);
+        $this->assertSame('Bonus, as paid 2025-06-01', $bonus['description']);
+        $this->assertTrue($bonus['estimate']);
+    }
+
+    public function test_a_refund_is_not_projected_because_nothing_says_it_recurs(): void
+    {
+        $this->row('deposit', '2025-06-01', '8975', description: 'TAX REFUND');
+
+        $section = Forecast::for(today(), 12)->projection()[0];
+
+        // A bonus has a name and a yearly cadence; a refund in the window might be the one
+        // that comes every June or the one that came this June, and projecting it either way
+        // is a guess with a date on it.
+        $this->assertSame('0.0000', $section['expected_bonuses']);
+        $this->assertNull(collect($section['events'])->firstWhere('kind', 'expected bonus'));
     }
 
     public function test_a_holdings_dividends_are_expected_a_year_on_scaled_to_what_is_held_now(): void
@@ -274,14 +349,19 @@ class ForecastTest extends TestCase
         return Forecast::for(today(), 3)->projection()[0]['accounts'][0];
     }
 
-    private function row(string $type, string $date, string $amount, string $status = 'posted'): void
-    {
+    private function row(
+        string $type,
+        string $date,
+        string $amount,
+        string $status = 'posted',
+        ?string $description = null,
+    ): void {
         Transaction::create([
             'account_id' => $this->bank->id,
             'category_id' => null,
             'date' => $date,
             'type' => $type,
-            'description' => ucfirst($type),
+            'description' => $description ?? ucfirst($type),
             'amount' => $amount,
             'ccy' => 'HKD',
             'status' => $status,
