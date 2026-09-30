@@ -70,6 +70,7 @@ const menus = computed(() => {
       heading: 'Reports',
       items: [
         item('Positions', 'position', 'show_chart', '/positions'),
+        item('Dividends', 'dividend', 'savings', '/dividends'),
         item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
         item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
         item('Forecast', 'forecast', 'query_stats', '/forecast'),

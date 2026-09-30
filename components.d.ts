@@ -17,6 +17,7 @@ declare module 'vue' {
     CashFlowChart: typeof import('./resources/js/components/CashFlowChart.vue')['default']
     CreateBtn: typeof import('./resources/js/components/CreateBtn.vue')['default']
     DeleteDialog: typeof import('./resources/js/components/DeleteDialog.vue')['default']
+    DividendMonths: typeof import('./resources/js/components/DividendMonths.vue')['default']
     DueDateDialog: typeof import('./resources/js/components/DueDateDialog.vue')['default']
     ForecastChart: typeof import('./resources/js/components/ForecastChart.vue')['default']
     ForecastMonths: typeof import('./resources/js/components/ForecastMonths.vue')['default']

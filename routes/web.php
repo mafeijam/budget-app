@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DividendController;
 use App\Http\Controllers\ForecastController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NetWorthController;
@@ -31,6 +32,7 @@ Route::get('cash-flow', [CashFlowController::class, 'index'])->name('cash-flow')
 Route::get('net-worth', [NetWorthController::class, 'index'])->name('net-worth');
 Route::get('forecast', [ForecastController::class, 'index'])->name('forecast');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
+Route::get('dividends', [DividendController::class, 'index'])->name('dividends');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');
 Route::post('symbols/name', [PositionController::class, 'name'])->name('symbols.name');
