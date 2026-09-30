@@ -282,6 +282,13 @@
 
         The date below is the same shape, and for the same reason a field needs a calendar
         that a select cannot offer.
+
+        no-focus is what lets the menu open without costing the box its caret. A QMenu takes
+        focus as it opens, so the field that opened it lost the keystrokes that were meant to
+        narrow it: the click showed the hints, and the typing after it went to the menu, and
+        a second click was needed to get the caret back before anything could be written. The
+        date control's menu does not have it, and should not: a calendar is meant to take over
+        while it is open.
       -->
       <q-input
         ref="descriptionInput"
@@ -301,6 +308,7 @@
           <q-btn flat dense icon="history" rounded @click="hintsOpen = !hintsOpen">
             <q-menu
               v-model="hintsOpen"
+              no-focus
               :offset="[10, 15]"
               anchor="bottom right"
               self="top right"
