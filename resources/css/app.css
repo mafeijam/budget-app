@@ -499,11 +499,6 @@ body {
   width: 600px;
 }
 
-/* Centred, so the action icons line up with the bold Owes figure beside them. */
-.app-statement-period > td {
-  vertical-align: middle !important;
-}
-
 /* A segmented control inside the toolbar: its own background would box it in twice. */
 .app-toolbar__toggle {
   box-shadow: none;
@@ -970,4 +965,110 @@ body {
   .app-find-counts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* Card statements on the transactions page: a tile per statement still owing. */
+.app-statement-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.app-statement-tile {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 12px 14px 8px;
+  background: var(--app-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-statement-tile--late {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.app-statement-tile--shown {
+  border-color: var(--q-primary);
+  box-shadow: 0 0 0 1px var(--q-primary);
+}
+
+.app-statement-tile__actions {
+  padding-top: 6px;
+  border-top: 1px solid var(--app-border);
+}
+
+/* Takes the tile's spare height above the foot, and never less than a gap. */
+.app-statement-tile__spacer {
+  flex: 1 0 10px;
+}
+
+.app-statement-tile .q-btn {
+  font-size: 13px;
+}
+
+/* A transaction's kind as a round mark, tinted by which way it moves the balance. */
+.app-tx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.app-tx-icon--in {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.app-tx-icon--out {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.app-tx-what {
+  min-width: 0;
+}
+
+/* The statement panel's month shortcuts: a pill each, filled while it is the filter. */
+.app-month-chip {
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 13px;
+}
+
+.app-month-chip--on {
+  background: var(--q-primary);
+  color: #fff;
+}
+
+.app-month-chip__count {
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* The transactions filter bar: a white search, and the open filters on a soft panel. */
+.app-filter-search .q-field__control {
+  background: var(--app-surface);
+}
+
+.app-filter-panel {
+  margin: 8px 0 0;
+  padding: 4px 12px 12px 4px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--app-border);
+  width: 100%;
 }

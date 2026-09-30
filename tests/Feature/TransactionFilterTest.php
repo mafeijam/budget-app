@@ -319,6 +319,19 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['counted_from' => '2026-01-01', 'counted_to' => '2026-01-31']], []);
     }
 
+    public function test_the_month_lists_every_cards_statements_due_in_it(): void
+    {
+        // Both charges are on the statement due 9 February.
+        $this->assertListed(['filter' => ['due_month' => '2026-02']], ['Books', 'Coffee, tea']);
+        $this->assertListed(['filter' => ['due_month' => '2026-03']], []);
+
+        // Not a month, so no filter rather than an empty list.
+        $this->assertListed(
+            ['filter' => ['due_month' => '2026-13']],
+            ['Salary', 'Rent', 'Books', 'Coffee, tea']
+        );
+    }
+
     public function test_a_date_that_is_not_a_calendar_day_is_ignored(): void
     {
         // Compared as a string, "2026-1-5" sorts after "2026-01-31" and would drop rows

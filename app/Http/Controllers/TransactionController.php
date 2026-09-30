@@ -148,6 +148,11 @@ class TransactionController extends Controller
                 AllowedFilter::callback('due_date', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', $value))
                     : $q),
+                // Every card's statements due in a month, YYYY-MM: the month's card bills in
+                // one list. Anything else is ignored, as a malformed day is.
+                AllowedFilter::callback('due_month', fn (Builder $q, $value) => is_string($value) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value)
+                    ? $q->whereHas('meta', fn ($bag) => $bag->where('meta->due_date', 'like', "{$value}-%"))
+                    : $q),
                 AllowedFilter::callback('unpaid', function (Builder $q, $value) use ($unpaid) {
                     // Off unless explicitly on: a stale filter[unpaid]=0 must not empty the list.
                     if (! in_array((string) $value, ['1', 'true'], true)) {
@@ -229,8 +234,22 @@ class TransactionController extends Controller
 
         // Every account, not just active ones: a closed card's history is still searchable.
         $filterOptions = [
-            'accounts' => Account::query()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Account $account) => ['label' => $account->name, 'value' => $account->id]),
+            'accounts' => Account::query()->orderBy('name')->get(['id', 'name', 'type', 'ccy'])
+                ->map(fn (Account $account) => [
+                    'label' => $account->name,
+                    'value' => $account->id,
+                    'type' => $account->type,
+                    'ccy' => $account->ccy,
+                ]),
+            // Every month a statement is due in, newest first, for the filter's month picker.
+            'dueMonths' => Meta::query()
+                ->where('model_type', Transaction::class)
+                ->selectRaw("DISTINCT LEFT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.due_date')), 7) AS month")
+                ->whereRaw("JSON_EXTRACT(meta, '$.due_date') IS NOT NULL")
+                ->orderByDesc('month')
+                ->pluck('month')
+                ->filter(fn (?string $month) => $month !== null && preg_match('/^\d{4}-\d{2}$/', $month))
+                ->values(),
             'types' => array_column(TransactionType::filterOrder(), 'value'),
             'accountTypes' => array_column(AccountType::cases(), 'value'),
             'symbols' => $symbols,

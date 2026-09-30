@@ -6,7 +6,9 @@
       :groups="statements"
       :banks="cardBanks"
       :shown="shownStatement"
+      :shown-month="shownMonth"
       @filter="filterStatement"
+      @filter-month="filterMonth"
     />
 
     <AppTable :rows="data.data" :columns="columns" title="Transaction" dense>
@@ -18,21 +20,36 @@
         </TransactionFilters>
       </template>
 
-      <template #body-cell-account="cell">
+      <!-- The row in one cell: what it was, its kind, and where it is filed and held. -->
+      <template #body-cell-description="cell">
         <q-td :props="cell">
-          {{ cell.value }}
-          <q-badge
-            v-bind="accountTypeBadges[cell.row.account_type] ?? {}"
-            class="q-ml-xs text-weight-regular"
-            :label="cell.row.account_type"
-          />
-        </q-td>
-      </template>
-
-      <template #body-cell-type="cell">
-        <q-td :props="cell">
-          <q-icon :name="typeIcons[cell.value] ?? 'help_outline'" size="xs" class="q-mr-xs" />
-          {{ cell.value }}
+          <div class="row items-center no-wrap">
+            <span class="app-tx-icon q-mr-sm" :class="`app-tx-icon--${directionName(cell.row)}`">
+              <q-icon :name="typeIcons[cell.row.type] ?? 'help_outline'" size="16px" />
+              <q-tooltip :delay="500" :offset="[0, 6]">{{ cell.row.type }}</q-tooltip>
+            </span>
+            <div class="app-tx-what">
+              <div class="row items-center no-wrap">
+                <span class="text-weight-medium text-grey-9 ellipsis">
+                  {{ cell.row.description }}
+                </span>
+                <!-- Only the exception is marked: almost every row is posted. -->
+                <q-badge
+                  v-if="cell.row.status === 'pending'"
+                  class="app-tint app-tint--warning q-ml-sm"
+                  label="pending"
+                />
+              </div>
+              <div class="text-caption text-grey-6 ellipsis">
+                {{ [categoryName(cell.row), cell.row.account_name].filter(Boolean).join(' · ') }}
+                <q-badge
+                  v-bind="accountTypeBadges[cell.row.account_type] ?? {}"
+                  class="q-ml-xs text-weight-regular"
+                  :label="cell.row.account_type"
+                />
+              </div>
+            </div>
+          </div>
         </q-td>
       </template>
 
@@ -40,12 +57,6 @@
         <q-td :props="cell" class="money" :class="amountClass(cell.row)">
           <span class="text-weight-medium">{{ signed(cell.row) }}</span>
           <span class="text-caption text-grey-7 q-ml-xs">{{ cell.row.ccy }}</span>
-        </q-td>
-      </template>
-
-      <template #body-cell-status="cell">
-        <q-td :props="cell">
-          <q-badge v-bind="statusBadges[cell.value] ?? {}" :label="cell.value" />
         </q-td>
       </template>
 
@@ -120,6 +131,12 @@ const shownStatement = computed(() => {
   return filter.due_date ? { cardId: Number(filter.account_id), dueDate: filter.due_date } : null
 })
 
+const shownMonth = computed(() => usePage().props.params?.filter?.due_month ?? null)
+
+// A second click on the month already shown clears it, as a statement's does.
+const filterMonth = month =>
+  shownMonth.value === month ? filterBar.value?.clear() : filterBar.value?.showDueMonth(month)
+
 // A second click on the statement already shown clears it.
 const filterStatement = ({ cardId, dueDate }) =>
   shownStatement.value?.cardId === cardId && shownStatement.value?.dueDate === dueDate
@@ -169,6 +186,11 @@ const signed = row => {
 
   return `${sign}${figure}`
 }
+
+const directionName = row => ({ 1: 'in', '-1': 'out' })[direction(row)] ?? 'none'
+
+const categoryName = row =>
+  props.options?.categories?.find(c => c.value === row.category_id)?.label ?? ''
 
 const amountClass = row => {
   if (row.status === 'pending') return 'text-grey-6'
@@ -252,38 +274,11 @@ const columns = reactive([
     sortable: true,
   },
   {
-    name: 'account',
-    width: '200px',
-    label: 'Account',
-    // Not sortable: the list orders against transactions, which has no account_name.
-    field: 'account_name',
-    align: 'left',
-    classes: 'text-weight-medium text-grey-9',
-    sortable: false,
-  },
-  {
-    name: 'type',
-    width: '120px',
-    label: 'Type',
-    field: 'type',
-    align: 'left',
-    sortable: true,
-  },
-  {
-    name: 'category',
-    width: '130px',
-    label: 'Category',
-    field: row => props.options?.categories?.find(c => c.value === row.category_id)?.label ?? '',
-    align: 'left',
-    sortable: false,
-  },
-  {
     name: 'description',
-    width: '220px',
+    width: '420px',
     label: 'Description',
     field: 'description',
     align: 'left',
-    classes: 'text-grey-9',
     sortable: true,
   },
   {
@@ -292,14 +287,6 @@ const columns = reactive([
     label: 'Amount',
     field: 'amount',
     align: 'right',
-    sortable: true,
-  },
-  {
-    name: 'status',
-    width: '100px',
-    label: 'Status',
-    field: 'status',
-    align: 'left',
     sortable: true,
   },
   {

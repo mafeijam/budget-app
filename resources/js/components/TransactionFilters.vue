@@ -4,11 +4,12 @@
 
     <q-input
       v-model="filters.description"
-      class="col-12 col-sm"
-      style="max-width: 360px"
-      label="Search description"
+      class="col-12 col-sm app-filter-search"
+      style="max-width: 380px"
+      placeholder="Search description"
       dense
-      filled
+      outlined
+      rounded
       clearable
       debounce="300"
     >
@@ -17,27 +18,39 @@
       </template>
     </q-input>
 
-    <!-- Not dense: it would stand 28px beside the search's 40px. -->
-    <div class="col-auto q-mx-md">
-      <q-btn
-        flat
-        no-caps
-        color="grey-8"
-        :label="chips.length ? `Filters (${chips.length})` : 'Filters'"
-        :icon="rowOpen ? 'expand_less' : 'expand_more'"
-        @click="rowOpen = !rowOpen"
-      />
-    </div>
-
-    <div class="col-auto q-mr-md">
-      <q-toggle
-        v-model="filters.unpaid"
-        true-value="1"
-        false-value=""
-        label="Unpaid only"
-        color="primary"
-        dense
-      />
+    <!-- The two ways to narrow the list, on one surface as the other pages' controls are. -->
+    <div class="col-auto q-ml-sm">
+      <div class="app-toolbar row items-center no-wrap">
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="tune"
+          :color="rowOpen || chips.length ? 'primary' : 'grey-8'"
+          class="q-px-sm text-weight-bold"
+          @click="toggleRow"
+        >
+          <span class="q-ml-xs">Filters</span>
+          <q-badge
+            v-if="chips.length"
+            rounded
+            color="primary"
+            class="q-ml-xs"
+            :label="chips.length"
+          />
+          <q-icon :name="rowOpen ? 'expand_less' : 'expand_more'" size="xs" class="q-ml-xs" />
+        </q-btn>
+        <q-separator vertical inset class="q-mx-sm" />
+        <q-toggle
+          v-model="filters.unpaid"
+          true-value="1"
+          false-value=""
+          label="Unpaid only"
+          color="primary"
+          dense
+          class="q-px-sm"
+        />
+      </div>
     </div>
 
     <q-space />
@@ -63,14 +76,15 @@
     v-if rather than v-show, so an open menu goes with the row. options-dense is separate
     from dense: dense sizes the field, not its menu.
   -->
-  <div v-if="rowOpen" class="row q-col-gutter-sm full-width q-mt-xs items-center">
+  <div v-if="rowOpen" class="app-filter-panel row q-col-gutter-sm items-center">
     <!-- The mask goes on the q-date: a q-input mask is a different parser. -->
     <q-input
       :model-value="rangeLabel"
       class="col-12 col-sm-6 col-md-3"
       label="Date"
       dense
-      filled
+      outlined
+      bg-color="white"
       readonly
       clearable
       @clear="range = null"
@@ -90,14 +104,43 @@
       class="col-12 col-sm-6 col-md-3"
       label="Account"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       emit-value
       map-options
       :display-value="shown(filters.account_id, accountOptions)"
-    />
+    >
+      <!-- Each account's type and currency, since a card and its bank can share a name. -->
+      <template #option="scope">
+        <q-item v-bind="scope.itemProps" dense>
+          <q-item-section side>
+            <q-checkbox
+              :model-value="scope.selected"
+              dense
+              size="xs"
+              @update:model-value="scope.toggleOption(scope.opt)"
+            />
+          </q-item-section>
+          <q-item-section>{{ scope.opt.label }}</q-item-section>
+          <q-item-section side class="row no-wrap items-center">
+            <div class="row no-wrap items-center q-gutter-x-xs">
+              <q-badge
+                v-bind="accountTypeBadges[scope.opt.type] ?? {}"
+                class="text-weight-regular"
+                :label="scope.opt.type"
+              />
+              <span class="text-caption text-grey-6">{{ scope.opt.ccy }}</span>
+            </div>
+          </q-item-section>
+        </q-item>
+      </template>
+      <template #prepend>
+        <q-icon name="account_balance" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.account_type"
@@ -105,12 +148,17 @@
       class="col-12 col-sm-6 col-md-3"
       label="Account type"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       :display-value="shown(filters.account_type)"
-    />
+    >
+      <template #prepend>
+        <q-icon name="category" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.type"
@@ -118,12 +166,17 @@
       class="col-12 col-sm-6 col-md-3"
       label="Type"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       :display-value="shown(filters.type)"
-    />
+    >
+      <template #prepend>
+        <q-icon name="swap_vert" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.status"
@@ -131,12 +184,17 @@
       class="col-12 col-sm-6 col-md-3"
       label="Status"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       :display-value="shown(filters.status)"
-    />
+    >
+      <template #prepend>
+        <q-icon name="pending_actions" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.ccy"
@@ -144,14 +202,19 @@
       class="col-12 col-sm-6 col-md-3"
       label="Currency"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       emit-value
       map-options
       :display-value="shown(filters.ccy)"
-    />
+    >
+      <template #prepend>
+        <q-icon name="payments" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.category_id"
@@ -159,14 +222,19 @@
       class="col-12 col-sm-6 col-md-3"
       label="Category"
       dense
-      filled
+      outlined
+      bg-color="white"
       options-dense
       multiple
       clearable
       emit-value
       map-options
       :display-value="shown(filters.category_id, categoryOptions)"
-    />
+    >
+      <template #prepend>
+        <q-icon name="label" size="xs" color="grey-6" />
+      </template>
+    </q-select>
 
     <!--
       add-unique lets a fragment through, which the server searches as a phrase, so "700"
@@ -177,7 +245,8 @@
       :options="shownSymbols"
       class="col-12 col-sm-6 col-md-3"
       label="Symbol"
-      filled
+      outlined
+      bg-color="white"
       dense
       options-dense
       autocomplete="off"
@@ -188,10 +257,32 @@
       clearable
       @filter="filterSymbols"
     >
+      <template #prepend>
+        <q-icon name="show_chart" size="xs" color="grey-6" />
+      </template>
       <template #no-option>
         <q-item dense>
           <q-item-section class="text-grey"> Nothing matches; Enter adds it </q-item-section>
         </q-item>
+      </template>
+    </q-select>
+
+    <!-- Every card's statements due in one month, from every month there has been one. -->
+    <q-select
+      v-model="filters.due_month"
+      :options="dueMonthOptions"
+      class="col-12 col-sm-6 col-md-3"
+      label="Statement month"
+      outlined
+      bg-color="white"
+      dense
+      options-dense
+      clearable
+      emit-value
+      map-options
+    >
+      <template #prepend>
+        <q-icon name="event_note" size="xs" color="grey-6" />
       </template>
     </q-select>
   </div>
@@ -220,6 +311,20 @@ const page = usePage()
 const pagination = inject('pagination')
 
 const accountOptions = computed(() => page.props.filterOptions?.accounts ?? [])
+
+// Quasar's ramp, as the table's badges are: the hues only part card rows from bank rows.
+const accountTypeBadges = {
+  cash: { color: 'teal-1', textColor: 'teal-9' },
+  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
+  security: { color: 'orange-1', textColor: 'orange-10' },
+}
+
+const dueMonthOptions = computed(() =>
+  (page.props.filterOptions?.dueMonths ?? []).map(month => ({
+    label: monthLabel(month),
+    value: month,
+  })),
+)
 const typeOptions = computed(() => page.props.filterOptions?.types ?? [])
 const accountTypeOptions = computed(() => page.props.filterOptions?.accountTypes ?? [])
 
@@ -247,24 +352,42 @@ const shown = (chosen, options = null) => {
 
 const seeded = page.props.params?.filter ?? {}
 
-// Open on arrival only when the URL carries a filter, so a followed link shows what applied.
-const rowOpen = ref(Object.keys(seeded).length > 0)
+// Remembered per browser, as the other pages' view choices are, and opened on arrival
+// anyway when the URL carries a filter, so a followed link shows what applied. Only a click
+// is remembered: a link that opened the row does not leave it open for the next visit.
+const keptOpen = useStorage('transactions.filtersOpen', false)
+const rowOpen = ref(keptOpen.value || Object.keys(seeded).length > 0)
 
-const filters = reactive({
-  description: seeded.description ?? null,
-  account_id: ids(seeded.account_id),
-  account_type: list(seeded.account_type),
-  type: list(seeded.type),
-  status: list(seeded.status),
-  category_id: ids(seeded.category_id),
-  ccy: list(seeded.ccy),
-  symbol: list(seeded.symbol),
-  date_from: seeded.date_from ?? null,
-  date_to: seeded.date_to ?? null,
-  due_date: seeded.due_date ?? null,
+const toggleRow = () => {
+  rowOpen.value = !rowOpen.value
+  keptOpen.value = rowOpen.value
+}
+
+// A filter as the URL carries it, in the shape the controls hold it.
+const parse = filter => ({
+  description: filter.description ?? null,
+  account_id: ids(filter.account_id),
+  account_type: list(filter.account_type),
+  type: list(filter.type),
+  status: list(filter.status),
+  category_id: ids(filter.category_id),
+  ccy: list(filter.ccy),
+  symbol: list(filter.symbol),
+  date_from: filter.date_from ?? null,
+  date_to: filter.date_to ?? null,
+  due_date: filter.due_date ?? null,
+  due_month: filter.due_month ?? null,
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
-  unpaid: seeded.unpaid ?? '',
+  unpaid: filter.unpaid ?? '',
 })
+
+const filters = reactive(parse(seeded))
+
+// What the list on screen is filtered by: the server's echo of the last request, not the
+// controls. The chips and Clear all read this, so they change when the rows do -- off the
+// controls, a chip went at the click and the rows a fifth of a second later, and the table
+// jumped up under the old rows before they were replaced.
+const applied = computed(() => parse(page.props.params?.filter ?? {}))
 
 const range = computed({
   get: () => {
@@ -295,9 +418,11 @@ const query = () =>
       .filter(([, value]) => value !== null && value !== ''),
   )
 
-const active = computed(() => Object.keys(query()).length > 0)
+const active = computed(() => Object.keys(page.props.params?.filter ?? {}).length > 0)
 
 const chips = computed(() => {
+  const on = applied.value
+
   const picked = [
     ['account_id', 'Account', accountOptions.value],
     ['account_type', 'Account type', null],
@@ -307,34 +432,57 @@ const chips = computed(() => {
     ['category_id', 'Category', categoryOptions.value],
     ['symbol', 'Symbol', null],
   ]
-    .filter(([key]) => filters[key].length)
+    .filter(([key]) => on[key].length)
     .map(([key, name, options]) => ({
       key,
-      label: `${name}: ${shown(filters[key], options)}`,
+      label: `${name}: ${shown(on[key], options)}`,
       remove: () => (filters[key] = []),
     }))
 
-  const due = filters.due_date
+  const due = on.due_date
     ? [
         {
           key: 'due_date',
-          label: `Statement due ${filters.due_date}`,
+          label: `Statement due ${on.due_date}`,
           remove: () => (filters.due_date = null),
         },
       ]
     : []
 
-  const dated = filters.date_from
-    ? [{ key: 'date', label: `Date: ${rangeLabel.value}`, remove: () => (range.value = null) }]
+  const month = on.due_month
+    ? [
+        {
+          key: 'due_month',
+          label: `Statements due ${monthLabel(on.due_month)}`,
+          remove: () => (filters.due_month = null),
+        },
+      ]
     : []
 
-  return [...due, ...dated, ...picked]
+  const appliedRange =
+    on.date_from === on.date_to ? on.date_from : `${on.date_from} – ${on.date_to}`
+
+  const dated = on.date_from
+    ? [{ key: 'date', label: `Date: ${appliedRange}`, remove: () => (range.value = null) }]
+    : []
+
+  return [...due, ...month, ...dated, ...picked]
 })
 
-// The statement has no input in the panel, so its chip shows even while the panel is open.
+// The statement and the month have no input in the panel, so their chips show even while
+// the panel is open.
 const shownChips = computed(() =>
-  rowOpen.value ? chips.value.filter(chip => chip.key === 'due_date') : chips.value,
+  rowOpen.value
+    ? chips.value.filter(chip => ['due_date', 'due_month'].includes(chip.key))
+    : chips.value,
 )
+
+const monthFormat = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+const monthLabel = month => monthFormat.format(new Date(`${month}-01T12:00:00Z`))
 
 const apply = () => {
   const { sort, dir, per_page: perPage } = page.props.params ?? {}
@@ -369,6 +517,7 @@ const clear = () => {
     date_from: null,
     date_to: null,
     due_date: null,
+    due_month: null,
     unpaid: '',
   })
 }
@@ -379,7 +528,13 @@ const showStatement = (cardId, dueDate) => {
   Object.assign(filters, { account_id: [cardId], due_date: dueDate })
 }
 
-defineExpose({ showStatement, clear })
+// The statement panel's month shortcut: every card's statements due that month.
+const showDueMonth = month => {
+  clear()
+  filters.due_month = month
+}
+
+defineExpose({ showStatement, showDueMonth, clear })
 
 watch(filters, apply, { deep: true })
 </script>
