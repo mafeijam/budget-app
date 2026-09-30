@@ -141,6 +141,9 @@ class MigrateBudgetData extends Command
     /** @var array<int, int>  old category id => new id */
     private array $categoryIds = [];
 
+    /** @var array<int, int>  old cash_transactions.id => the row written from it */
+    private array $cashRowIds = [];
+
     /** @var list<string> */
     private array $warnings = [];
 
@@ -362,14 +365,33 @@ class MigrateBudgetData extends Command
             }
 
             if ($trade = $parser->trade($description, $amount)) {
-                // The cash side is a real movement and stays as recorded. The trade goes on
-                // the brokerage with no_cash, so the bank is not charged for it twice and
-                // Positions can still replay it.
-                $planned[] = $this->cashRow($account, $date, $description, $type, $amount, null);
+                $brokerage = $this->brokerageFor($account);
+
+                // The cash side is a real movement and stays as recorded, under the old
+                // ledger's own description and figure. The trade goes on the brokerage with
+                // no_cash, so the bank is not charged for it twice and Positions can still
+                // replay it -- and the two are paired once both exist, so CashFlow reads
+                // the bank row as money invested rather than spent.
+                $planned[] = $this->cashRow($account, $date, $description, $type, $amount, null)
+                    + ['legacy' => (int) $row['id']];
+
+                if ($brokerage === null) {
+                    $this->flag(sprintf(
+                        'Trade [%s] on %s names [%s], which no brokerage settles into, so the trade is dropped and '
+                        .'its cash row is left as recorded -- counted as %s rather than as money invested.',
+                        $description,
+                        $date,
+                        $account,
+                        $type === 'deposit' ? 'income' : 'spending'
+                    ));
+                } else {
+                    $this->counts['trades_paired'] = ($this->counts['trades_paired'] ?? 0) + 1;
+                }
+
                 // The brokerage is the one settling into the cash account the ledger
                 // recorded the trade on, since that is the account the money moved
                 // through. Two of them, because the old ledger traded on two.
-                $trades[] = $trade + ['date' => $date, 'brokerage' => $this->brokerageFor($account)];
+                $trades[] = $trade + ['date' => $date, 'brokerage' => $brokerage, 'legacy' => (int) $row['id']];
 
                 if (BigDecimal::of($trade['discrepancy'])->isPositive()) {
                     $this->flag(sprintf(
@@ -1224,6 +1246,17 @@ class MigrateBudgetData extends Command
                 continue;
             }
 
+            if ($fallback === null) {
+                $this->flag(sprintf(
+                    'Holding %s bought %s is not migrated: no cash trade names a brokerage, so there is no ledger '
+                    .'to say which one bought it.',
+                    $symbol,
+                    $bought
+                ));
+
+                continue;
+            }
+
             $trades[] = [
                 'type' => 'buy',
                 'symbol' => $symbol,
@@ -1341,20 +1374,28 @@ class MigrateBudgetData extends Command
      * The brokerage whose ledger records the earliest trade, which is where a holding the
      * cash ledger never described is taken to have been bought.
      *
+     * Null when no cash trade names one, and there is deliberately no default: the
+     * brokerages are named by the account they settle into, so the name to reach for is a
+     * cash account, and TransactionData refuses a buy on one -- taking the whole migration
+     * down with it rather than dropping the holding. A holding with nowhere to go is
+     * reported instead.
+     *
      * @param  list<array<string, mixed>>  $fromCash
      */
-    private function earliestBrokerage(array $fromCash): string
+    private function earliestBrokerage(array $fromCash): ?string
     {
         $earliest = null;
-        $brokerage = (string) array_key_first(self::BROKERAGES);
+        $brokerage = null;
 
         foreach ($fromCash as $trade) {
-            if ($earliest !== null && $trade['date'] >= $earliest) {
+            $name = $trade['brokerage'] ?? null;
+
+            if ($name === null || ($earliest !== null && $trade['date'] >= $earliest)) {
                 continue;
             }
 
             $earliest = $trade['date'];
-            $brokerage = $trade['brokerage'] ?? $brokerage;
+            $brokerage = $name;
         }
 
         return $brokerage;
@@ -1516,6 +1557,12 @@ class MigrateBudgetData extends Command
         $this->components->twoColumnDetail('Trades from the cash ledger', (string) ($this->counts['trades_from_cash'] ?? 0));
         $this->components->twoColumnDetail('Buys backdated from stock_holding', (string) ($this->counts['trades_from_holdings'] ?? 0));
         $this->components->twoColumnDetail('Holdings skipped (group '.self::SKIPPED_HOLDING_GROUP.')', (string) ($this->counts['holdings_skipped'] ?? 0));
+
+        // Every cash-ledger trade is paired with the bank row it came from, so CashFlow
+        // reads that row as money invested rather than as spending or income. The buys
+        // backdated from stock_holding have no such row and are replayed from their
+        // quantity and cost alone.
+        $this->components->twoColumnDetail('Cash sides paired to their trade', (string) ($this->counts['trades_paired'] ?? 0));
 
         foreach ($this->counts['trades_by_brokerage'] ?? [] as $brokerage => $count) {
             $this->components->twoColumnDetail("  on {$brokerage}", (string) $count);
@@ -1799,14 +1846,45 @@ class MigrateBudgetData extends Command
                 'unit_price' => $trade['unit_price'],
                 'fees' => $trade['fees'],
                 // The cash moved as its own recorded row, so a second leg here would
-                // take the money out of the bank twice.
+                // take the money out of the bank twice. pairTradeWithCash() takes the
+                // flag off again, for the rows that have one to pair with.
                 'no_cash' => true,
             ],
             'created_at' => null,
         ]);
 
         $data->guardHoldings();
-        $data->write();
+
+        $this->pairTradeWithCash($data->write(), $this->cashRowIds[$trade['legacy'] ?? 0] ?? null);
+    }
+
+    /**
+     * A trade the old ledger described in words, and the bank row that same description
+     * came from, linked both ways.
+     *
+     * Without the link CashFlow cannot tell the row from a plain withdrawal, so a buy is
+     * counted as spending and a sell as income, and the month shows the money twice over
+     * with Invested empty. It is also what TransactionData::figureLock() reads: unlinked,
+     * the bank row stays editable on its own and drifts from the trade beside it.
+     *
+     * The link is written over the bag rather than through the DTO, which drops
+     * paired_transaction_id as a server-owned key, and no_cash comes off in the same
+     * breath -- TradeCash::bankFor() reads that flag as "this trade has no cash side" and
+     * the next edit of the trade would delete the bank row out from under the ledger.
+     */
+    private function pairTradeWithCash(Transaction $trade, ?int $cashId): void
+    {
+        if ($cashId === null) {
+            return;
+        }
+
+        $bag = Transaction::with('meta')->findOrFail($trade->id)->meta->meta->getArrayCopy();
+        unset($bag['no_cash']);
+
+        $bag['paired_transaction_id'] = $cashId;
+
+        $trade->meta()->update(['meta' => $bag]);
+        Transaction::findOrFail($cashId)->meta()->create(['meta' => ['paired_transaction_id' => $trade->id]]);
     }
 
     /** @param array<string, mixed> $plan */
@@ -1861,6 +1939,12 @@ class MigrateBudgetData extends Command
 
         if ($meta !== null && $meta !== []) {
             $transaction->meta()->create(['meta' => $meta]);
+        }
+
+        // The cash side of a trade is paired with it once the trade is written, which is
+        // the only thing that can name it: ids do not exist until a row has been created.
+        if (isset($row['legacy'])) {
+            $this->cashRowIds[(int) $row['legacy']] = $transaction->id;
         }
 
         return $transaction->id;
