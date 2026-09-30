@@ -85,6 +85,7 @@ declare global {
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
   const palette: typeof import('./resources/js/composables/palette.js').palette
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
+  const plainQuantity: typeof import('./resources/js/composables/money.js').plainQuantity
   const plus: typeof import('./resources/js/composables/money.js').plus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
@@ -95,6 +96,7 @@ declare global {
   const reactiveOmit: typeof import('@vueuse/core').reactiveOmit
   const reactivePick: typeof import('@vueuse/core').reactivePick
   const readonly: typeof import('vue').readonly
+  const received: typeof import('./resources/js/composables/money.js').received
   const ref: typeof import('vue').ref
   const refAutoReset: typeof import('@vueuse/core').refAutoReset
   const refDebounced: typeof import('@vueuse/core').refDebounced

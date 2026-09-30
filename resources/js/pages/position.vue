@@ -461,6 +461,11 @@ const money = useMoney()
 const formatDate = useCalendarDay()
 const formatTime = useHongKongTime()
 
+// Bound here rather than called in the template because auto-imports do not reach
+// templates: vite.config.js sets no vueTemplate, so a composable used in one is
+// undefined at runtime and neither lint nor build sees it.
+const quantity = plainQuantity
+
 // "Today, 12:26" in Hong Kong's day; the tooltip carries the full timestamp.
 const tz = usePage().props.tz
 const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
@@ -599,22 +604,11 @@ const view = computed(() => {
   }
 })
 
-// A figure is only worth drawing if something landed in it, and four places are always
-// carried: an amount of nothing is "0.0000".
-const received = value => /[1-9]/.test(String(value))
-
 // Quasar's $q has no pluralize(), and a cell that throws while rendering takes the row
 // with it, so the count is worded here as it is on Home.
 const payments = count => `${count} payment${count === 1 ? '' : 's'}`
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
-
-// Trimmed on the string: a quantity is a decimal, never a float.
-const quantity = value => {
-  const trimmed = String(value).includes('.') ? String(value).replace(/\.?0+$/, '') : String(value)
-
-  return trimmed === '' ? '0' : trimmed
-}
 
 const $q = useQuasar()
 

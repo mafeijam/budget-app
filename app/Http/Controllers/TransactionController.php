@@ -1043,10 +1043,11 @@ class TransactionController extends Controller
      * moves no balance, so trades are totalled apart rather than netted. A pending row
      * moves no balance either, so it is left out of these and of the base row below.
      *
-     * Alongside the per-currency strips, the same figures in the base currency, for when
-     * the filter spans more than one: a list of AUD and HKD rows otherwise has no total
-     * anyone can read. Only when it does, since a single-currency list gains nothing from
-     * a row that repeats the strip above it in different words.
+     * Alongside the per-currency strips, the same figures in the base currency. A list of
+     * USD rows and nothing else otherwise never says what it came to in HKD, and that is
+     * the list a reader most wants it on -- so the test is whether anything in the set is
+     * not already the base currency, not whether the set spans two. A list that is all HKD
+     * gains nothing, since the base row would repeat that strip in the same words.
      *
      * @return array{currencies: list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string}>, base: array{count: int, in: string, out: string, net: string, trades: string}|null, unconverted: list<string>}
      */
@@ -1093,9 +1094,15 @@ class TransactionController extends Controller
 
         $base = $this->baseTotals($rows);
 
+        // Null unless something here is not already the base currency, and something
+        // converted. The second test is what stops a list of wholly unconvertible rows
+        // showing a total of 0.00 over an account that plainly holds money: a figure of
+        // nothing is a claim, and this one would be false.
+        $worthConverting = $rows->contains(fn (Transaction $row) => $row->ccy !== Currency::Hkd->value);
+
         return [
             'currencies' => $currencies,
-            'base' => $currencies === [] || count($currencies) < 2 ? null : $base['total'],
+            'base' => $worthConverting && $base['total']['count'] > 0 ? $base['total'] : null,
             'unconverted' => $base['unconverted'],
         ];
     }

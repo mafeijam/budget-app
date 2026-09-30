@@ -40,9 +40,47 @@ test.
   check on whether a menu opens, where a list lands, or whether the caret
   stays in a field. That is not a formality: the description field's hint
   list was wrong five times in an afternoon, in ways every check here
-  passed, and each was caught by a person looking at the screen.
+  passed, and each was caught by a person looking at the screen. See
+  [Looking at it](#looking-at-it) for doing that without waiting on one.
 - **The last commit before anyone relies on it:** the suite, whatever the
   change was.
+
+## Looking at it
+
+The desktop browser tool is often not connected to a session, and a change
+that needs the screen does not wait for one to attach. Playwright works here
+and needs no network: `playwright-core@1.63.0` matches the `chromium-1243`
+build already in `~/.cache/ms-playwright`, so nothing downloads. Install it
+**outside the repo** — the project has no Playwright dependency and adding
+one would dirty `package.json` — and note the npm cache already holds the
+tarball:
+
+```bash
+mkdir -p /tmp/opencode/pw && cd /tmp/opencode/pw
+npm init -y && npm i playwright-core@1.63.0
+node your-script.mjs
+```
+
+There is no login to get past: `route:list` has no auth route and the
+`users` table is empty, so any page loads directly on port 9007.
+
+Read the DOM rather than only screenshotting it. Asserting on the text a
+badge actually rendered names the row that broke, where a picture says only
+that something did — and both `console` and `pageerror` listeners pay for
+themselves, because a page that throws while rendering a cell still
+screenshot-plausibly.
+
+**Wait for the text, never for a duration.** `q-input` debounces by 300ms and
+Inertia reloads after that, so a `waitForTimeout` reads whichever rows the
+*previous* filter left behind and confidently reports on the wrong thing.
+`page.waitForFunction` on the expected text is the only wait to trust.
+
+**A runtime `TypeError` on a page that lint and build both passed is the
+ordinary case here, not the surprising one**, and the reason is worth
+carrying: `vite.config.js` sets no `vueTemplate`, so `unplugin-auto-import`
+rewrites script blocks only, and an auto-imported composable called from a
+template is undefined at runtime. No static check can see it. That is the
+whole argument for this section.
 
 ## Two databases, and this will bite you
 

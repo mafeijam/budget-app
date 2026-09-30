@@ -26,8 +26,9 @@ export function useMoney(places = 2) {
   }
 }
 
-// For an amount input: the column's four places cut to two, but only when the two dropped
-// are zeros, so a figure that really has four (a derived trade) is never rounded away.
+// The column's four places cut to two, but only when the two dropped are zeros, so a figure
+// that really has four is never rounded away. For an amount input, and for the figures a
+// trade's detail chip quotes.
 export function twoPlaces(value) {
   if (typeof value !== 'string') return value
 
@@ -35,6 +36,23 @@ export function twoPlaces(value) {
 
   return match && /^0*$/.test(match[2]) ? match[1] : value
 }
+
+// A quantity without the zeros its eight places carry: 3000, not 3000.00000000. The eight
+// are there so a fractional holding has somewhere to live, and a sentence has no use for
+// them, which is why they are trimmed here rather than never written.
+//
+// Trimmed on the string, since a quantity is a decimal and never a float. The test for a
+// decimal point is what keeps "10" from losing its own trailing zero and arriving as "1".
+export const plainQuantity = value => {
+  const string = String(value)
+  const trimmed = string.includes('.') ? string.replace(/\.?0+$/, '') : string
+
+  return trimmed === '' ? '0' : trimmed
+}
+
+// Whether a figure is worth a clause, which is not the same as being present: a fee of
+// "0.0000" is a string, so a plain truth test puts "fees 0.00" on a trade that paid none.
+export const received = value => /[1-9]/.test(String(value))
 
 // Adding money on the browser, at AMOUNT_SCALE, because a card's rows have to be totalled
 // and a float total of a few hundred thousand is a total that is wrong in the cents. The

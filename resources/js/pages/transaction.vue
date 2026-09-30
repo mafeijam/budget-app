@@ -140,14 +140,17 @@
         Pending rows are left out: they do not count toward a balance.
       </div>
 
-      <!-- Rows, not whole currencies: a currency can be in the total and still have a row
-           of its own out of it, and saying otherwise would overstate what is missing. -->
+      <!-- "Some" is the word doing the work: a currency can be in the total through most
+           of its rows and still have a few out of it, and naming it bare would read as the
+           whole currency being left out, which overstates what is missing. Gated on the
+           base row existing, since this annotates that row and there is nothing to
+           annotate on a list of one currency. -->
       <div
-        v-if="showTotals && unconverted.length"
+        v-if="showTotals && baseTotals && unconverted.length"
         class="app-tx-totals__note q-px-md q-py-xs text-caption text-grey-7"
       >
-        {{ unconverted.join(', ') }} rows left out of the {{ base }} total: no {{ base }} figure on
-        the row.
+        Some {{ unconverted.join(', ') }} rows have no {{ base }} figure, so the {{ base }} total
+        leaves them out.
       </div>
     </q-card>
   </div>
@@ -158,25 +161,29 @@ const filterBar = ref(null)
 
 const totals = computed(() => usePage().props.totals ?? [])
 
-// Null unless the filter holds a second currency: a list of one currency gains nothing
-// from a row that says the same figures in the same money.
+// Null unless something in the list is not already in the base currency: a list that is
+// all HKD gains nothing from a row that says the same figures in the same money.
 const baseTotals = computed(() => usePage().props.baseTotals ?? null)
 
 const unconverted = computed(() => usePage().props.unconverted ?? [])
 
+/* Zero plural, because the caption is assembled from a count and a word. */
+const rows = (count, word = 'row') => `${count} ${word}${count === 1 ? '' : 's'}`
+
 /*
  * The base row in front of the per-currency ones, drawn by the same markup so the columns
  * line up. The two rows differ in what they claim and nothing else, and the caption is
- * what carries that: the base row's count is the rows that had a base figure, across
- * every currency, where a currency row's is the rows in that one currency. "every page"
- * on both would read as the same count and be neither.
+ * what carries that: a currency row counts the rows in that one currency, and the base
+ * row counts the rows that had a base figure at all, which is fewer whenever a currency
+ * is left out. Stating the denominator is what makes the two comparable -- "every page" on
+ * both would read as the same count and be neither.
  */
 const totalStrips = computed(() => {
   const perCurrency = totals.value.map(total => ({
     ...total,
     key: `ccy-${total.ccy}`,
     base: false,
-    caption: `${total.count} row${total.count === 1 ? '' : 's'}, every page`,
+    caption: `${rows(total.count)}, every page`,
   }))
 
   if (!baseTotals.value) {
@@ -189,7 +196,9 @@ const totalStrips = computed(() => {
       key: 'base',
       base: true,
       ccy: props.base,
-      caption: `${baseTotals.value.count} row${baseTotals.value.count === 1 ? '' : 's'}, every currency`,
+      caption: `${rows(baseTotals.value.count)} of ${rows(
+        perCurrency.reduce((sum, strip) => sum + strip.count, 0),
+      )}, every page`,
     },
     ...perCurrency,
   ]
@@ -315,9 +324,9 @@ const metaChips = row => {
 
   if (meta.symbol) {
     if (meta.quantity) {
-      const fees = meta.fees ? `, fees ${meta.fees}` : ''
+      const fees = received(meta.fees) ? `, fees ${twoPlaces(meta.fees)}` : ''
 
-      plain(`${meta.symbol} ${meta.quantity} @ ${meta.unit_price}${fees}`)
+      plain(`${meta.symbol} ${plainQuantity(meta.quantity)} @ ${twoPlaces(meta.unit_price)}${fees}`)
     } else {
       const brokerage = usePage().props.filterOptions?.accounts?.find(
         account => account.value === meta.brokerage_account_id,

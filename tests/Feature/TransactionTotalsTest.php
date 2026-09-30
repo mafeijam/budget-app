@@ -57,7 +57,7 @@ class TransactionTotalsTest extends TestCase
         );
     }
 
-    public function test_a_list_of_one_currency_has_no_base_total(): void
+    public function test_a_list_of_only_the_base_currency_has_no_base_total(): void
     {
         // The common case, and the row would repeat the strip beneath it in other words.
         $this->cash('2026-01-05', 'deposit', '1000.0000', 'HKD');
@@ -70,7 +70,43 @@ class TransactionTotalsTest extends TestCase
         );
     }
 
-    public function test_the_base_total_is_absent_until_a_second_currency_appears(): void
+    public function test_a_list_of_one_foreign_currency_still_gets_a_base_total(): void
+    {
+        // The case the two-currency test above was written for and did not cover: a list
+        // that is all USD. Nothing here is already HKD, so the figure the reader wants is
+        // missing, and one currency is not the same as no conversion.
+        $this->foreignCharge('2026-01-05', 'USD', '20.0000', '158.0000');
+
+        $this->get('/transactions?filter[ccy]=USD')->assertInertia(fn (Assert $page) => $page
+            ->where('baseTotals', [
+                'count' => 1,
+                'in' => '0.0000',
+                'out' => '158.0000',
+                'net' => '-158.0000',
+                'trades' => '0.0000',
+            ])
+            // Still in dollars on its own strip, which is not what the base row replaces.
+            ->where('totals.0.ccy', 'USD')
+            ->where('totals.0.out', '20.0000')
+        );
+    }
+
+    public function test_a_list_of_nothing_convertible_has_no_base_total(): void
+    {
+        // One US dollar row with no card to state a figure and no rate asked for. A total
+        // of 0.00 would be a claim, and it would be false: the account plainly holds money.
+        $usBank = Account::create(['name' => 'US Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->cashOn($usBank, '2026-01-05', 'deposit', '14450.5300', 'USD');
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('baseTotals', null)
+            ->where('unconverted', ['USD'])
+            // A deposit, so it is money in rather than out: the strip still holds it.
+            ->where('totals.0.in', '14450.5300')
+        );
+    }
+
+    public function test_the_base_total_appears_with_a_currency_that_is_not_the_base(): void
     {
         $this->cash('2026-01-05', 'deposit', '1000.0000', 'HKD');
 
@@ -102,6 +138,20 @@ class TransactionTotalsTest extends TestCase
             ])
             // Named, because nothing on the page would otherwise say a row went missing.
             ->where('unconverted', ['USD'])
+        );
+    }
+
+    public function test_the_base_row_and_the_note_appear_together_or_not_at_all(): void
+    {
+        // The note annotates the base row, so it is gated on it: on a list of one
+        // currency there is no base row and nothing for the note to be about. Left
+        // ungated it claimed a total was short when no total was on screen.
+        $usBank = Account::create(['name' => 'US Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->cashOn($usBank, '2026-01-05', 'deposit', '14450.5300', 'USD');
+
+        $this->get('/transactions?filter[ccy]=USD')->assertInertia(fn (Assert $page) => $page
+            ->where('unconverted', ['USD'])
+            ->where('baseTotals', null)
         );
     }
 
