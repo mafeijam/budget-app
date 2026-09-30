@@ -272,31 +272,58 @@
         </template>
       </q-input>
 
-      <!-- Without @filter, QSelect never narrows the list. -->
-      <q-select
+      <!--
+        A text box with a menu of past descriptions, not a select. With use-input the field's
+        text is a search string rather than the value, and only Enter commits it, so editing
+        a description chosen from the list and then saving kept the choice: the box showed
+        what had been typed and the row got the old value, with nothing on screen saying so.
+        Typing a new one and saving was worse, for the same reason -- no save, no error, no
+        row. Here the box is the value, and the menu only ever writes into it.
+
+        The date below is the same shape, and for the same reason a field needs a calendar
+        that a select cannot offer.
+      -->
+      <q-input
+        ref="descriptionInput"
         v-model="form.description"
-        :options="shownDescriptions"
         class="col-12"
         label="Description"
         outlined
         autocomplete="off"
-        use-input
-        input-debounce="0"
-        new-value-mode="add-unique"
-        :clearable="false"
         :error="!!form.errors.description"
         :error-message="form.errors.description"
-        @filter="filterDescriptions"
+        @focus="hintsOpen = true"
       >
         <template #prepend>
           <q-icon name="notes" color="grey-6" />
         </template>
-        <template #no-option>
-          <q-item>
-            <q-item-section class="text-grey"> Nothing matches; Enter adds it </q-item-section>
-          </q-item>
+        <template #append>
+          <q-btn flat dense icon="history" rounded @click="hintsOpen = !hintsOpen">
+            <q-menu
+              v-model="hintsOpen"
+              :offset="[10, 15]"
+              anchor="bottom right"
+              self="top right"
+              class="app-desc-hints"
+            >
+              <q-list dense>
+                <q-item
+                  v-for="hint in shownDescriptions"
+                  :key="hint"
+                  v-close-popup
+                  clickable
+                  @click="useDescription(hint)"
+                >
+                  <q-item-section>{{ hint }}</q-item-section>
+                </q-item>
+                <q-item v-if="!shownDescriptions.length">
+                  <q-item-section class="text-grey">Nothing used before</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
         </template>
-      </q-select>
+      </q-input>
 
       <q-select
         v-model="form.category_id"
@@ -412,6 +439,7 @@
                 map-options
                 autocomplete="off"
                 use-input
+                fill-input
                 input-debounce="0"
                 new-value-mode="add-unique"
                 :clearable="false"
@@ -691,13 +719,33 @@ const templateCaption = template =>
     .filter(Boolean)
     .join(' · ')
 
-const shownDescriptions = ref([])
-
 const shownSymbols = ref([])
 
-const filterDescriptions = filterInto(shownDescriptions, descriptionHints, (description, needle) =>
-  description.toLowerCase().includes(needle),
-)
+// The past descriptions the menu offers, narrowed by what is in the box. A computed, not
+// filterInto's handler: a QSelect asks to be told what matched, and a text input has no such
+// question to ask of anybody.
+const shownDescriptions = computed(() => {
+  const needle = (form.description ?? '').trim().toLowerCase()
+
+  return needle === ''
+    ? descriptionHints.value
+    : descriptionHints.value.filter(description => description.toLowerCase().includes(needle))
+})
+
+const hintsOpen = ref(false)
+
+const descriptionInput = ref(null)
+
+// The menu writes the value through here rather than in the template, so there is one place
+// a description is set from a hint. FormContractTest requires every form. reference in the
+// template to be a binding it can parse, and an assignment inside a click handler is not one.
+//
+// Focus goes back to the box afterwards: the menu is dismissed by the click that filled it,
+// and without this the caret lands nowhere and the next character is typed to no field.
+const useDescription = description => {
+  form.description = description
+  nextTick(() => descriptionInput.value?.focus())
+}
 
 const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
   option.label.toLowerCase().includes(needle),

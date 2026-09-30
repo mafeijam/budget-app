@@ -420,6 +420,13 @@ body {
   padding-bottom: 4px;
 }
 
+/* The description menu, which is the template menu's shape for the same reason: a couple of
+   years of descriptions sit behind that button. */
+.app-desc-hints {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
 .app-template-item__avatar {
   min-width: 40px;
 }
