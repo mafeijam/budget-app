@@ -80,12 +80,40 @@ class DividendPageTest extends TestCase
             ->where('years.1.bySymbol', ['0005.HK' => '120.0000', '0700.HK' => '30.0000'])
             ->where('years.2.bySymbol', ['0005.HK' => '40.0000'])
             // A symbol that stopped paying is still in the filter's list, with what it
-            // paid in all and how many of the years it paid in.
+            // paid in all and how many of the years it paid in -- and the list is in that
+            // order, biggest first, because it is the order the colours come from.
             ->where('allSymbols', [
                 ['symbol' => '0005.HK', 'name' => null, 'total' => '160.0000', 'years' => 2],
                 ['symbol' => '0700.HK', 'name' => null, 'total' => '30.0000', 'years' => 1],
             ])
         );
+    }
+
+    public function test_the_symbols_are_ranked_by_all_time_so_a_colour_means_one_symbol_on_every_year(): void
+    {
+        // 0700 has paid the most overall and 0005 the least, so this list is the reverse
+        // of the alphabetical order the symbols are read in -- which is the point. The
+        // page takes a symbol's colour from its place in this list, so if the list were in
+        // any other order the colours would follow it, and ranking it by the year on screen
+        // instead would give a different colour to the same symbol each time the year
+        // changed. The 2024 view is included because 0005 leads 2025 on that year's own
+        // figures and 0700 leads 2024: ranked per year the two swap, and the colours with
+        // them.
+        $this->dividend('2025-03-10', '0005.HK', '60');
+        $this->dividend('2024-09-10', '0005.HK', '10');
+        $this->dividend('2025-09-12', '0700.HK', '10');
+        $this->dividend('2024-09-12', '0700.HK', '60');
+        $this->dividend('2023-09-12', '0700.HK', '5');
+
+        $order = ['0700.HK', '0005.HK'];
+
+        foreach ([2025, 2024] as $year) {
+            $this->get("/dividends?year={$year}")->assertInertia(fn (Assert $page) => $page
+                ->where('allSymbols', fn ($all) => array_column($all->all(), 'symbol') === $order)
+                ->where('allSymbols.0.total', '75.0000')
+                ->where('allSymbols.1.total', '70.0000')
+            );
+        }
     }
 
     public function test_the_expected_top_on_the_current_year_is_split_by_symbol(): void

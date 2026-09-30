@@ -331,15 +331,32 @@ const at = computed(() => props.years.findIndex(y => y.year === props.year))
 const newer = computed(() => props.years[at.value - 1]?.year ?? null)
 const older = computed(() => props.years[at.value + 1]?.year ?? null)
 
-// The shared categorical palette, in rank order, and the neutral past its end. Ranked by
-// the server on what each symbol paid plus what is expected of it, so a colour says both
-// which symbol and how big a share it is.
+// How many hold a colour, and below what share of the year one is too thin to name --
+// PositionAllocation's rule, so the two charts agree on what is too small to point at.
+const named = 8
+const smallest = 0.03
+
+// What each symbol has paid in all, which is the order its colour comes from, so a colour
+// means one symbol on every year rather than a different one each time the year changes.
+const rank = computed(() => new Map(props.allSymbols.map((s, i) => [s.symbol, i])))
+
 const ranked = computed(() =>
-  props.symbols.map((symbol, i) => ({
-    ...symbol,
-    colour: seriesColour(i),
-    other: i >= palette.length,
-  })),
+  props.symbols.map(symbol => {
+    // A symbol the all-time list does not name is past the palette, so it reads as Others
+    // rather than taking a colour from one that is.
+    const at = rank.value.get(symbol.symbol) ?? props.allSymbols.length
+    const share = Number(props.total) > 0 ? Number(symbol.total) / Number(props.total) : 0
+    const other = at >= named || share < smallest
+
+    return {
+      ...symbol,
+      // The neutral when it is in Others, not merely flagged as such: the palette is ten
+      // long and the cut is eight, so a symbol past the cut still has a colour of its own
+      // to hand, and the table's swatch would claim it while the chart drew it grey.
+      colour: other ? neutral : seriesColour(at),
+      other,
+    }
+  }),
 )
 
 const isCurrent = computed(() => props.today.startsWith(String(props.year)))

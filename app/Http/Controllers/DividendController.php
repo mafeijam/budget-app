@@ -144,10 +144,16 @@ class DividendController extends Controller
             'expectedMonths' => $months($expected),
             'previousMonths' => $months($lastYear),
             'symbols' => $bySymbol,
-            // The picker's list, and the two figures that make an entry in it worth
-            // reading: the name it is known by, and everything it has ever paid, which is
-            // neither this year's total nor any one of the bars. Also the years it has
-            // paid in, so a symbol on one bar reads as a different thing from one on nine.
+            // Every symbol that has ever paid, biggest first, and it is the order the
+            // colours come from: what a symbol has paid in all, not in the year on screen.
+            // Ranked per year, the order moves with the year and so does every colour --
+            // 1883.HK was orange on 2024 and grey in Others on 2026 -- which makes a
+            // symbol's colour mean a different symbol each time the year changes.
+            //
+            // Also the picker's list, and the two figures that make an entry in it worth
+            // reading: the name it is known by, and everything it has paid, which is
+            // neither this year's total nor any one of the bars. And the years it has paid
+            // in, so a symbol on one bar reads as a different thing from one on nine.
             'allSymbols' => $allSymbols->map(function (string $code) use ($paid, $sum, $money, $allNames) {
                 $own = $paid->where('symbol', $code);
 
@@ -157,7 +163,7 @@ class DividendController extends Controller
                     'total' => $money($sum($own)),
                     'years' => $own->pluck('year')->unique()->count(),
                 ];
-            })->all(),
+            })->sortByDesc('total')->values()->all(),
             // What is still to come, per symbol. The dashed top on this year's bar is a
             // whole-year figure, so a symbol filtered onto that bar needs its own share of
             // it -- or the bar shows the expectation of every symbol at once, which is
