@@ -34,16 +34,23 @@ export default {
         which is what lets text-positive and text-negative in the tables follow the same
         values without a single component naming a hex -- or the progress bar in app.js,
         which names var(--q-primary) rather than copy the value out of this block.
+
+        Nested in config because that is the only place Quasar looks, and it does not say
+        so: it reads opts.config.brand and ignores a brand key beside it, so the block
+        misplaced there is dropped with nothing thrown and every colour left as the
+        defaults compiled into quasar.css, which is a green at 2.6:1 on white.
       */
-      brand: {
-        primary: '#2563eb',
-        secondary: '#475569',
-        accent: '#7c3aed',
-        dark: '#0f172a',
-        positive: '#059669',
-        negative: '#dc2626',
-        info: '#0284c7',
-        warning: '#b45309',
+      config: {
+        brand: {
+          primary: '#2563eb',
+          secondary: '#475569',
+          accent: '#7c3aed',
+          dark: '#0f172a',
+          positive: '#059669',
+          negative: '#dc2626',
+          info: '#0284c7',
+          warning: '#b45309',
+        },
       },
     })
   },
