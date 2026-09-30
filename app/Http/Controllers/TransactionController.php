@@ -16,6 +16,7 @@ use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Models\TransactionTemplate;
 use App\Support\CardStatement;
+use App\Support\CashFlow;
 use App\Support\Positions;
 use App\Support\TradeCash;
 use Brick\Math\BigDecimal;
@@ -134,6 +135,13 @@ class TransactionController extends Controller
                     : $q),
                 AllowedFilter::callback('date_to', fn (Builder $q, $value) => self::isDay($value)
                     ? $q->where('date', '<=', $value)
+                    : $q),
+                // The day a cash flow month counts a row on, so its link lists what it summed.
+                AllowedFilter::callback('counted_from', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where(fn (Builder $q) => CashFlow::whereCounted($q, '>=', $value))
+                    : $q),
+                AllowedFilter::callback('counted_to', fn (Builder $q, $value) => self::isDay($value)
+                    ? $q->where(fn (Builder $q) => CashFlow::whereCounted($q, '<=', $value))
                     : $q),
                 // One statement: its charges, and the payments naming it. Pair with account_id,
                 // since a due date is only unique within one card.

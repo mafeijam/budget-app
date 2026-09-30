@@ -13,7 +13,7 @@
           emit-value
           map-options
           options-dense
-          @update:model-value="value => visit(value || null)"
+          @update:model-value="value => visit({ ccy: value || null })"
         >
           <template #prepend>
             <q-icon name="payments" size="xs" color="grey-7" />
@@ -28,10 +28,32 @@
             </q-item>
           </template>
         </q-select>
+        <q-space />
+
+        <!-- The Positions page's toolbar, so the pages' controls read alike. -->
+        <div class="app-toolbar row items-center no-wrap">
+          <q-icon name="credit_card" size="xs" color="grey-6" class="q-mx-sm" />
+          <q-btn-toggle
+            :model-value="card"
+            :options="[
+              { label: 'By due date', value: 'due' },
+              { label: 'By charge date', value: 'charged' },
+            ]"
+            no-caps
+            unelevated
+            dense
+            toggle-color="blue-1"
+            toggle-text-color="primary"
+            text-color="grey-8"
+            padding="xs md"
+            class="app-toolbar__toggle text-weight-bold"
+            @update:model-value="value => visit({ card: value })"
+          />
+        </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">
-        The last {{ months }} months. Paying a card and trading are moves between your own accounts,
-        so neither counts as spending; pending rows are left out.
+        The last {{ months }} months. {{ cardNote }} Paying a card and trading are moves between
+        your own accounts, so neither counts as spending; pending rows are left out.
       </div>
     </div>
 
@@ -155,6 +177,7 @@ const props = defineProps({
   report: { type: Array, default: () => [] },
   months: { type: Number, default: 12 },
   ccy: { type: String, default: null },
+  card: { type: String, default: 'due' },
   currencies: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
   unconverted: { type: Array, default: () => [] },
@@ -165,8 +188,19 @@ const currencyOptions = computed(() => [
   ...props.currencies.map(code => ({ label: code, value: code, caption: `${code} accounts only` })),
 ])
 
-const visit = ccy =>
-  router.get('/cash-flow', ccy ? { ccy } : {}, { preserveScroll: true, replace: true })
+// Each off the URL at its default: every currency, and card spending by due date.
+const visit = ({ ccy = props.ccy, card = props.card }) =>
+  router.get(
+    '/cash-flow',
+    { ...(ccy ? { ccy } : {}), ...(card === 'due' ? {} : { card }) },
+    { preserveScroll: true, replace: true },
+  )
+
+const cardNote = computed(() =>
+  props.card === 'due'
+    ? 'A card charge counts in the month its statement is due.'
+    : 'A card charge counts in the month it was made.',
+)
 
 const money = useMoney()
 
@@ -219,8 +253,9 @@ const openTransactions = (month, category) =>
   router.visit('/transactions', {
     data: {
       filter: {
-        date_from: month.from,
-        date_to: month.to,
+        ...(props.card === 'due'
+          ? { counted_from: month.from, counted_to: month.to }
+          : { date_from: month.from, date_to: month.to }),
         ...(category.id ? { category_id: category.id } : {}),
       },
     },

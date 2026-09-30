@@ -54,7 +54,7 @@ class CashFlowTest extends TestCase
         ], $month['categories']);
     }
 
-    public function test_a_charge_is_spent_when_made_and_paying_the_card_is_not_spent_again(): void
+    public function test_a_charge_is_spent_when_due_and_paying_the_card_is_not_spent_again(): void
     {
         $this->charge('2026-08-01', '250');
 
@@ -63,9 +63,29 @@ class CashFlowTest extends TestCase
 
         $this->assertSame(2, Transaction::whereIn('type', ['payment', 'withdraw'])->count());
 
-        $this->assertSame('250.0000', $this->month('HKD', '2026-08')['spending']);
-        $this->assertSame('0.0000', $this->month('HKD', '2026-09')['spending']);
+        $this->assertSame('0.0000', $this->month('HKD', '2026-08')['spending']);
+        $this->assertSame('250.0000', $this->month('HKD', '2026-09')['spending']);
+        $this->assertSame('250.0000', $this->month('HKD', '2026-09')['card_spending']);
+        $this->assertSame('0.0000', $this->month('HKD', '2026-09')['cash_spending']);
         $this->assertSame('0.0000', $this->month('HKD', '2026-09')['income']);
+    }
+
+    public function test_by_charge_date_a_charge_is_spent_in_the_month_it_was_made(): void
+    {
+        $this->charge('2026-08-01', '250');
+
+        $months = collect(CashFlow::lastMonths(today(), onDueDate: false)[0]['months'])->keyBy('month');
+
+        $this->assertSame('250.0000', $months['2026-08']['spending']);
+        $this->assertSame('0.0000', $months['2026-09']['spending']);
+    }
+
+    public function test_a_charge_made_before_the_window_counts_in_the_month_it_falls_due(): void
+    {
+        // Made in September 2025, before the window opens; due 10 October, inside it.
+        $this->charge('2025-09-20', '40');
+
+        $this->assertSame('40.0000', $this->month('HKD', '2025-10')['spending']);
     }
 
     public function test_a_charge_in_another_currency_counts_at_what_the_card_owes_for_it(): void
@@ -73,7 +93,7 @@ class CashFlowTest extends TestCase
         $this->post('/transactions', [
             'account_id' => $this->card->id,
             'category_id' => $this->category,
-            'date' => '2026-09-05',
+            'date' => '2026-08-05',
             'type' => 'charge',
             'description' => 'Music',
             'amount' => '10.99',
@@ -106,7 +126,27 @@ class CashFlowTest extends TestCase
 
         $this->assertSame('2200.0000', $month['invested']);
         $this->assertSame('120.0000', $month['income']);
+        $this->assertSame('120.0000', $month['dividend']);
         $this->assertSame('0.0000', $month['spending']);
+    }
+
+    public function test_dividends_are_broken_out_of_income_and_card_charges_out_of_spending(): void
+    {
+        $this->cash('deposit', '2026-09-01', '1000');
+        $this->cash('dividend', '2026-09-02', '30');
+        $this->cash('withdraw', '2026-09-03', '200', $this->category);
+        $this->charge('2026-08-20', '75');
+
+        $month = $this->month('HKD', '2026-09');
+
+        $this->assertSame('1030.0000', $month['income']);
+        $this->assertSame('30.0000', $month['dividend']);
+        $this->assertSame('1000.0000', $month['other_income']);
+        $this->assertSame('275.0000', $month['spending']);
+        $this->assertSame('75.0000', $month['card_spending']);
+        $this->assertSame('200.0000', $month['cash_spending']);
+        $this->assertSame('30.0000', $this->report('HKD')['totals']['dividend']);
+        $this->assertSame('75.0000', $this->report('HKD')['totals']['card_spending']);
     }
 
     public function test_pending_rows_and_rows_before_the_window_do_not_count(): void
@@ -200,9 +240,13 @@ class CashFlowTest extends TestCase
         $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
             ->component('cash-flow')
             ->where('months', 12)
+            ->where('card', 'due')
             ->where('report.0.ccy', 'HKD')
             ->where('report.0.totals.income', '100.0000')
         );
+
+        $this->get('/cash-flow?card=charged')->assertInertia(fn (Assert $page) => $page->where('card', 'charged'));
+        $this->get('/cash-flow?card=soon')->assertInertia(fn (Assert $page) => $page->where('card', 'due'));
     }
 
     private function cash(

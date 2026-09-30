@@ -308,6 +308,17 @@ class TransactionFilterTest extends TestCase
         );
     }
 
+    public function test_the_counted_range_lists_a_charge_by_its_due_date(): void
+    {
+        // Both January charges fall due on 9 February, so they belong to February's cash
+        // flow, which is the month whose link asks for them.
+        $this->assertListed(
+            ['filter' => ['counted_from' => '2026-02-01', 'counted_to' => '2026-02-10']],
+            ['Rent', 'Books', 'Coffee, tea']
+        );
+        $this->assertListed(['filter' => ['counted_from' => '2026-01-01', 'counted_to' => '2026-01-31']], []);
+    }
+
     public function test_a_date_that_is_not_a_calendar_day_is_ignored(): void
     {
         // Compared as a string, "2026-1-5" sorts after "2026-01-31" and would drop rows

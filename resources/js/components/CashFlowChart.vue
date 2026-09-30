@@ -1,11 +1,10 @@
 <template>
   <div class="cash-flow-chart">
     <div class="row items-center q-gutter-md text-caption text-grey-8 q-mb-sm">
-      <div class="row items-center no-wrap">
-        <span class="cash-flow-chart__swatch" :style="{ background: colours.income }" />Income
-      </div>
-      <div class="row items-center no-wrap">
-        <span class="cash-flow-chart__swatch" :style="{ background: colours.spending }" />Spending
+      <div v-for="part in parts" :key="part.key" class="row items-center no-wrap">
+        <span class="cash-flow-chart__swatch" :style="{ background: part.colour }" />{{
+          part.label
+        }}
       </div>
       <div class="row items-center no-wrap">
         <span class="cash-flow-chart__line" :style="{ background: colours.net }" />Net
@@ -43,12 +42,21 @@
           </text>
         </g>
 
+        <defs>
+          <clipPath :id="`${uid}-above`">
+            <rect :x="0" :y="0" :width="width" :height="y(0)" />
+          </clipPath>
+          <clipPath :id="`${uid}-below`">
+            <rect :x="0" :y="y(0)" :width="width" :height="height - y(0)" />
+          </clipPath>
+        </defs>
+
         <g v-for="(month, i) in points" :key="month.month">
-          <path v-if="month.income > 0" :d="column(i, month.income, 1)" :fill="colours.income" />
           <path
-            v-if="month.spending > 0"
-            :d="column(i, month.spending, -1)"
-            :fill="colours.spending"
+            v-for="segment in month.segments"
+            :key="segment.key"
+            :d="column(i, segment.from, segment.to, segment.direction, segment.outer)"
+            :fill="segment.colour"
           />
           <text :x="centre(i)" :y="height - 18" text-anchor="middle" class="cash-flow-chart__tick">
             {{ month.short }}
@@ -65,7 +73,19 @@
         </g>
 
         <!-- Over the bars, faint enough that they read through it. -->
-        <path :d="netArea" :fill="colours.net" fill-opacity="0.15" />
+        <path
+          :d="netArea"
+          :fill="colours.net"
+          fill-opacity="0.15"
+          :clip-path="`url(#${uid}-above)`"
+        />
+        <!-- Below zero the month lost money, and red says so before any figure is read. -->
+        <path
+          :d="netArea"
+          :fill="colours.deficit"
+          fill-opacity="0.2"
+          :clip-path="`url(#${uid}-below)`"
+        />
 
         <polyline
           :points="netLine"
@@ -113,10 +133,14 @@ const money = useMoney()
 
 // The app's positive and negative, as the tables use for money in and out; the net in amber,
 // a hue apart from both so its line reads over either bar.
+// Each kind's lighter shade is its broken-out share, stacked outermost.
 const colours = {
   income: '#059669',
+  dividend: '#6ee7b7',
   spending: '#dc2626',
+  card: '#fca5a5',
   net: '#f59e0b',
+  deficit: '#dc2626',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
   hover: '#f1f5f9',
@@ -131,6 +155,17 @@ const bottom = height - 40
 
 const hovered = ref(null)
 
+// Two charts on one page must not share clip path ids, or one clips by the other's zero line.
+const uid = `cash-flow-${useId()}`
+
+// Nearest the zero line first: the part a stack starts from.
+const parts = [
+  { key: 'dividend', label: 'Dividend', colour: colours.dividend, direction: 1 },
+  { key: 'other_income', label: 'Income', colour: colours.income, direction: 1 },
+  { key: 'cash_spending', label: 'Cash spending', colour: colours.spending, direction: -1 },
+  { key: 'card_spending', label: 'Card spending', colour: colours.card, direction: -1 },
+]
+
 const monthName = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
 const monthLabel = new Intl.DateTimeFormat('en', {
   month: 'long',
@@ -144,11 +179,29 @@ const points = computed(() =>
     const [year, number] = month.month.split('-').map(Number)
     const day = new Date(Date.UTC(year, number - 1, 1))
 
+    const reached = { 1: 0, [-1]: 0 }
+    const segments = parts
+      .map(part => {
+        const from = reached[part.direction]
+        const to = from + Math.max(0, Number(month[part.key]))
+        reached[part.direction] = to
+
+        return { key: part.key, colour: part.colour, direction: part.direction, from, to }
+      })
+      .filter(segment => segment.to > segment.from)
+
+    // Only the end of a stack is rounded; a part under another meets it square.
+    for (const direction of [1, -1]) {
+      const outer = segments.filter(segment => segment.direction === direction).at(-1)
+      if (outer) outer.outer = true
+    }
+
     return {
       month: month.month,
       income: Number(month.income),
       spending: Number(month.spending),
       net: Number(month.net),
+      segments,
       short: monthName.format(day),
       year: i === 0 || number === 1 ? String(year) : '',
     }
@@ -193,14 +246,14 @@ const step = computed(() => (width - left - right) / Math.max(points.value.lengt
 const band = i => left + i * step.value
 const centre = i => band(i) + step.value / 2
 
-// Capped at 36px, square at the baseline and rounded 4px at the data end, with a 1px
-// surface gap either side of the zero line.
-const column = (i, value, direction) => {
+// Capped at 36px, square at the baseline and rounded 4px at the end of the stack, with a 1px
+// surface gap either side of the zero line and between stacked parts.
+const column = (i, from, to, direction, outer) => {
   const w = Math.min(36, step.value * 0.75)
   const x = centre(i) - w / 2
-  const base = y(0) - direction
-  const end = y(direction * value)
-  const r = Math.min(4, Math.abs(end - base))
+  const base = y(direction * from) - direction
+  const end = y(direction * to)
+  const r = outer ? Math.min(4, Math.abs(end - base)) : 0
 
   if (Math.abs(end - base) < 0.5) return ''
 
@@ -237,9 +290,16 @@ const tooltipRows = computed(() => {
   const month = props.months[hovered.value]
 
   const rows = [
-    { label: 'Income', value: money(month.income), colour: colours.income },
-    { label: 'Spending', value: money(month.spending), colour: colours.spending },
-    { label: 'Net', value: money(month.net), colour: colours.net },
+    ...parts.map(part => ({
+      label: part.label,
+      value: money(month[part.key]),
+      colour: part.colour,
+    })),
+    {
+      label: 'Net',
+      value: money(month.net),
+      colour: String(month.net).startsWith('-') ? colours.deficit : colours.net,
+    },
   ]
 
   if (Number(month.invested) !== 0) {
