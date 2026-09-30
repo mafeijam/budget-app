@@ -86,6 +86,12 @@
               <div class="money text-weight-medium">
                 {{ account.ccy }} {{ money(brokerage(account).value) }}
               </div>
+              <div
+                v-if="account.ccy !== base && brokerage(account).value_base !== null"
+                class="text-caption text-grey-6 money"
+              >
+                ≈ {{ base }} {{ money(brokerage(account).value_base) }}
+              </div>
               <div class="text-caption text-grey-6 money">
                 cost {{ money(brokerage(account).cost) }} ·
                 <span :class="signClass(brokerage(account).unrealised)">
