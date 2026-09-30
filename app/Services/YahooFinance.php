@@ -37,7 +37,7 @@ class YahooFinance
      * The close arrives as a JSON float -- 436.6000061035156 for 436.60 -- so it is read
      * into a BigDecimal at once and held to four places, the scale every price here uses.
      *
-     * @return array{currency: string, closes: array<string, string>}
+     * @return array{currency: string, closes: array<string, string>, name: ?string}
      *
      * @throws RuntimeException when Yahoo does not answer with a chart
      */
@@ -91,6 +91,13 @@ class YahooFinance
             $closes[$day] = (string) BigDecimal::of((string) $close)->toScale(4, RoundingMode::HalfUp);
         }
 
-        return ['currency' => strtoupper($result['meta']['currency']), 'closes' => $closes];
+        // The long name where Yahoo has one, "HSBC Holdings plc" rather than "HSBC HOLDINGS".
+        $name = trim((string) ($result['meta']['longName'] ?? $result['meta']['shortName'] ?? ''));
+
+        return [
+            'currency' => strtoupper($result['meta']['currency']),
+            'closes' => $closes,
+            'name' => $name === '' ? null : mb_substr($name, 0, 120),
+        ];
     }
 }

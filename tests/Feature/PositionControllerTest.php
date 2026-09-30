@@ -79,6 +79,75 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_a_holding_carries_its_value_in_the_base_currency_for_the_allocation_bar(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', 'AAPL', '1', '200');
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-05', 'close' => '125.5000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-03-05', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'manual']);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.0.positions.1.market_value_base', '9789.0000')
+            // No price, so no size in the bar rather than a guessed one.
+            ->where('brokerages.0.positions.0.market_value_base', null)
+        );
+    }
+
+    public function test_a_fetch_keeps_the_name_yahoo_gives_unless_one_was_set_by_hand(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-01-05', 'AAPL', '1', '200');
+
+        $chart = fn (string $ccy, float $close, ?string $name = null) => Http::response(['chart' => ['result' => [[
+            'meta' => ['currency' => $ccy, 'exchangeTimezoneName' => 'America/New_York', 'longName' => $name],
+            'timestamp' => [Carbon::parse('2026-03-05 21:00', 'UTC')->timestamp],
+            'indicators' => ['quote' => [['close' => [$close]]]],
+        ]], 'error' => null]]);
+
+        Http::fake([
+            'query1.finance.yahoo.com/v8/finance/chart/NVDA*' => $chart('USD', 130.5, 'NVIDIA Corporation'),
+            'query1.finance.yahoo.com/v8/finance/chart/AAPL*' => $chart('USD', 210, 'Apple Inc.'),
+            'query1.finance.yahoo.com/v8/finance/chart/USDHKD%3DX*' => $chart('HKD', 7.8, 'USD/HKD'),
+        ]);
+
+        $this->post('/symbols/name', ['symbol' => 'aapl ', 'name' => 'Apple'])->assertSessionHasNoErrors();
+        $this->post('/prices/fetch');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('names.NVDA', 'NVIDIA Corporation')
+            // Set by hand, so the fetch left it; and a rate is not a holding with a name.
+            ->where('names.AAPL', 'Apple')
+            ->missing('names.USDHKD=X')
+        );
+
+        // Blank clears it, and the next fetch fills in Yahoo's.
+        $this->post('/symbols/name', ['symbol' => 'AAPL', 'name' => ''])->assertSessionHasNoErrors();
+        $this->post('/prices/fetch');
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page->where('names.AAPL', 'Apple Inc.'));
+    }
+
+    public function test_an_open_holding_carries_its_last_30_days_of_closes(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+
+        // Before the window, inside it, and in the wrong currency.
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-01-30', 'close' => '100.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-02-10', 'close' => '110.0000', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'NVDA', 'date' => '2026-03-05', 'close' => '125.5000', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where("trends.{$this->broker->id}.NVDA", [
+                ['date' => '2026-02-10', 'close' => '110.0000'],
+                ['date' => '2026-03-05', 'close' => '125.5000'],
+            ])
+        );
+    }
+
     public function test_a_price_in_another_currency_is_not_used(): void
     {
         $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');

@@ -658,3 +658,140 @@ body {
   margin-top: 6px;
   color: #64748b;
 }
+
+/* The positions page: three figures that say how the holdings are doing. */
+.app-position-headline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 900px;
+}
+
+.app-position-currency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--app-border);
+}
+
+/* Share of market value: slices a 2px surface gap apart, the ends rounded. */
+.app-allocation {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.app-allocation__slice {
+  flex-basis: 0;
+  min-width: 2px;
+}
+
+.app-allocation__slice:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.app-allocation__slice:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.app-allocation__key {
+  transition: opacity 0.15s;
+}
+
+.app-allocation__key--dim {
+  opacity: 0.35;
+}
+
+.app-positions__group > td {
+  background: #f8fafc;
+  border-top: 1px solid var(--app-border);
+}
+
+.app-positions__row:hover > td {
+  background: #f8fafc;
+}
+
+.app-positions__sortable:hover {
+  color: #1e293b;
+}
+
+/* Every cell from the top, so a row's figures share a first line; Quasar's middle wins without it. */
+.app-positions tbody td {
+  vertical-align: top !important;
+}
+
+/*
+ * The column labels pinned under the app bar. Sticky sticks to the nearest ancestor that
+ * clips or scrolls, and Quasar's markup table is both (overflow: auto, and hidden here for
+ * the rounded corners), so the header stuck to a box that never scrolled and never moved:
+ * that, not the offset, is why pinning it failed before. Lifted on this table alone, the
+ * window is the scroller and the bar's height is the offset.
+ */
+.app-positions.q-table__container,
+.app-positions .q-table__middle {
+  overflow: visible;
+}
+
+.app-positions thead th {
+  position: sticky;
+  top: var(--app-sticky-top, 0);
+  z-index: 2;
+  background: var(--app-surface);
+  box-shadow: inset 0 -1px 0 var(--app-border);
+}
+
+.app-positions__bar-cell {
+  width: 120px;
+}
+
+/* Level with the first line of figures beside it. */
+.app-positions__bar-cell .app-return-bar {
+  margin-top: 6px;
+}
+
+/* A return from a zero line in the middle, gain to the right and loss to the left. */
+.app-return-bar {
+  position: relative;
+  height: 8px;
+  background: linear-gradient(#94a3b8, #94a3b8) center / 1px 100% no-repeat;
+}
+
+.app-return-bar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.app-return-bar__fill.is-gain {
+  background: #059669;
+  border-radius: 0 3px 3px 0;
+}
+
+.app-return-bar__fill.is-loss {
+  background: #dc2626;
+  border-radius: 3px 0 0 3px;
+}
+
+@media (max-width: 767px) {
+  .app-position-headline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The home card's spark, sized for a price cell. */
+.app-home-spark.app-price-spark {
+  width: 96px;
+  height: 40px;
+  margin-top: 0;
+  padding-top: 0;
+  flex: none;
+}
+
+/* Beside the symbol on its line, cut short rather than pushing the row onto two. */
+.app-positions__name {
+  display: block;
+  min-width: 0;
+  max-width: 300px;
+}

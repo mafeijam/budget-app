@@ -138,160 +138,266 @@
         />
       </q-card-section>
 
-      <!-- One row per currency, and with several, their sum in the base currency first. -->
-      <div
-        v-for="row in view.figureRows.filter(row => row.combined || !view.fold || byCurrency)"
-        :key="row.ccy"
-        class="app-figures"
-        :class="{ 'app-figures--combined': row.combined && (byCurrency || !view.fold) }"
-      >
-        <div v-for="figure in figures(row.totals, row.prefix)" :key="figure.label">
-          <div class="text-caption text-grey-7 ellipsis">{{ figure.label }}</div>
-          <div class="text-h6 text-weight-bold money" :class="figure.class">
-            {{ figure.value }}
-          </div>
-          <div v-if="figure.note" class="text-caption q-mt-xs" :class="figure.noteClass">
-            {{ figure.note }}
+      <!-- The three figures that say how the holdings are doing, and the rest in a line. -->
+      <q-card-section class="q-pt-none">
+        <div class="app-position-headline">
+          <div v-for="figure in headline(view.figureRows[0].totals)" :key="figure.label">
+            <div class="text-caption text-grey-7">{{ figure.label }}</div>
+            <div class="text-h5 text-weight-bold money" :class="figure.class">
+              {{ figure.value }}
+            </div>
+            <div class="text-caption money" :class="figure.noteClass">{{ figure.note }}</div>
           </div>
         </div>
-      </div>
+        <div class="text-caption text-grey-7 money q-mt-sm">
+          {{ details(view.figureRows[0].totals) }}
+        </div>
+
+        <!-- Each currency in its own money, under the sum in the base one. -->
+        <div
+          v-for="row in view.figureRows.slice(1).filter(() => !view.fold || byCurrency)"
+          :key="row.ccy"
+          class="app-position-currency text-caption money"
+        >
+          <span class="text-weight-medium text-grey-9">{{ row.ccy }}</span>
+          <span v-for="figure in headline(row.totals)" :key="figure.label">
+            {{ figure.label }}
+            <span class="text-weight-medium" :class="figure.class">{{ figure.value }}</span>
+          </span>
+          <span class="text-grey-7">{{ details(row.totals) }}</span>
+        </div>
+      </q-card-section>
+
+      <q-card-section v-if="holdings.length > 1" class="q-pt-none">
+        <div class="text-caption text-grey-7 q-mb-xs">Share of market value, in {{ base }}</div>
+        <PositionAllocation :holdings="holdings" :base="base" />
+      </q-card-section>
 
       <q-separator />
 
-      <q-markup-table v-if="view.rows.length" flat dense>
+      <q-markup-table
+        v-if="view.rows.length"
+        flat
+        dense
+        class="app-positions"
+        :style="{ '--app-sticky-top': `${barHeight}px` }"
+      >
         <thead>
           <tr class="text-grey-7">
-            <th class="text-left">Symbol</th>
-            <th v-if="view.all" class="text-left">Brokerage</th>
-            <th class="text-right">Quantity</th>
-            <th class="text-right">Average cost</th>
-            <th class="text-right">Cost</th>
-            <th class="text-right">Price</th>
-            <th class="text-right">Market value</th>
-            <th class="text-right">Unrealised</th>
-            <th class="text-right">Fees</th>
-            <th class="text-right">Realised</th>
-            <th v-if="view.dividends" class="text-right">Dividends</th>
-            <th class="text-right">P&amp;L</th>
-            <th class="text-right">Trades</th>
-            <th class="text-right">Last trade</th>
+            <th
+              v-for="column in columns"
+              :key="column.key"
+              :class="[
+                column.align === 'left' ? 'text-left' : 'text-right',
+                { 'cursor-pointer app-positions__sortable': column.sort },
+              ]"
+              @click="column.sort && sortBy(column.key)"
+            >
+              {{ column.label }}
+              <q-icon
+                v-if="column.sort && sort.key === column.key"
+                :name="sort.desc ? 'arrow_downward' : 'arrow_upward'"
+                size="xs"
+              />
+            </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody v-for="group in groups" :key="group.owner?.id ?? 'one'">
+          <!-- A brokerage's own line, with its subtotal, above its holdings. -->
+          <tr v-if="group.owner" class="app-positions__group">
+            <td :colspan="columns.length">
+              <div class="row items-center no-wrap">
+                <span class="text-weight-bold text-grey-9">{{ group.owner.name }}</span>
+                <q-badge outline color="grey-7" class="q-ml-sm" :label="group.owner.ccy" />
+                <span v-if="group.owner.settles_into" class="text-caption text-grey-6 q-ml-sm">
+                  into {{ group.owner.settles_into }}
+                </span>
+                <q-space />
+                <span class="text-caption text-grey-7 q-mr-xs">Market value</span>
+                <span class="money text-weight-medium q-mr-lg">
+                  {{ money(group.owner.market_value) }}
+                </span>
+                <span class="text-caption text-grey-7 q-mr-xs">Total return</span>
+                <span class="money text-weight-medium" :class="signClass(group.owner.pnl)">
+                  {{ group.owner.pnl === null ? '—' : signed(group.owner.pnl) }}
+                </span>
+              </div>
+            </td>
+          </tr>
+
           <tr
-            v-for="{ owner, position } in view.rows"
+            v-for="{ owner, position } in group.rows"
             :key="`${owner.id}-${position.symbol}`"
+            class="cursor-pointer app-positions__row"
             :class="{ 'text-grey-6': !position.open }"
+            @click="openTrades(owner, position)"
           >
-            <td class="text-weight-medium">
-              {{ position.symbol }}
-              <q-badge
-                v-if="!position.open"
-                color="grey-3"
-                text-color="grey-8"
-                class="q-ml-sm"
-                label="sold out"
-              />
-            </td>
-            <td v-if="view.all" class="text-grey-8">
-              {{ owner.name }}
-              <!-- The row's figures are in this, and two currencies share the table. -->
-              <q-badge
-                v-if="view.currencies.length > 1"
-                outline
-                color="grey-6"
-                class="q-ml-xs"
-                :label="owner.ccy"
-              />
-            </td>
-            <td class="text-right">{{ quantity(position.quantity) }}</td>
-            <td class="text-right money">
-              {{ position.average_cost ? money(position.average_cost) : '' }}
-            </td>
-            <td class="text-right money">{{ position.open ? money(position.cost) : '' }}</td>
-            <td class="text-right money cursor-pointer">
-              <template v-if="position.price">
-                {{ money(position.price) }}
-                <div class="text-caption text-grey-6">
-                  {{ formatDate(position.price_date)
-                  }}{{ position.price_source === 'manual' ? ' · manual' : '' }}
-                </div>
-              </template>
-              <span v-else-if="position.open && !at" class="text-grey-5">set price</span>
-              <span v-else-if="position.open" class="text-grey-5">no price</span>
-              <!-- A hand-set price is filed for today, so not while looking back. -->
-              <q-popup-edit
-                v-if="position.open && !at"
-                v-slot="scope"
-                :model-value="position.price"
-                buttons
-                label-set="Save"
-                @save="value => savePrice(owner, position, value)"
-              >
-                <q-input
-                  v-model="scope.value"
-                  type="number"
-                  step="0.0001"
-                  dense
-                  autofocus
-                  :label="`${position.symbol} today, ${owner.ccy}`"
-                  @keyup.enter="scope.set"
+            <td class="text-left">
+              <div class="row items-center no-wrap">
+                <span class="text-weight-bold text-grey-9">{{ position.symbol }}</span>
+                <!-- Stopped, so naming a symbol does not also open its trades. -->
+                <span
+                  class="app-positions__name text-caption ellipsis cursor-pointer q-ml-sm"
+                  @click.stop
+                >
+                  <span :class="names[position.symbol] ? 'text-grey-8' : 'text-grey-5'">
+                    {{ names[position.symbol] ?? 'add name' }}
+                  </span>
+                  <q-popup-edit
+                    v-slot="scope"
+                    :model-value="names[position.symbol] ?? ''"
+                    buttons
+                    label-set="Save"
+                    @save="value => saveName(position, value)"
+                  >
+                    <q-input
+                      v-model="scope.value"
+                      dense
+                      autofocus
+                      maxlength="120"
+                      :label="`What ${position.symbol} is called`"
+                      hint="Blank puts back the name the next fetch finds"
+                      @keyup.enter="scope.set"
+                    />
+                  </q-popup-edit>
+                  <q-tooltip v-if="names[position.symbol]" :delay="700" :offset="[0, 6]">
+                    {{ names[position.symbol] }}
+                  </q-tooltip>
+                </span>
+                <q-badge
+                  v-if="!position.open"
+                  color="grey-3"
+                  text-color="grey-8"
+                  class="q-ml-sm"
+                  label="sold out"
                 />
-              </q-popup-edit>
+              </div>
+              <div v-if="position.open" class="text-caption text-grey-7 money">
+                {{ quantity(position.quantity) }} @ {{ money(position.average_cost) }}
+              </div>
+              <div class="text-caption text-grey-6">{{ activity(position) }}</div>
             </td>
+
+            <!-- Stopped, so setting a price does not also open the trades. -->
+            <td class="text-right money" @click.stop>
+              <div class="cursor-pointer">
+                <template v-if="position.price">
+                  <!-- The line beside the price and its change, as tall as the two together. -->
+                  <div class="row items-start no-wrap justify-end">
+                    <HomeSpark
+                      v-if="trendOf(owner, position).length > 1"
+                      :values="trendOf(owner, position).map(close => close.close)"
+                      :colour="trendChange(owner, position) < 0 ? '#dc2626' : '#059669'"
+                      :label="`${position.symbol} over the last 30 days`"
+                      class="app-price-spark q-mr-sm"
+                    />
+                    <div>
+                      <div>{{ money(position.price) }}</div>
+                      <div class="text-caption text-grey-6">
+                        <span
+                          v-if="trendOf(owner, position).length > 1"
+                          :class="
+                            trendChange(owner, position) < 0 ? 'text-negative' : 'text-positive'
+                          "
+                        >
+                          {{ trendLabel(owner, position) }}
+                        </span>
+                        <div v-if="priceNote(position)">{{ priceNote(position) }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <q-tooltip
+                    v-if="trendOf(owner, position).length > 1"
+                    :delay="500"
+                    :offset="[0, 6]"
+                  >
+                    {{ trendTip(owner, position) }}
+                  </q-tooltip>
+                </template>
+                <span v-else-if="position.open && !at" class="text-grey-5">set price</span>
+                <span v-else-if="position.open" class="text-grey-5">no price</span>
+                <!-- A hand-set price is filed for today, so not while looking back. -->
+                <q-popup-edit
+                  v-if="position.open && !at"
+                  v-slot="scope"
+                  :model-value="position.price"
+                  buttons
+                  label-set="Save"
+                  @save="value => savePrice(owner, position, value)"
+                >
+                  <q-input
+                    v-model="scope.value"
+                    type="number"
+                    step="0.0001"
+                    dense
+                    autofocus
+                    :label="`${position.symbol} today, ${owner.ccy}`"
+                    @keyup.enter="scope.set"
+                  />
+                </q-popup-edit>
+              </div>
+            </td>
+
+            <td class="text-right money text-grey-8">
+              <template v-if="position.open">{{ money(position.cost) }}</template>
+            </td>
+
             <td class="text-right money">
-              {{ position.market_value ? money(position.market_value) : '' }}
+              <span v-if="position.market_value" class="text-weight-medium text-grey-9">
+                {{ money(position.market_value) }}
+              </span>
             </td>
+
             <td class="text-right money" :class="signClass(position.unrealised)">
-              {{ position.unrealised ? money(position.unrealised) : '' }}
+              <template v-if="position.unrealised">
+                {{ signed(position.unrealised) }}
+                <div class="text-caption">{{ unrealisedPercent(position) }}</div>
+              </template>
             </td>
-            <td class="text-right text-grey-7 money">{{ money(position.fees) }}</td>
-            <td class="text-right money" :class="signClass(position.realised)">
-              {{ money(position.realised) }}
-            </td>
-            <!-- Received, on the symbol this row holds. Zero rather than blank, like fees
-                 and realised beside it; the caption and the link are what a symbol that
-                 has paid has and one that has not does not. -->
+
+            <!-- Received, on the symbol this row holds; its count opens those rows. -->
             <td
               v-if="view.dividends"
               class="text-right money"
-              :class="[
-                signClass(position.dividends),
-                { 'cursor-pointer': position.dividend_count },
-              ]"
-              @click="openDividends(position)"
+              :class="{ 'cursor-pointer': position.dividend_count }"
+              @click.stop="openDividends(position, owner)"
             >
-              {{ money(position.dividends) }}
-              <div v-if="position.dividend_count" class="text-caption text-grey-6">
-                {{ payments(position.dividend_count) }}
-                <q-icon name="open_in_new" size="xs">
-                  <q-tooltip :delay="500" :offset="[0, 6]">
-                    This symbol's dividend transactions
-                  </q-tooltip>
-                </q-icon>
-              </div>
+              <template v-if="position.dividend_count">
+                <span class="text-grey-9">{{ money(position.dividends) }}</span>
+                <div class="text-caption text-grey-6">
+                  {{ payments(position.dividend_count) }}
+                  <q-icon name="open_in_new" size="xs">
+                    <q-tooltip :delay="500" :offset="[0, 6]">
+                      This symbol's dividend transactions
+                    </q-tooltip>
+                  </q-icon>
+                </div>
+              </template>
+              <span v-else class="text-grey-5">—</span>
             </td>
+
             <!-- What the line has made, over the cost still held. Blank where a holding has
                  no price: its cost is in none of the three legs, so there is no figure of
                  the whole that would not be quietly wrong. -->
             <td class="text-right money" :class="signClass(position.pnl)">
               <template v-if="position.pnl !== null">
-                {{ money(position.pnl) }}
+                <span class="text-weight-bold">{{ signed(position.pnl) }}</span>
                 <div class="text-caption" :class="pnlNoteClass(position)">
                   {{ pnlNote(position) }}
                 </div>
               </template>
             </td>
-            <!-- Every position here was opened by a trade, so there is always a list to open. -->
-            <td class="text-right cursor-pointer" @click="openTrades(owner, position)">
-              {{ position.trades }}
-              <q-icon name="open_in_new" size="xs" color="grey-6">
-                <q-tooltip :delay="500" :offset="[0, 6]">
-                  This symbol's buy and sell transactions
-                </q-tooltip>
-              </q-icon>
+
+            <!-- The return as a bar from a zero line, capped at 100% either way. -->
+            <td class="app-positions__bar-cell">
+              <div v-if="position.pnl_percent !== null" class="app-return-bar">
+                <div
+                  class="app-return-bar__fill"
+                  :class="Number(position.pnl_percent) < 0 ? 'is-loss' : 'is-gain'"
+                  :style="returnBar(position.pnl_percent)"
+                />
+              </div>
             </td>
-            <td class="text-right">{{ formatDate(position.last_trade_date) }}</td>
           </tr>
         </tbody>
       </q-markup-table>
@@ -312,9 +418,27 @@ const props = defineProps({
   pricesUpdatedAt: { type: String, default: null },
   at: { type: String, default: null },
   today: { type: String, default: null },
+  // Symbol => what it is called, fetched from Yahoo or typed in.
+  names: { type: Object, default: () => ({}) },
+  // Brokerage id => symbol => its closes over the last 30 days, oldest first.
+  trends: { type: Object, default: () => ({}) },
 })
 
 const dayMenu = ref(null)
+
+// The app bar's height, read off the bar rather than written down: the column labels are
+// pinned just under it. The layout is hHh with no reveal, so the bar is fixed and always on
+// screen, and its height is the whole offset -- the earlier attempt assumed it scrolled away.
+const barHeight = ref(0)
+const bar = ref(null)
+
+onMounted(() => {
+  bar.value = document.querySelector('.q-layout .q-header')
+})
+
+useResizeObserver(bar, () => {
+  barHeight.value = bar.value?.offsetHeight ?? 0
+})
 
 const visit = day =>
   router.get('/positions', day ? { at: day } : {}, { preserveScroll: true, replace: true })
@@ -505,6 +629,47 @@ const fetchPrices = () => {
   })
 }
 
+const saveName = (position, name) => {
+  router.post(
+    '/symbols/name',
+    { symbol: position.symbol, name },
+    {
+      preserveScroll: true,
+      onSuccess: () => notifySuccess(),
+      onError: errors => $q.notify({ type: 'negative', message: Object.values(errors)[0] }),
+    },
+  )
+}
+
+const trendOf = (owner, position) => props.trends[owner.id]?.[position.symbol] ?? []
+
+// A change for reading, not money, so a float.
+const trendChange = (owner, position) => {
+  const closes = trendOf(owner, position)
+  const first = Number(closes[0]?.close)
+
+  return first > 0 ? (Number(closes.at(-1).close) - first) / first : 0
+}
+
+const trendLabel = (owner, position) => {
+  const change = trendChange(owner, position) * 100
+
+  return `${change > 0 ? '+' : ''}${change.toFixed(1)}% 30d`
+}
+
+// The two closes the change is between, the server's strings; a gap of more than a week
+// between closes is drawn straight across, and said so.
+const trendTip = (owner, position) => {
+  const closes = trendOf(owner, position)
+  const first = closes[0]
+  const last = closes.at(-1)
+  const gap = closes.some(
+    (close, i) => i > 0 && new Date(close.date) - new Date(closes[i - 1].date) > 7 * 86400000,
+  )
+
+  return `${money(first.close)} on ${formatDate(first.date)} → ${money(last.close)} on ${formatDate(last.date)}${gap ? ' · a gap of over a week is drawn straight across' : ''}`
+}
+
 const savePrice = (broker, position, close) => {
   router.post(
     '/prices',
@@ -555,32 +720,147 @@ const pnlNote = totals => {
 const pnlNoteClass = totals =>
   totals.pnl_percent === null ? 'text-grey-6' : signClass(totals.pnl_percent)
 
-// The seventh figure, and the only one with a note: the percentage is a second reading of
-// the same three legs, and the one that needs a word under it is the blank that means an
-// unpriced holding rather than a loss.
-const pnlFigure = (totals, prefix) => ({
-  label: `${prefix}P&L${totals.unpriced ? ` (${totals.unpriced} unpriced)` : ''}`,
-  value: money(totals.pnl),
-  class: signClass(totals.pnl),
-  note: pnlNote(totals),
-  noteClass: pnlNoteClass(totals),
+const signed = value =>
+  String(value).startsWith('-') || !/[1-9]/.test(String(value)) ? money(value) : `+${money(value)}`
+
+// Market value less unrealised is the cost of what is priced, the only cost the unrealised
+// figure is a share of. A percentage for reading, so a float.
+const unrealisedOf = totals => {
+  const cost = Number(totals.market_value) - Number(totals.unrealised)
+
+  return cost > 0 ? `${((Number(totals.unrealised) / cost) * 100).toFixed(2)}%` : ''
+}
+
+const unrealisedPercent = position => unrealisedOf(position)
+
+const headline = totals => [
+  {
+    label: totals.unpriced ? `Market value (${totals.unpriced} unpriced)` : 'Market value',
+    value: money(totals.market_value),
+    class: 'text-grey-9',
+    note: `cost ${money(totals.open_cost)}`,
+    noteClass: 'text-grey-6',
+  },
+  {
+    label: 'Unrealised',
+    value: signed(totals.unrealised),
+    class: signClass(totals.unrealised),
+    note: unrealisedOf(totals),
+    noteClass: signClass(totals.unrealised),
+  },
+  {
+    label: 'Total return',
+    value: totals.pnl === null ? '—' : signed(totals.pnl),
+    class: signClass(totals.pnl),
+    note: totals.pnl === null ? 'a holding has no price' : pnlNote(totals),
+    noteClass: pnlNoteClass(totals),
+  },
+]
+
+// The legs of the total return, and the fees it is before.
+const details = totals =>
+  [
+    `Realised ${signed(totals.realised)}`,
+    `Dividends ${money(totals.dividends)}`,
+    `Fees ${money(totals.fees)}, not taken off the return`,
+  ].join(' · ')
+
+// Trades, the last of them, and the fees and realised gains a row has only sometimes.
+const activity = position =>
+  [
+    `${position.trades} trade${position.trades === 1 ? '' : 's'}`,
+    position.last_trade_date ? `last ${formatDate(position.last_trade_date)}` : null,
+    received(position.fees) ? `fees ${money(position.fees)}` : null,
+    received(position.realised) ? `realised ${signed(position.realised)}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+// The day most prices are from, so only a price older than it, or set by hand, says when.
+const latestPriceDate = computed(() =>
+  props.brokerages
+    .flatMap(b => b.positions.map(p => p.price_date))
+    .filter(Boolean)
+    .sort()
+    .at(-1),
+)
+
+const priceNote = position =>
+  [
+    position.price_date !== latestPriceDate.value ? formatDate(position.price_date) : null,
+    position.price_source === 'manual' ? 'manual' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+const returnBar = percent => {
+  const width = Math.min(Math.abs(Number(percent)), 100) / 2
+
+  return Number(percent) < 0
+    ? { right: '50%', width: `${width}%` }
+    : { left: '50%', width: `${width}%` }
+}
+
+const columns = computed(() => [
+  { key: 'symbol', label: 'Symbol', align: 'left', sort: true },
+  { key: 'price', label: 'Price' },
+  { key: 'cost', label: 'Cost', sort: true },
+  { key: 'market', label: 'Market value', sort: true },
+  { key: 'unrealised', label: 'Unrealised', sort: true },
+  ...(view.value?.dividends ? [{ key: 'dividends', label: 'Dividends', sort: true }] : []),
+  { key: 'pnl', label: 'Total return', sort: true },
+  { key: 'bar', label: 'Return' },
+])
+
+// Largest holding first unless asked otherwise; remembered per browser, a view choice.
+const sort = useStorage('positions.sort', { key: 'market', desc: true })
+
+const sortBy = key => {
+  sort.value = { key, desc: sort.value.key === key ? !sort.value.desc : key !== 'symbol' }
+}
+
+// Numbers for ordering only. A sold-out row goes last whatever the order, since it holds
+// nothing to compare.
+const sortValue = {
+  symbol: p => p.symbol,
+  cost: p => Number(p.open ? p.cost : 0),
+  market: p => Number(p.market_value ?? 0),
+  unrealised: p => Number(p.unrealised ?? 0),
+  dividends: p => Number(p.dividends ?? 0),
+  pnl: p => Number(p.pnl ?? 0),
+}
+
+const ordered = rows =>
+  [...rows].sort((a, b) => {
+    if (a.position.open !== b.position.open) return a.position.open ? -1 : 1
+
+    const read = sortValue[sort.value.key] ?? sortValue.market
+    const [x, y] = [read(a.position), read(b.position)]
+    const order = typeof x === 'string' ? x.localeCompare(y) : x - y
+
+    return sort.value.desc ? -order : order
+  })
+
+// A brokerage's holdings under its own line in the All view; one list in a brokerage's.
+const groups = computed(() => {
+  if (!view.value) return []
+
+  if (!view.value.all) return [{ owner: null, rows: ordered(view.value.rows) }]
+
+  return props.brokerages
+    .map(owner => ({ owner, rows: ordered(rowsOf(owner)) }))
+    .filter(group => group.rows.length)
 })
 
-const figures = (broker, prefix = '') => [
-  {
-    label: `${prefix}${broker.unpriced ? `Market value (${broker.unpriced} unpriced)` : 'Market value'}`,
-    value: money(broker.market_value),
-    class: 'text-grey-9',
-  },
-  {
-    label: `${prefix}Unrealised`,
-    value: money(broker.unrealised),
-    class: signClass(broker.unrealised),
-  },
-  { label: `${prefix}Cost held`, value: money(broker.open_cost), class: 'text-grey-9' },
-  { label: `${prefix}Realised`, value: money(broker.realised), class: signClass(broker.realised) },
-  { label: `${prefix}Fees`, value: money(broker.fees), class: 'text-grey-9' },
-  { label: `${prefix}Dividends`, value: money(broker.dividends), class: 'text-grey-9' },
-  pnlFigure(broker, prefix),
-]
+// What the allocation bar divides: the open holdings on show, in the base currency.
+const holdings = computed(() =>
+  (view.value?.rows ?? [])
+    .filter(({ position }) => position.open)
+    .map(({ owner, position }) => ({
+      key: `${owner.id}-${position.symbol}`,
+      label: position.symbol,
+      name: props.names[position.symbol] ?? null,
+      base: position.market_value_base,
+    })),
+)
 </script>

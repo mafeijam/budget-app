@@ -33,6 +33,7 @@ Route::get('forecast', [ForecastController::class, 'index'])->name('forecast');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');
+Route::post('symbols/name', [PositionController::class, 'name'])->name('symbols.name');
 
 // A transaction template is a saved set of the transaction form's values, so it is made
 // and used from that form: the list rides along on the transactions page and there is no

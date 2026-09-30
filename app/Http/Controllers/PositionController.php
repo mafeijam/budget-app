@@ -7,6 +7,7 @@ use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Price;
+use App\Models\Symbol;
 use App\Models\Transaction;
 use App\Support\Fx;
 use App\Support\Positions;
@@ -14,6 +15,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Validation\Rule;
 
@@ -50,8 +52,11 @@ class PositionController extends Controller
                 fn (Transaction $row) => Positions::symbol($row->meta?->meta['symbol'] ?? '')
             ));
 
+        // For the allocation bar, which compares holdings across currencies.
+        $fx = Fx::for($brokers->pluck('ccy')->all());
+
         $brokerages = $brokers
-            ->map(function (Account $broker) use ($dividends, $at) {
+            ->map(function (Account $broker) use ($dividends, $at, $fx) {
                 $valued = Positions::valued($broker, $at);
                 $received = $dividends[$broker->id] ?? collect();
                 $paying = fn (string $symbol) => $received->get($symbol, collect());
@@ -60,7 +65,7 @@ class PositionController extends Controller
                     ->reduce(fn (BigDecimal $total, $value) => $total->plus($value), BigDecimal::zero())
                     ->toScale(4);
 
-                $positions = array_map(function (array $position) use ($paying, $sum) {
+                $positions = array_map(function (array $position) use ($paying, $sum, $fx, $broker, $at) {
                     $payments = $paying($position['symbol']);
                     $dividends = $sum($payments->pluck('amount'));
 
@@ -68,7 +73,14 @@ class PositionController extends Controller
                     // sold-out one has none because nothing is held.
                     $unpriced = $position['open'] && $position['market_value'] === null;
 
+                    $inBase = $position['market_value'] === null
+                        ? null
+                        : $fx->toBase($position['market_value'], $broker->ccy, $at);
+
                     return $position + [
+                        // Null with no price, or no rate for the day: then it is left out of
+                        // the bar, which says so, rather than drawn at a guessed size.
+                        'market_value_base' => $inBase === null ? null : (string) $inBase->toScale(4, RoundingMode::HalfUp),
                         'dividends' => $dividends,
                         'dividend_count' => $payments->count(),
                         ...$this->pnl([
@@ -129,8 +141,12 @@ class PositionController extends Controller
         $latest = Price::where('source', 'yahoo')->max('updated_at');
         $pricesUpdatedAt = $latest === null ? null : Carbon::parse($latest)->toIso8601String();
 
+        $symbols = $brokerages->flatMap(fn (array $b) => array_column($b['positions'], 'symbol'))->unique()->values()->all();
+        $names = Symbol::namesFor($symbols);
+        $trends = $this->trends($brokerages, $at);
+
         return inertia('position', [
-            ...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt'),
+            ...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt', 'names', 'trends'),
             'base' => Fx::BASE->value,
             'at' => $at === $today->toDateString() ? null : $at,
             'today' => $today->toDateString(),
@@ -222,6 +238,68 @@ class PositionController extends Controller
             // with no price is out of the unrealised leg here too.
             ...$this->pnl($summed, $unpriced > 0),
         ];
+    }
+
+    /**
+     * Each open holding's closes over the 30 days to $at, oldest first, for the line beside
+     * its price, in one read for all of them. Keyed by brokerage then symbol, since a
+     * symbol's close is only its price where the currency matches the brokerage's.
+     *
+     * @param  Collection<int, array<string, mixed>>  $brokerages
+     * @return array<int, array<string, list<array{date: string, close: string}>>>
+     */
+    private function trends($brokerages, string $at): array
+    {
+        $from = Carbon::parse($at)->subDays(30)->toDateString();
+        $open = $brokerages->flatMap(fn (array $b) => collect($b['positions'])->where('open', true)->pluck('symbol'))->unique()->values()->all();
+        $series = Price::seriesFor($open, $from, $at);
+        $trends = [];
+
+        foreach ($brokerages as $broker) {
+            foreach ($broker['positions'] as $position) {
+                if (! $position['open']) {
+                    continue;
+                }
+
+                // seriesFor() puts the last close before the window at its head, which is
+                // the day a quiet symbol last traded; the line starts inside the window.
+                $closes = array_filter(
+                    $series[$position['symbol']] ?? [],
+                    fn (array $close, string $date) => $date >= $from && $close['ccy'] === $broker['ccy'],
+                    ARRAY_FILTER_USE_BOTH
+                );
+
+                $trends[$broker['id']][$position['symbol']] = array_map(
+                    fn (string $date, array $close) => ['date' => $date, 'close' => $close['close']],
+                    array_keys($closes),
+                    $closes
+                );
+            }
+        }
+
+        return $trends;
+    }
+
+    /** Marked manual, so the next fetch leaves it alone. Blank puts the fetched one back. */
+    public function name(Request $r)
+    {
+        $input = $r->validate([
+            'symbol' => ['required', 'string', 'max:32'],
+            'name' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $symbol = Positions::symbol($input['symbol']);
+        $name = trim((string) ($input['name'] ?? ''));
+
+        if ($name === '') {
+            Symbol::where('symbol', $symbol)->delete();
+
+            return back()->with('message', "Name for [{$symbol}] cleared; the next fetch fills it in");
+        }
+
+        Symbol::updateOrCreate(['symbol' => $symbol], ['name' => $name, 'source' => 'manual']);
+
+        return back()->with('message', "Name for [{$symbol}] set to {$name}");
     }
 
     /** Synchronous on purpose: there is no queue worker. With `at`, up to that past day. */

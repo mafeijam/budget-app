@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\Price;
+use App\Models\Symbol;
 use App\Models\Transaction;
 use App\Services\YahooFinance;
 use App\Support\Fx;
@@ -103,6 +104,12 @@ class FetchPrices extends Command
                 );
 
                 $written++;
+            }
+
+            // A rate has no name worth showing, and a name set by hand is kept.
+            if ($quote['name'] !== null && ! str_ends_with($symbol, '=X')
+                && ! Symbol::where('symbol', $symbol)->where('source', 'manual')->exists()) {
+                Symbol::updateOrCreate(['symbol' => $symbol], ['name' => $quote['name'], 'source' => 'yahoo']);
             }
 
             $this->line("{$symbol}: {$written} day".($written === 1 ? '' : 's'));
