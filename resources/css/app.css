@@ -421,20 +421,25 @@ body {
 }
 
 /* The description menu, which is the template menu's shape for the same reason: a couple of
-   years of descriptions sit behind that field. Wide enough to read a description in. */
+   years of descriptions sit behind that field. Wide enough to read a description in, and no
+   wider than the field it hangs under. */
 .app-desc-hints {
-  min-width: 320px;
+  min-width: 360px;
+  max-width: 480px;
   max-height: 320px;
   overflow-y: auto;
 }
 
 /* The element the menu hangs from, and the reason it exists -- see the field's template.
-   Zero-sized, because it is an anchor and not a control: the list appears at the field's
-   trailing edge, and a visible button there would be one more thing to click. */
+   Laid over the whole field rather than sitting in the append slot, because the menu is
+   positioned against this and a zero-height box in the middle of the field put the list's
+   top edge inside the field: the field's own height has to be what it measures against, or
+   the offset below it lands on the input. pointer-events: none so it cannot intercept a
+   click meant for the box underneath it. */
 .app-desc-hints-anchor {
-  display: block;
-  width: 0;
-  height: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .app-template-item__avatar {

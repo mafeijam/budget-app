@@ -283,14 +283,13 @@
         The date below is the same shape, and for the same reason a field needs a calendar
         that a select cannot offer.
 
-        The menu is open while this box has the caret, which is what @focus and @blur between
-        them say. It was opened by the focus event alone, and that is not the same thing: a
-        QMenu closes itself asynchronously, so the close it raised on picking a hint landed
-        after the refocus had already reopened it and won -- leaving a focused box with a
-        shut menu, and no second click could fix that, because clicking a field that is
-        already focused raises no focus event at all. Hence v-close-popup is gone too: the
-        blur and refocus that picking a hint already causes reopens the menu by itself, and
-        the list narrows to the new text straight away.
+        The menu is open while this box has the caret, and closed the moment a hint is
+        chosen -- @focus and @blur between them, @keydown to bring the list back as the
+        writing starts again. It was the focus event alone once, and that was not the same
+        thing: it left a focused box with a shut menu after every pick, and no second click
+        could fix that, because clicking a field that is already focused raises no focus
+        event at all. Hence v-close-popup is gone too, and useDescription() closes the list
+        itself once the caret is back.
 
         no-focus is what lets the menu sit open beside a field that is still being typed
         into. A QMenu takes focus as it opens, so without it the keystrokes meant to narrow
@@ -303,8 +302,11 @@
         top of the page, which put the list in the corner of the screen. Naming the field with
         :target does not work either: the element it finds wraps the box, and the menu then
         dismisses itself a moment after opening. A real element to hang from inside the field
-        does, and the list is right-aligned to the field's trailing edge because that is where
-        the element sits.
+        does.
+
+        Anchored bottom right / self top right, so the list grows leftwards from the span's
+        line rather than rightwards: the span sits at the field's trailing edge, and a menu
+        growing to the right of that hangs off the side of the dialog.
       -->
       <q-input
         ref="descriptionInput"
@@ -316,6 +318,7 @@
         :error="!!form.errors.description"
         :error-message="form.errors.description"
         @focus="hintsOpen = true"
+        @keydown="hintsOpen = true"
         @blur="hintsOpen = false"
       >
         <template #prepend>
@@ -327,8 +330,8 @@
               v-model="hintsOpen"
               no-focus
               :offset="[10, 15]"
-              anchor="bottom left"
-              self="top left"
+              anchor="bottom right"
+              self="top right"
               class="app-desc-hints"
             >
               <q-list dense>
@@ -768,7 +771,17 @@ const descriptionInput = ref(null)
 // and without this the caret lands nowhere and the next character is typed to no field.
 const useDescription = description => {
   form.description = description
-  nextTick(() => descriptionInput.value?.focus())
+
+  // Closed, and closed after the focus rather than before it. Choosing a hint is a
+  // decision, and a list still open over the value just chosen reads as though it were
+  // being asked about -- but the box has to be focused again afterwards, or the next
+  // character goes nowhere, and focusing it raises the focus event that opens the list. So
+  // the focus comes first and the close after it. @keydown puts the list back as soon as
+  // the writing starts again, which is the only thing that should.
+  nextTick(() => {
+    descriptionInput.value?.focus()
+    hintsOpen.value = false
+  })
 }
 
 const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
