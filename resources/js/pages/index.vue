@@ -71,7 +71,10 @@
                 <div v-if="item.native" class="text-caption text-grey-6 money">
                   {{ item.ccy }} {{ item.native }}
                 </div>
-                <div v-else-if="item.ccy" class="text-caption text-grey-6">{{ item.ccy }}</div>
+                <!-- Only when it is not the base: then the figure is not the card's currency. -->
+                <div v-else-if="item.ccy && item.ccy !== base" class="text-caption text-grey-6">
+                  {{ item.ccy }}
+                </div>
               </div>
             </div>
             <div v-if="figure.more" class="app-home-list__more text-caption text-grey-6">
