@@ -310,6 +310,11 @@
         number is a few pixels because the anchor is the field's own edge -- the date
         control's fifteen is measured from a button in the middle of its field, and from a
         field's edge it reads as a gap.
+
+        The keys are the field's own, not the form's. onKeydown() below takes Enter, the
+        arrows and Escape, and calls preventDefault on each -- without that, Enter in a text
+        box inside a form submits the form, which would save a half-written description
+        along with whatever else was in the box.
       -->
       <q-input
         ref="descriptionInput"
@@ -321,7 +326,7 @@
         :error="!!form.errors.description"
         :error-message="form.errors.description"
         @focus="hintsOpen = true"
-        @keydown="hintsOpen = true"
+        @keydown="onDescriptionKey"
         @blur="hintsOpen = false"
       >
         <template #prepend>
@@ -339,8 +344,9 @@
             >
               <q-list dense>
                 <q-item
-                  v-for="hint in shownDescriptions"
+                  v-for="(hint, i) in shownDescriptions"
                   :key="hint"
+                  :active="i === activeHint"
                   clickable
                   @click="useDescription(hint)"
                 >
@@ -779,12 +785,83 @@ const useDescription = description => {
   // decision, and a list still open over the value just chosen reads as though it were
   // being asked about -- but the box has to be focused again afterwards, or the next
   // character goes nowhere, and focusing it raises the focus event that opens the list. So
-  // the focus comes first and the close after it. @keydown puts the list back as soon as
-  // the writing starts again, which is the only thing that should.
+  // the focus comes first and the close after it. onDescriptionKey puts the list back as
+  // soon as the writing starts again, which is the only thing that should.
   nextTick(() => {
     descriptionInput.value?.focus()
     hintsOpen.value = false
   })
+}
+
+// Which hint the arrows are on. Starts at the first, so Enter takes the first without
+// anyone having moved anything -- the common case is a description typed far enough to
+// leave one candidate, and making that a second keypress would be a toll.
+const activeHint = ref(0)
+
+// Back to the top on every change of list, because every keystroke changes the list and an
+// index that survived the narrowing would point at a different description than the one it
+// was on.
+watch(shownDescriptions, () => (activeHint.value = 0))
+
+// A list of a few hundred descriptions in a box 320px tall, so the highlighted row has to
+// be brought into view or the arrows walk off the top of it. block: 'nearest' leaves the
+// rest of the list where it is.
+const scrollToActiveHint = () =>
+  nextTick(() => {
+    const item = document.querySelector('.app-desc-hints .q-item--active')
+
+    item?.scrollIntoView({ block: 'nearest' })
+  })
+
+/**
+ * The keys this field keeps for itself. Enter does not submit the form: it belongs to the
+ * description, and a half-written one saved along with the rest of the row is worse than
+ * not saving at all. Every key here is prevented, Enter above all, because a text input
+ * inside a form submits on Enter by default and this one is inside a form.
+ */
+const onDescriptionKey = event => {
+  const { key } = event
+
+  if (key === 'ArrowDown' || key === 'ArrowUp') {
+    event.preventDefault()
+
+    const last = shownDescriptions.value.length - 1
+
+    if (last < 0) return
+
+    if (!hintsOpen.value) {
+      hintsOpen.value = true
+      activeHint.value = 0
+    } else {
+      activeHint.value =
+        key === 'ArrowDown'
+          ? Math.min(activeHint.value + 1, last)
+          : Math.max(activeHint.value - 1, 0)
+    }
+
+    scrollToActiveHint()
+
+    return
+  }
+
+  if (key === 'Enter') {
+    event.preventDefault()
+
+    const hint = hintsOpen.value ? shownDescriptions.value[activeHint.value] : null
+
+    if (hint) useDescription(hint)
+
+    return
+  }
+
+  if (key === 'Escape') {
+    hintsOpen.value = false
+
+    return
+  }
+
+  // Anything else is a character, and the list answers to writing.
+  hintsOpen.value = true
 }
 
 const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
