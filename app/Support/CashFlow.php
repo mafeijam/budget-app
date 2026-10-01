@@ -14,6 +14,7 @@ use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -152,16 +153,21 @@ class CashFlow
                 fn (Builder $q) => $q->whereBetween('date', [$first->toDateString(), $last->toDateString()]),
             )
             ->toBase()
-            ->get(['id', 'account_id', 'category_id', 'type', 'amount', 'date']);
+            ->get(['id', 'account_id', 'category_id', 'type', 'amount', 'date', 'description']);
 
         $bags = self::bagsOf($rows->pluck('id')->all());
         $accounts = DB::table('accounts')->get(['id', 'type', 'ccy'])->keyBy('id');
         $categories = DB::table('categories')->pluck('name', 'id');
         $partners = self::partnersOf($rows, $bags);
+        $transfers = self::transfersAmong($rows, $accounts);
 
         $facts = [];
 
         foreach ($rows as $row) {
+            if (isset($transfers[$row->id]) || self::isExchange($row->description, $accounts[$row->account_id]->type)) {
+                continue;
+            }
+
             $bag = $bags[$row->id] ?? null;
             $account = $accounts[$row->account_id];
             $partner = $partners[$row->id] ?? null;
@@ -336,6 +342,69 @@ class CashFlow
     }
 
     /**
+     * A cash row the broker wrote as a currency exchange -- "HKD TO USD @ 4,988.85", "OFFSET
+     * HKD" -- whose other side is in the brokerage's other currency and was never entered:
+     * money changed, not spent or earned. Read off the wording because nothing else marks
+     * it, with the currencies the enum names, so "OFFSET DIVIDEND" is not one.
+     */
+    public static function exchangePattern(): string
+    {
+        $codes = implode('|', array_column(Currency::cases(), 'value'));
+
+        return "^(OFFSET ({$codes})|({$codes}) TO ({$codes}))( |$)";
+    }
+
+    private static function isExchange(?string $description, string $accountType): bool
+    {
+        return $accountType === AccountType::Cash->value
+            && preg_match('/'.self::exchangePattern().'/i', (string) $description) === 1;
+    }
+
+    /**
+     * The rows that are one half of money moved between these cash accounts: a withdrawal and
+     * a deposit the same day, the same amount and currency -- on two accounts, a transfer, or
+     * on one, an exchange recorded as out and straight back in. Neither is income or spending,
+     * since the money did not leave, though nothing pairs them: each is entered as two plain
+     * rows, and counted as they were, a transfer was spent on one side and earned on the
+     * other, a million dollars of both over the ledger.
+     *
+     * Read as "an opposite row exists", not one-to-one, because whereSpends() states the same
+     * rule in SQL and the two must not disagree; on the data here they match the same rows.
+     *
+     * @param  iterable<object{id: int, account_id: int, type: string, amount: string, date: string}>  $rows
+     * @param  Collection<int, object{id: int, type: string, ccy: string}>  $accounts
+     * @return array<int, true>
+     */
+    private static function transfersAmong(iterable $rows, $accounts): array
+    {
+        $sides = [TransactionType::Withdraw->value => TransactionType::Deposit->value, TransactionType::Deposit->value => TransactionType::Withdraw->value];
+        $seen = [];
+        $candidates = [];
+
+        foreach ($rows as $row) {
+            $account = $accounts[$row->account_id] ?? null;
+
+            if ($account?->type !== AccountType::Cash->value || ! isset($sides[$row->type])) {
+                continue;
+            }
+
+            $key = $row->date.'|'.BigDecimal::of($row->amount)->toScale(4).'|'.$account->ccy;
+            $seen[$key][$row->type][$row->account_id] = true;
+            $candidates[] = [$row, $key];
+        }
+
+        $transfers = [];
+
+        foreach ($candidates as [$row, $key]) {
+            if (isset($seen[$key][$sides[$row->type]])) {
+                $transfers[$row->id] = true;
+            }
+        }
+
+        return $transfers;
+    }
+
+    /**
      * Each paired row's partner, read in one query rather than one per row.
      *
      * @param  iterable<object{id: int}>  $rows
@@ -392,6 +461,13 @@ class CashFlow
             return null;
         }
 
+        // Paired to a row on another cash account: a transfer, recorded as one, money that only
+        // moved -- the way an exchange into another currency is, whose two sides are not the
+        // same amount and so are never found by transfersAmong().
+        if ($partnerType !== null && $partnerAccountType === AccountType::Cash->value) {
+            return null;
+        }
+
         // Signed, so a sell's proceeds take back what a buy put in.
         if ($partnerType !== null && TransactionType::from($partnerType)->derivesAmount()) {
             return ['invested', $sign < 0 ? $amount : $amount->negated()];
@@ -421,7 +497,29 @@ class CashFlow
                 ->whereNotIn('id', self::whereSettlesACard(DB::table('transactions')))
                 // A buy's withdrawal is invested, not spent: classify() puts it there, and
                 // left in it listed under No category with the month's real spending.
-                ->whereNotIn('id', self::whereSettlesATrade(DB::table('transactions')))));
+                ->whereNotIn('id', self::whereSettlesATrade(DB::table('transactions')))
+                // Nor money only moved: paired to a row on another cash account, as classify()
+                // reads a pair; an exchange the broker wrote, as isExchange() reads one; or one
+                // half of a transfer nothing pairs, transfersAmong() as SQL.
+                ->whereNotIn('id', DB::table('meta')
+                    ->select('model_id')
+                    ->where('model_type', Transaction::class)
+                    ->whereIn('meta->paired_transaction_id', DB::table('transactions')
+                        ->join('accounts', 'accounts.id', '=', 'transactions.account_id')
+                        ->where('accounts.type', AccountType::Cash->value)
+                        ->select('transactions.id')))
+                ->whereRaw('NOT REGEXP_LIKE(COALESCE(transactions.description, \'\'), ?, \'i\')', [self::exchangePattern()])
+                ->whereNotExists(fn (QueryBuilder $deposit) => $deposit
+                    ->from('transactions as deposit')
+                    ->join('accounts as deposit_account', 'deposit_account.id', '=', 'deposit.account_id')
+                    ->join('accounts as own', 'own.id', '=', 'transactions.account_id')
+                    ->where('own.type', AccountType::Cash->value)
+                    ->where('deposit_account.type', AccountType::Cash->value)
+                    ->whereColumn('deposit_account.ccy', 'own.ccy')
+                    ->where('deposit.type', TransactionType::Deposit->value)
+                    ->whereIn('deposit.status', TransactionStatus::countingTowardBalance())
+                    ->whereColumn('deposit.date', 'transactions.date')
+                    ->whereColumn('deposit.amount', 'transactions.amount'))));
     }
 
     /**

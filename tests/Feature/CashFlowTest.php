@@ -54,6 +54,37 @@ class CashFlowTest extends TestCase
         ], $month['categories']);
     }
 
+    public function test_money_moved_between_cash_accounts_is_neither_income_nor_spending(): void
+    {
+        $savings = Account::create(['name' => 'Savings', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        // A transfer, entered as it is here: two plain rows, nothing pairing them.
+        $this->cash('withdraw', '2026-09-01', '5000', null, 'posted', $this->bank);
+        $this->cash('deposit', '2026-09-01', '5000', null, 'posted', $savings);
+        // An exchange out and straight back in on one account, the same.
+        $this->cash('withdraw', '2026-09-02', '800', null, 'posted', $savings);
+        $this->cash('deposit', '2026-09-02', '800', null, 'posted', $savings);
+        // Not one: another day, and another amount.
+        $this->cash('withdraw', '2026-09-03', '5000', null, 'posted', $this->bank);
+        $this->cash('deposit', '2026-09-04', '300', null, 'posted', $savings);
+
+        $month = $this->month('HKD', '2026-09');
+
+        $this->assertSame('300.0000', $month['income']);
+        $this->assertSame('5000.0000', $month['spending']);
+
+        // The spending filter states the rule in SQL, so the list a tile links to is the rows
+        // the tile added up.
+        $listed = null;
+        $this->get('/transactions?filter[spending]=1&per_page=50')->assertInertia(function (Assert $page) use (&$listed) {
+            $listed = collect($page->toArray()['props']['data']['data'])->map(fn (array $row) => [$row['date'], $row['amount']])->all();
+
+            return $page;
+        });
+
+        $this->assertSame([['2026-09-03', '5000.0000']], $listed);
+    }
+
     public function test_a_charge_is_spent_when_due_and_paying_the_card_is_not_spent_again(): void
     {
         $this->charge('2026-08-01', '250');
