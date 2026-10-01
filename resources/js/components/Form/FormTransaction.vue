@@ -483,46 +483,58 @@
                 </template>
               </q-select>
 
-              <!-- No fill-input: QSelect already draws the value, so it would show twice. -->
-              <q-select
-                v-if="isDividend"
-                v-model="form.meta_data.symbol"
-                :options="shownSymbols"
-                class="col-6"
-                label="Symbol"
-                outlined
-                bg-color="white"
-                emit-value
-                map-options
-                autocomplete="off"
-                use-input
-                fill-input
-                input-debounce="0"
-                new-value-mode="add-unique"
-                :clearable="false"
-                :error="!!form.errors['meta_data.symbol']"
-                :error-message="form.errors['meta_data.symbol']"
-                @filter="filterSymbols"
-              >
-                <template #no-option>
-                  <q-item>
-                    <q-item-section class="text-grey">
-                      Not held here; Enter adds it
-                    </q-item-section>
-                  </q-item>
-                </template>
-              </q-select>
-
+              <!--
+                One text box for every type with a symbol, its text the value, as the
+                description's is and for the same reason: a QSelect with use-input treats what
+                is typed as a search, so a ticker typed over a held one was dropped on save,
+                and fill-input drew the chosen one twice. A dividend gets the brokerage's
+                holdings in a menu that writes into the box -- a suggestion, since a position
+                sold after the ex-date still pays out.
+              -->
               <q-input
-                v-else
+                ref="symbolInput"
                 v-model="form.meta_data.symbol"
                 class="col-6"
                 label="Symbol"
                 outlined
                 bg-color="white"
+                autocomplete="off"
                 :error="!!form.errors['meta_data.symbol']"
                 :error-message="form.errors['meta_data.symbol']"
-              />
+                @focus="symbolsOpen = isDividend"
+                @keydown="onSymbolKey"
+                @blur="symbolsOpen = false"
+              >
+                <template v-if="isDividend" #append>
+                  <span class="app-desc-hints-anchor">
+                    <q-menu
+                      v-model="symbolsOpen"
+                      no-focus
+                      :offset="[10, 4]"
+                      anchor="bottom right"
+                      self="top right"
+                      class="app-desc-hints app-symbol-hints"
+                    >
+                      <q-list dense>
+                        <q-item
+                          v-for="(symbol, i) in shownSymbols"
+                          :key="symbol"
+                          :active="i === activeSymbol"
+                          clickable
+                          @click="useSymbol(symbol)"
+                        >
+                          <q-item-section>{{ symbol }}</q-item-section>
+                        </q-item>
+                        <q-item v-if="!shownSymbols.length">
+                          <q-item-section class="text-grey">
+                            Not held here; what is typed is kept
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-menu>
+                  </span>
+                </template>
+              </q-input>
 
               <!-- false-value null, or unticking stores false. -->
               <q-toggle
@@ -671,12 +683,7 @@ const heldSymbols = computed(() => ctx.heldSymbols ?? {})
 
 const brokerageOptions = computed(() => (ctx.dividendBrokerages ?? {})[form.account_id] ?? [])
 
-const symbolOptions = computed(() =>
-  (heldSymbols.value[form.meta_data.brokerage_account_id] ?? []).map(symbol => ({
-    label: symbol,
-    value: symbol,
-  })),
-)
+const symbolOptions = computed(() => heldSymbols.value[form.meta_data.brokerage_account_id] ?? [])
 
 const dateMenu = ref(null)
 
@@ -781,8 +788,6 @@ const templateCaption = template =>
   ]
     .filter(Boolean)
     .join(' · ')
-
-const shownSymbols = ref([])
 
 // The past descriptions the menu offers, narrowed by what is in the box. A computed, not
 // filterInto's handler: a QSelect asks to be told what matched, and a text input has no such
@@ -891,9 +896,82 @@ const onDescriptionKey = event => {
   hintsOpen.value = true
 }
 
-const filterSymbols = filterInto(shownSymbols, symbolOptions, (option, needle) =>
-  option.label.toLowerCase().includes(needle),
-)
+// The symbol's menu, the description's in small: the holdings narrowed by what is typed, the
+// arrows and Enter kept from the form, and a pick written into the box. See the description
+// above for why each of these is so.
+const shownSymbols = computed(() => {
+  const needle = (form.meta_data.symbol ?? '').trim().toLowerCase()
+
+  return needle === ''
+    ? symbolOptions.value
+    : symbolOptions.value.filter(symbol => symbol.toLowerCase().includes(needle))
+})
+
+const symbolsOpen = ref(false)
+const symbolInput = ref(null)
+const activeSymbol = ref(0)
+
+watch(shownSymbols, () => (activeSymbol.value = 0))
+
+const useSymbol = symbol => {
+  form.meta_data.symbol = symbol
+
+  nextTick(() => {
+    symbolInput.value?.focus()
+    symbolsOpen.value = false
+  })
+}
+
+const onSymbolKey = event => {
+  const { key } = event
+
+  if (key === 'Enter') {
+    // Never the form's: a half-typed ticker saved with the row is worse than not saving.
+    event.preventDefault()
+
+    const symbol = symbolsOpen.value ? shownSymbols.value[activeSymbol.value] : null
+
+    if (symbol) useSymbol(symbol)
+
+    return
+  }
+
+  if (!isDividend.value) return
+
+  if (key === 'ArrowDown' || key === 'ArrowUp') {
+    event.preventDefault()
+
+    const last = shownSymbols.value.length - 1
+
+    if (last < 0) return
+
+    if (!symbolsOpen.value) {
+      symbolsOpen.value = true
+      activeSymbol.value = 0
+    } else {
+      activeSymbol.value =
+        key === 'ArrowDown'
+          ? Math.min(activeSymbol.value + 1, last)
+          : Math.max(activeSymbol.value - 1, 0)
+    }
+
+    nextTick(() =>
+      document
+        .querySelector('.app-symbol-hints .q-item--active')
+        ?.scrollIntoView({ block: 'nearest' }),
+    )
+
+    return
+  }
+
+  if (key === 'Escape') {
+    symbolsOpen.value = false
+
+    return
+  }
+
+  symbolsOpen.value = true
+}
 
 // Only the description a symbol pick wrote; one the user typed is never overwritten.
 const claimedDescription = ref(null)

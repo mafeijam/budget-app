@@ -189,58 +189,33 @@ class FormContractTest extends TestCase
         );
     }
 
-    public function test_the_symbol_is_picked_for_a_dividend_and_typed_for_a_trade(): void
+    public function test_the_symbol_is_typed_for_every_type_and_suggested_for_a_dividend(): void
     {
-        // Two controls for one field, and the v-else between them is the only thing keeping
-        // a buy's symbol on screen. Drop the v-else and a buy -- a type the server refuses to
-        // record without a symbol -- has no control at all: the picker shows for a dividend,
-        // the save is rejected for a field the user has nothing on screen to fill, and the
-        // coverage test above still passes, because a v-model on the field is still there.
-        // The same gap this file exists for, one control further down the form.
-        //
-        // So: both controls are present, the picker is the one behind the dividend
-        // condition, and it can still be typed into. A closed list would refuse a position
-        // sold after the ex-date, which still pays out and which no rule in the DTO checks.
+        // One text box for every type that carries a symbol, its text the value. It was a
+        // picker for a dividend and a field for a trade, kept apart by a v-if and a v-else --
+        // and the picker, a QSelect with use-input, treated what was typed as a search, so a
+        // ticker typed over a held one was dropped on save, as the description's once was.
+        // A box with a condition of its own is the gap this file exists for: a buy, which
+        // the server refuses without a symbol, would have nothing on screen to fill.
         $markup = $this->template('FormTransaction.vue');
 
         preg_match_all('/<q-\w+[^>]*v-model="form\.meta_data\.symbol"[^>]*>/s', $markup, $tags);
 
-        $this->assertCount(
-            2,
-            $tags[0],
-            'FormTransaction.vue binds form.meta_data.symbol '
-                .count($tags[0]).' times; it needs exactly two controls, a picker for a '
-                .'dividend and a field for a trade, or a trade cannot be recorded through '
-                .'the form at all.'
-        );
+        $this->assertCount(1, $tags[0], 'FormTransaction.vue binds form.meta_data.symbol '
+            .count($tags[0]).' times; one box serves every type that has a symbol.');
 
-        $select = array_values(array_filter($tags[0], fn ($tag) => str_starts_with($tag, '<q-select')));
-        $input = array_values(array_filter($tags[0], fn ($tag) => str_starts_with($tag, '<q-input')));
+        $this->assertStringStartsWith('<q-input', $tags[0][0], 'The symbol is a select again, '
+            .'where what is typed is a search and is lost on save unless Enter commits it.');
 
-        $this->assertCount(1, $select, 'The dividend has no symbol picker, so its symbol is typed blind.');
-        $this->assertCount(1, $input, 'The trade has no symbol field, so a buy cannot be recorded.');
+        $this->assertDoesNotMatchRegularExpression('/\sv-(if|else|show)\b/', $tags[0][0], 'The '
+            .'symbol box has a condition of its own, so some type that needs a symbol has none.');
 
-        $this->assertStringContainsString(
-            'v-if="isDividend"',
-            $select[0],
-            'The symbol picker is not behind the dividend condition, so a buy is offered the '
-                .'holdings of the brokerage -- which by definition does not include what is '
-                .'about to be bought.'
-        );
-
-        $this->assertStringContainsString(
-            'v-else',
-            $input[0],
-            'The trade\'s symbol field is not the picker\'s alternative. It is the only control '
-                .'a buy has for a field the server refuses the save without.'
-        );
-
-        $this->assertStringContainsString(
-            'use-input',
-            $select[0],
-            'The symbol picker cannot be typed into, so a dividend on a position the brokerage '
-                .'does not hold cannot be recorded -- and the list is not a gate the server '
-                .'enforces.'
+        // The holdings are a suggestion behind the dividend, not a gate: a position sold after
+        // the ex-date still pays out, and no rule in the DTO checks it is held.
+        $this->assertMatchesRegularExpression(
+            '/v-if="isDividend"[^>]*#append|#append[^>]*v-if="isDividend"/',
+            $markup,
+            'The held symbols are not offered behind the dividend condition.'
         );
     }
 
