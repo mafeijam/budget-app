@@ -229,7 +229,7 @@
               </div>
               <div class="text-caption text-grey-6 q-mt-sm">
                 In {{ base }} at today's rate. Solid is done, paler is the cash known still to come,
-                palest the typical spending of the days left.
+                palest the typical income and spending of the days left.
               </div>
             </q-card-section>
           </q-card>
@@ -351,10 +351,21 @@
                   <td class="text-grey-7" style="width: 96px">{{ formatDate(event.date) }}</td>
                   <!-- Wrapping: Quasar's cells do not, and a phone would push the amount off. -->
                   <td style="white-space: normal">
+                    <!-- An estimate, tagged as one: the panel's other rows are all known, and
+                         "as paid 2025-10-02" in the description is not a thing a reader can
+                         be expected to parse as last year's payment standing in for this year's. -->
+                    <div v-if="event.estimate">
+                      <q-badge class="app-tint app-tint--muted">expected</q-badge>
+                    </div>
                     <div>{{ event.description }}</div>
                     <div class="text-caption text-grey-6">{{ event.account }}</div>
                   </td>
-                  <td class="text-right money text-weight-medium" :class="signClass(event.amount)">
+                  <!-- An expected dividend or a bonus is an estimate, so its amount is tinted
+                       as the dividends page tints one rather than read as certain. -->
+                  <td
+                    class="text-right money text-weight-medium"
+                    :class="event.estimate ? 'app-text-estimate' : signClass(event.amount)"
+                  >
                     {{ signed(event.amount) }}
                     <span class="text-caption text-grey-7">{{ event.ccy }}</span>
                   </td>
@@ -628,9 +639,19 @@ const monthTiles = computed(() => {
       label: 'Income so far',
       value: money(m.so_far.income),
       class: 'text-positive',
-      note: isZero(m.to_come.income)
-        ? 'nothing more known to come'
-        : `+${money(m.to_come.income)} still to come`,
+      // The forecast's outlook reads the same typical income off the same row, so the two
+      // pages cannot drift: the typical figure is named there and was named nowhere here,
+      // which left this tile saying nothing was coming while the month end below it said
+      // otherwise. `~` because it is an estimate, as on the spending tile beside it.
+      note:
+        isZero(m.to_come.income) && isZero(m.typical_income_rest)
+          ? 'nothing more expected'
+          : [
+              isZero(m.to_come.income) ? null : `+${money(m.to_come.income)} known`,
+              isZero(m.typical_income_rest) ? null : `~${money(m.typical_income_rest)} typical`,
+            ]
+              .filter(Boolean)
+              .join(' and ') + ' to come',
     },
     {
       label: 'Spending so far',
@@ -727,13 +748,21 @@ const nextFlow = computed(() => {
 // Widths only, on one scale for both bars, so floats are fine here and only here.
 const monthFlow = computed(() => {
   const m = props.month
-  const [inDone, inCome] = [Number(m.so_far.income), Number(m.to_come.income)]
+  const [inDone, inCome, inTypical] = [
+    Number(m.so_far.income),
+    Number(m.to_come.income),
+    Number(m.typical_income_rest),
+  ]
   const [outDone, outCome, outTypical] = [
     Number(m.so_far.spending),
     Number(m.to_come.spending),
     Number(m.typical_rest),
   ]
-  const scale = Math.max(1, inDone + inCome, outDone + outCome + outTypical)
+  // The In bar carries its typical income as the Out bar carries its typical spending, in the
+  // pale green the forecast's own In bar uses for it. Without that third segment this bar set
+  // the scale from income the card said nothing more was coming from, so every other width on
+  // it was drawn against a month with no expected income in it.
+  const scale = Math.max(1, inDone + inCome + inTypical, outDone + outCome + outTypical)
   const width = value => (value / scale) * 100
 
   return [
@@ -742,6 +771,7 @@ const monthFlow = computed(() => {
       parts: [
         { width: width(inDone), colour: '#059669' },
         { width: width(inCome), colour: '#6ee7b7' },
+        { width: width(inTypical), colour: '#86efac' },
       ],
     },
     {
@@ -762,6 +792,14 @@ const go = (path, data) => router.visit(path, data ? { data } : {})
 // As the forecast page opens the same events.
 const openEvent = event => {
   if (event.link.recurring) return router.visit('/recurring')
+
+  // An expected dividend opens the dividends page on the year it is expected in, which is
+  // where the figure the row shows lives: the page draws it as the dashed top above that
+  // year's month bar. Sending it to the transactions page opened the payment it was derived
+  // from instead, a row of last year's, in a panel whose subject is what has not happened yet.
+  if (event.estimate) {
+    return router.visit(`/dividends?year=${event.date.slice(0, 4)}`)
+  }
 
   if (event.link.card) {
     return router.visit('/transactions', {

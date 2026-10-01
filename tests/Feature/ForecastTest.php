@@ -464,6 +464,65 @@ class ForecastTest extends TestCase
         $this->assertSame('19.5833', $section['typical_income_basis']['dividends']);
     }
 
+    public function test_coming_up_lists_an_expected_dividend_as_an_estimate(): void
+    {
+        $this->heldSymbolPaidLastYear('2025-02-01', '40');
+
+        $upcoming = collect(Forecast::for(today(), 3)->upcoming());
+        $dividend = $upcoming->firstWhere('kind', 'expected dividend');
+
+        // Coming money, and inside the panel's window, so it belongs in it. It was left out
+        // for as long as this read only the known events, which is what said a fortnight held
+        // nothing when a dividend was expected in it.
+        $this->assertNotNull($dividend);
+        $this->assertSame('2026-02-01', $dividend['date']);
+        $this->assertSame('40.0000', $dividend['amount']);
+        $this->assertTrue($dividend['estimate'], 'It moves the typical line only, and says so.');
+        $this->assertSame('Bank', $dividend['account']);
+
+        // The row it came from, so a click on it finds that payment and not every payment on
+        // the same holding.
+        $this->assertSame('2025-02-01', $dividend['link']['date']);
+    }
+
+    public function test_coming_up_is_in_date_order(): void
+    {
+        // Nothing gathered the events in date order -- rows, then rules, then statements -- so
+        // a panel holding more than one kind of them never was. An estimate merged in makes it
+        // visible, since one dated before a bill would otherwise follow it.
+        $this->heldSymbolPaidLastYear('2025-02-01', '40');
+        $this->rule(['type' => 'withdraw', 'amount' => '20', 'start_date' => '2026-01-25']);
+        $this->charge('2026-01-05', '55');
+
+        $upcoming = collect(Forecast::for(today(), 3)->upcoming())
+            ->filter(fn (array $event) => $event['date'] <= '2026-02-09')
+            ->pluck('date')
+            ->all();
+
+        $this->assertSame($upcoming, collect($upcoming)->sort()->values()->all());
+        $this->assertContains('2026-01-25', $upcoming);
+        $this->assertContains('2026-02-01', $upcoming);
+    }
+
+    /** A holding bought into, then a dividend paid on it a year before this month. */
+    private function heldSymbolPaidLastYear(string $paid, string $amount): void
+    {
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->post('/transactions', [
+            'account_id' => $broker->id, 'date' => '2025-01-01', 'type' => 'buy', 'description' => 'Buy',
+            'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => ['symbol' => '0005.HK', 'quantity' => '100', 'unit_price' => '10', 'no_cash' => true],
+        ])->assertSessionHasNoErrors();
+
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id, 'date' => $paid, 'type' => 'dividend', 'description' => 'Dividend',
+            'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => ['symbol' => '0005.HK', 'brokerage_account_id' => $broker->id],
+        ])->assertSessionHasNoErrors();
+    }
+
     private function account(): array
     {
         return Forecast::for(today(), 3)->projection()[0]['accounts'][0];

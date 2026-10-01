@@ -492,16 +492,44 @@ class Forecast
     public function upcoming(?string $only = null): array
     {
         $until = $this->today->copy()->addDays(self::UPCOMING_DAYS)->toDateString();
+        $named = fn (int $accountId) => $this->cash[$accountId];
 
-        return collect($this->events)
+        $known = collect($this->events)
             ->filter(fn (array $event) => $event['date'] <= $until)
-            ->filter(fn (array $event) => $only === null || $this->cash[$event['account_id']]->ccy === $only)
             ->map(fn (array $event) => [
                 ...$event,
                 'amount' => self::money($event['amount']),
-                'account' => $this->cash[$event['account_id']]->name,
-                'ccy' => $this->cash[$event['account_id']]->ccy,
-            ])
+                'account' => $named($event['account_id'])->name,
+                'ccy' => $named($event['account_id'])->ccy,
+            ]);
+
+        // An expected dividend, a bonus or a double pay is money coming too, and it is what
+        // this panel is for: a dividend expected on the 2nd sits inside a fourteen-day window,
+        // and leaving it out said the fortnight was emptier than it is. It is flagged an
+        // estimate because it moves the typical line only -- the known line knows nothing of
+        // it, which is the whole difference the projection draws between the two. `paid` is
+        // the row it was derived from, so a click on it finds that row and not every payment
+        // on the same holding.
+        $estimates = collect($this->expected)
+            ->filter(fn (array $event) => $event['date'] <= $until)
+            ->map(fn (array $event) => [
+                'date' => $event['date'],
+                'account_id' => $event['account_id'],
+                'amount' => self::money($event['amount']),
+                'account' => $named($event['account_id'])->name,
+                'ccy' => $named($event['account_id'])->ccy,
+                'description' => $event['description'],
+                'kind' => $event['kind'],
+                'link' => ['transaction' => $event['transaction'], 'date' => $event['paid']],
+                'estimate' => true,
+            ]);
+
+        // By date, which nothing did before: the events arrive in the order they were
+        // gathered -- rows, then rules, then statements -- so a panel holding more than one
+        // kind was never in date order, and merging a fourth kind in only made that visible.
+        return $known->concat($estimates)
+            ->filter(fn (array $event) => $only === null || $event['ccy'] === $only)
+            ->sortBy('date')
             ->values()
             ->all();
     }
