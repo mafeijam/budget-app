@@ -196,6 +196,9 @@ class Forecast
         $byDay = collect($this->events)->whereIn('account_id', array_keys($balances))->groupBy('date');
         $expectedByDay = collect($this->expected)->whereIn('account_id', array_keys($balances))->groupBy('date');
         $expectedBy = array_map(fn () => BigDecimal::zero(), $balances);
+        // Of $expectedBy, each account's share by kind: a salary account's double pay is not a
+        // dividend, and labelled one it put 42,330 of "dividends" on SAVING.
+        $expectedKinds = array_map(fn () => ['dividends' => BigDecimal::zero(), 'bonuses' => BigDecimal::zero(), 'double_pay' => BigDecimal::zero()], $balances);
         // Each account at today and every month end, known and with its expected dividends.
         $paths = [];
 
@@ -311,6 +314,7 @@ class Forecast
                 $amount = $base($expected['account_id'], $expected['amount']);
                 $earned = $earned->plus($amount);
                 $expectedBy[$expected['account_id']] = $expectedBy[$expected['account_id']]->plus($expected['amount']);
+                $expectedKinds[$expected['account_id']][$expected['bucket']] = $expectedKinds[$expected['account_id']][$expected['bucket']]->plus($expected['amount']);
                 $monthsAhead[$month]['typical_in'] = $monthsAhead[$month]['typical_in']->plus($amount);
                 $monthsAhead[$month][$expected['bucket']] = $monthsAhead[$month][$expected['bucket']]->plus($amount);
 
@@ -447,9 +451,9 @@ class Forecast
                 'end_typical' => self::money($m['end_typical']),
             ], $monthsAhead)),
             'events' => $events,
-            'accounts' => collect($balances)->map(function (BigDecimal $closing, int $id) use ($openingBalances, $lowest, $base, $expectedBy, $paths) {
+            'accounts' => collect($balances)->map(function (BigDecimal $closing, int $id) use ($openingBalances, $lowest, $base, $expectedBy, $expectedKinds, $paths) {
                 $start = BigDecimal::of($openingBalances[$id] ?? '0');
-                $dividends = $expectedBy[$id];
+                $expected = $expectedBy[$id];
 
                 return [
                     'id' => $id,
@@ -458,18 +462,22 @@ class Forecast
                     'opening' => self::money($base($id, $start)),
                     'closing' => self::money($base($id, $closing)),
                     'lowest' => ['amount' => self::money($base($id, $lowest[$id][0])), 'date' => $lowest[$id][1]],
-                    // The dividends expected into it by the end, and the closing with them: an
-                    // estimate beside the known closing, never folded into it.
-                    'dividends' => self::money($base($id, $dividends)),
-                    'closing_expected' => self::money($base($id, $closing->plus($dividends))),
+                    // Everything expected into it by the end -- dividends, a bonus, a double pay --
+                    // and the closing with it: an estimate beside the known closing, never
+                    // folded into it. Each kind is its own figure, for the label to name.
+                    'expected' => self::money($base($id, $expected)),
+                    'dividends' => self::money($base($id, $expectedKinds[$id]['dividends'])),
+                    'bonuses' => self::money($base($id, $expectedKinds[$id]['bonuses'])),
+                    'double_pay' => self::money($base($id, $expectedKinds[$id]['double_pay'])),
+                    'closing_expected' => self::money($base($id, $closing->plus($expected))),
                     'path' => $paths[$id] ?? [],
                     // In the account's own currency, for the one not held in the base.
                     'native' => [
                         'opening' => self::money($start),
                         'closing' => self::money($closing),
                         'lowest' => self::money($lowest[$id][0]),
-                        'dividends' => self::money($dividends),
-                        'closing_expected' => self::money($closing->plus($dividends)),
+                        'dividends' => self::money($expectedKinds[$id]['dividends']),
+                        'closing_expected' => self::money($closing->plus($expected)),
                     ],
                 ];
             })->values()->all(),

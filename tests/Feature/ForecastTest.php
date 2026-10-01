@@ -487,6 +487,19 @@ class ForecastTest extends TestCase
         $this->assertSame('150.0000', $double['base']);
         $this->assertSame('Double pay, as paid 2025-06-01', $double['description']);
         $this->assertTrue($double['estimate']);
+
+        // Named for what it is on the account it lands in: a double pay is not a dividend,
+        // and filed under one it read as 150 of dividends on the salary account.
+        $account = $section['accounts'][0];
+
+        $this->assertSame('0.0000', $account['dividends']);
+        $this->assertSame('0.0000', $account['bonuses']);
+        $this->assertSame('150.0000', $account['double_pay']);
+        $this->assertSame('150.0000', $account['expected']);
+        $this->assertSame(
+            (string) BigDecimal::of($account['closing'])->plus('150')->toScale(4),
+            $account['closing_expected'],
+        );
     }
 
     public function test_a_raise_is_not_read_as_a_second_months_pay(): void

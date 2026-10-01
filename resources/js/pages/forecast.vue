@@ -343,9 +343,15 @@
               <div class="text-caption" :class="signClass(change(account))">
                 {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
               </div>
-              <div v-if="expects(account)" class="text-caption app-text-estimate">
-                with ~{{ money(account.dividends) }} dividends
-              </div>
+              <template v-if="withTypical">
+                <div
+                  v-for="kind in expectedKinds(account)"
+                  :key="kind.key"
+                  class="text-caption app-text-estimate"
+                >
+                  with ~{{ money(account[kind.key]) }} {{ kind.label }}
+                </div>
+              </template>
               <div v-if="foreign(account)" class="text-caption text-grey-6">
                 {{ account.ccy }}
                 {{ money(withTypical ? account.native.closing_expected : account.native.closing) }}
@@ -760,7 +766,15 @@ const scaled = value => {
 
 // With the estimates shown, an account's end has its expected dividends in it; the known
 // closing alone otherwise, as the chart's two lines are.
-const expects = account => withTypical.value && !isZero(account.dividends)
+const expects = account => withTypical.value && !isZero(account.expected)
+
+// What is expected into an account, one line to a kind that is: a double pay is not a dividend.
+const expectedKinds = account =>
+  [
+    { key: 'dividends', label: 'dividends' },
+    { key: 'bonuses', label: 'bonus' },
+    { key: 'double_pay', label: 'double pay' },
+  ].filter(kind => !isZero(account[kind.key]))
 const closingOf = account => (expects(account) ? account.closing_expected : account.closing)
 
 const fromUnits = units => {
