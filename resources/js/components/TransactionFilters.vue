@@ -378,6 +378,26 @@
         </q-item>
       </template>
     </q-select>
+
+    <!-- The figure the Amount column shows, at or above this, in the row's own currency. -->
+    <q-input
+      v-model="filters.amount_min"
+      class="col-12 col-sm-6 col-md-3"
+      label="Amount at least"
+      type="number"
+      min="0"
+      step="any"
+      inputmode="decimal"
+      outlined
+      bg-color="white"
+      dense
+      clearable
+      debounce="300"
+    >
+      <template #prepend>
+        <q-icon name="payments" size="xs" color="grey-6" />
+      </template>
+    </q-input>
   </div>
 
   <!-- Below the bar rather than in it, so nothing there moves when a filter is set. -->
@@ -459,6 +479,8 @@ const shown = (chosen, options = null) => {
   return options?.find(option => option.value === chosen[0])?.label ?? String(chosen[0])
 }
 
+const money = useMoney()
+
 const seeded = page.props.params?.filter ?? {}
 
 // Remembered per browser, as the other pages' view choices are, and opened on arrival
@@ -485,6 +507,7 @@ const parse = filter => ({
   category_id: categoryIds(filter.category_id),
   ccy: list(filter.ccy),
   symbol: list(filter.symbol),
+  amount_min: filter.amount_min ?? null,
   date_from: filter.date_from ?? null,
   date_to: filter.date_to ?? null,
   // A range of when a row counts, not of the day it carries: a card charge counts in the month
@@ -653,7 +676,17 @@ const chips = computed(() => {
       ? [{ key: 'spending', label: 'Spending only', remove: () => (filters.spending = '') }]
       : []
 
-  return [...due, ...month, ...spending, ...dated, ...picked]
+  const amount = on.amount_min
+    ? [
+        {
+          key: 'amount_min',
+          label: `Amount ≥ ${money(on.amount_min)}`,
+          remove: () => (filters.amount_min = null),
+        },
+      ]
+    : []
+
+  return [...due, ...month, ...spending, ...dated, ...amount, ...picked]
 })
 
 // The statement, the month and spending have no input in the panel, so their chips show even
@@ -703,6 +736,7 @@ const clear = () => {
     category_id: [],
     ccy: [],
     symbol: [],
+    amount_min: null,
     date_from: null,
     date_to: null,
     counted_from: null,

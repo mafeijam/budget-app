@@ -553,6 +553,19 @@ class TransactionFilterTest extends TestCase
         $this->assertCount(3, $listed($this->withUnencryptedCookie($cookie, '0')->get('/transactions?'.http_build_query($account))));
     }
 
+    public function test_it_filters_to_amounts_at_or_above_a_figure(): void
+    {
+        // Rent 9000, Salary 30000, and the two charges of 120.
+        $this->assertListed(['filter' => ['amount_min' => '9000']], ['Salary', 'Rent']);
+        $this->assertListed(['filter' => ['amount_min' => '9000.01']], ['Salary']);
+        $this->assertListed(['filter' => ['amount_min' => '120']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+
+        // Not a plain number: no filter rather than an error or an empty list.
+        foreach (['-5', 'abc', '1e3', ''] as $value) {
+            $this->assertListed(['filter' => ['amount_min' => $value]], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+        }
+    }
+
     public function test_a_value_that_does_not_say_yes_filters_nothing(): void
     {
         $this->assertListed(['filter' => ['unpaid' => '0']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);

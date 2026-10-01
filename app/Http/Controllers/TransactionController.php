@@ -181,6 +181,13 @@ class TransactionController extends Controller
                         ->whereNotIn('id', CashFlow::whereSettlesATrade(DB::table('transactions')));
                 }),
                 AllowedFilter::exact('ccy'),
+                // At or above a figure: the stored magnitude, which is what the Amount column
+                // shows, in the row's own currency. Not card_amount, so a foreign charge is
+                // found by the yen it was and not the dollars its card states. A value that is
+                // not a plain non-negative number filters nothing, as a malformed day does.
+                AllowedFilter::callback('amount_min', fn (Builder $q, $value) => is_string($value) && preg_match('/^\d+(\.\d+)?$/', trim($value))
+                    ? $q->where('amount', '>=', trim($value))
+                    : $q),
                 // No delimiter: "coffee, tea" is one phrase.
                 AllowedFilter::partial('description')->delimiter(''),
                 // A callback because symbol lives in the meta bag, not a column. Or'd, so two
