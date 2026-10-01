@@ -147,8 +147,10 @@ A control that picks what the page is *about* — a brokerage, a currency, the T
 switch, the Forecast's what-if — is the browser's to remember (`useStorage`, or
 `useLocalStorage` on the Forecast), and choosing one must not add a query string. The
 server cannot read storage, so it sends every view the control can ask for and the client
-picks: `byBroker[id]` on Dividends, `views.all` / `views.USD` on the Forecast. The cost is a
-larger response, so build each view from one shared object (`Forecast::for()` memoises).
+picks: `byBroker[id]` on Dividends, `views.all` / `views.USD` on the Forecast, and
+`views.due.all` / `views.charged.USD` on Cash flow (card spending by due date or charge date,
+then currency). The cost is a larger response, so build each view from one shared object
+(`Forecast::for()` memoises, `CashFlow::both()` reads the rows once).
 
 - **Keep the choice if the option is gone.** A stored currency or brokerage the data no
   longer has falls back to "all" *without overwriting storage* — a stale value is harmless
@@ -160,6 +162,12 @@ larger response, so build each view from one shared object (`Forecast::for()` me
   like Totals, so Clear all leaves it and `active` does not count it. The server cannot see
   storage, so a remembered yes asks for the list again on arrival (one extra request); a
   link that names it applies for that visit without changing the choice.
+- **Detail too big to ship is fetched when asked, from a small JSON endpoint built on the
+  same query as the figure.** Cash flow's quick view (`GET cash-flow/transactions`, opened
+  by the eye on a breakdown tile) lists the rows behind one category in one month. It uses
+  `CashFlow::spendingRows()` and `spendingFigure()`, which `facts()`' rules mirror, so the
+  list adds up to the tile; change what counts as spending in one place and the test
+  `test_a_tiles_transactions_are_the_rows_it_added_up` says if the other drifted.
 - **The what-if is remembered too** (`forecast.spendingChange`, `.noIncome`, `.irregular`),
   so the page opens as it was left. Reset puts all three back.
 

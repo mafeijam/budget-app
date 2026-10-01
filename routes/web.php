@@ -29,6 +29,8 @@ Route::post('accounts/{account}/due-date', [TransactionController::class, 'moveD
     ->name('accounts.due-date');
 
 Route::get('cash-flow', [CashFlowController::class, 'index'])->name('cash-flow');
+// JSON for the page's quick view, which opens a category's rows without leaving it.
+Route::get('cash-flow/transactions', [CashFlowController::class, 'transactions'])->name('cash-flow.transactions');
 Route::get('net-worth', [NetWorthController::class, 'index'])->name('net-worth');
 Route::get('forecast', [ForecastController::class, 'index'])->name('forecast');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');

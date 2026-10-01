@@ -206,7 +206,7 @@ class CashFlowTest extends TestCase
         $this->assertSame(['JPY'], $combined['unconverted']);
     }
 
-    public function test_the_page_combines_currencies_unless_one_is_picked(): void
+    public function test_the_page_carries_a_view_for_each_currency_and_each_card_setting(): void
     {
         $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
 
@@ -215,22 +215,90 @@ class CashFlowTest extends TestCase
         $this->cash('deposit', '2026-09-01', '100');
         $this->cash('deposit', '2026-09-01', '10', account: $usd);
 
-        $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
-            ->where('ccy', null)
+        // The choices are the browser's to keep, so the server sends them all and no query
+        // string is read: the report for no currency picked, for each, and each way a card
+        // is counted.
+        $this->get('/cash-flow?ccy=USD&card=charged')->assertInertia(fn (Assert $page) => $page
             ->where('currencies', ['HKD', 'USD'])
-            ->has('report', 1)
-            ->where('report.0.totals.income', '178.0000')
+            ->has('views.due', 3)
+            ->has('views.charged', 3)
+            ->has('views.due.all.report', 1)
+            ->where('views.due.all.report.0.totals.income', '178.0000')
+            ->where('views.due.USD.report.0.ccy', 'USD')
+            ->where('views.due.USD.report.0.totals.income', '10.0000')
+            ->where('views.charged.HKD.report.0.totals.income', '100.0000')
+            ->missing('ccy')
+            ->missing('card')
         );
+    }
 
-        $this->get('/cash-flow?ccy=USD')->assertInertia(fn (Assert $page) => $page
-            ->where('ccy', 'USD')
-            ->has('report', 1)
-            ->where('report.0.ccy', 'USD')
-            ->where('report.0.totals.income', '10.0000')
-        );
+    public function test_a_tiles_transactions_are_the_rows_it_added_up(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        Price::create(['symbol' => 'USDHKD=X', 'date' => '2026-08-01', 'close' => '7.8', 'ccy' => 'HKD', 'source' => 'manual']);
 
-        // A currency with no rows is a hand-edited URL, and gets the combined report.
-        $this->get('/cash-flow?ccy=JPY')->assertInertia(fn (Assert $page) => $page->where('ccy', null));
+        $this->cash('withdraw', '2026-09-02', '15000', $this->category);
+        $this->cash('withdraw', '2026-09-03', '10', $this->category, account: $usd);
+        $this->cash('withdraw', '2026-09-04', '500');
+        // Another month, another category, and a pending row: none are in this tile.
+        $this->cash('withdraw', '2026-08-30', '70', $this->category);
+        $this->cash('withdraw', '2026-09-05', '80', $this->category, 'pending');
+        // A card paid is not spent twice, and a buy's withdrawal is invested, not spent.
+        $this->charge('2026-08-01', '250');
+        $this->post("/accounts/{$this->card->id}/settle", ['due_date' => '2026-09-09', 'owed' => '250.0000'])
+            ->assertSessionHasNoErrors();
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+        $this->brokerRow($broker, 'buy', '2026-09-06', ['symbol' => '0700.HK', 'quantity' => '10', 'unit_price' => '400']);
+
+        // The tile as the page shows it with no currency picked: everything in HKD.
+        $combined = collect(CashFlow::combined(today())['report']['months'])->firstWhere('month', '2026-09');
+        $tile = fn (?int $category) => collect(collect($combined['categories'])->firstWhere('id', $category));
+        $window = ['from' => '2026-09-01', 'to' => '2026-09-30'];
+
+        // The base currency: the dollars at 7.8, the figure the tile shows.
+        $food = $this->getJson('/cash-flow/transactions?'.http_build_query($window + ['category' => $this->category]))->assertOk();
+
+        // The two withdrawals and the card charge due in September, largest first, by what
+        // each is in HKD: the 10 dollars are 78.
+        $this->assertSame(3, $food['count']);
+        $this->assertSame(['2026-09-02', '2026-08-01', '2026-09-03'], array_column($food['rows'], 'date'));
+        $this->assertSame('78.0000', $food['rows'][2]['base']);
+        $this->assertSame('250.0000', $food['rows'][1]['amount']);
+        $this->assertSame($tile($this->category)['amount'], $food['total']);
+        $this->assertSame('HKD', $food['ccy']);
+
+        // No category: the cash withdrawal and the card settled, and not the buy.
+        $none = $this->getJson('/cash-flow/transactions?'.http_build_query($window + ['category' => 'none']))->assertOk();
+
+        $this->assertSame($tile(null)['amount'], $none['total']);
+        $this->assertSame('500.0000', collect($none['rows'])->firstWhere('description', 'Withdraw')['amount']);
+        $this->assertNull(collect($none['rows'])->first(fn ($row) => str_starts_with($row['description'], 'Buy')));
+
+        // One currency, in its own money.
+        $only = $this->getJson('/cash-flow/transactions?'.http_build_query($window + ['category' => $this->category, 'ccy' => 'USD']))->assertOk();
+
+        $this->assertSame(1, $only['count']);
+        $this->assertSame('10.0000', $only['total']);
+        $this->assertSame('USD', $only['ccy']);
+    }
+
+    public function test_a_tiles_transactions_read_the_window_as_the_card_setting_does(): void
+    {
+        $this->charge('2026-08-20', '250');
+        $window = ['from' => '2026-09-01', 'to' => '2026-09-30', 'category' => $this->category];
+
+        // Charged in August, due in September: in September's tile by due date, and not by
+        // the day it was made.
+        $this->getJson('/cash-flow/transactions?'.http_build_query($window))->assertJsonPath('count', 1);
+        $this->getJson('/cash-flow/transactions?'.http_build_query($window + ['card' => 'charged']))->assertJsonPath('count', 0);
+    }
+
+    public function test_a_tiles_transactions_refuse_a_malformed_request(): void
+    {
+        $this->getJson('/cash-flow/transactions?from=x&to=2026-09-30&category=none')->assertStatus(422);
+        $this->getJson('/cash-flow/transactions?from=2026-09-01&to=2026-09-30&category=abc')->assertStatus(422);
+        $this->getJson('/cash-flow/transactions?from=2026-09-01&to=2026-09-30&category=none&ccy=EUR')->assertStatus(422);
     }
 
     public function test_the_page_carries_the_report(): void
@@ -240,13 +308,19 @@ class CashFlowTest extends TestCase
         $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
             ->component('cash-flow')
             ->where('months', 12)
-            ->where('card', 'due')
-            ->where('report.0.ccy', 'HKD')
-            ->where('report.0.totals.income', '100.0000')
+            ->where('views.due.all.report.0.ccy', 'HKD')
+            ->where('views.due.all.report.0.totals.income', '100.0000')
         );
+    }
 
-        $this->get('/cash-flow?card=charged')->assertInertia(fn (Assert $page) => $page->where('card', 'charged'));
-        $this->get('/cash-flow?card=soon')->assertInertia(fn (Assert $page) => $page->where('card', 'due'));
+    public function test_by_due_date_and_by_charge_date_are_each_a_view_of_their_own(): void
+    {
+        $this->charge('2026-08-20', '250');
+
+        $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
+            ->where('views.due.all.report.0.months', fn ($months) => collect($months)->firstWhere('month', '2026-09')['spending'] === '250.0000')
+            ->where('views.charged.all.report.0.months', fn ($months) => collect($months)->firstWhere('month', '2026-08')['spending'] === '250.0000')
+        );
     }
 
     private function cash(

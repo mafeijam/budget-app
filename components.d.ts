@@ -15,6 +15,7 @@ declare module 'vue' {
     AppTableActions: typeof import('./resources/js/components/AppTableActions.vue')['default']
     CardStatements: typeof import('./resources/js/components/CardStatements.vue')['default']
     CashFlowChart: typeof import('./resources/js/components/CashFlowChart.vue')['default']
+    CategoryPeek: typeof import('./resources/js/components/CategoryPeek.vue')['default']
     CreateBtn: typeof import('./resources/js/components/CreateBtn.vue')['default']
     DeleteDialog: typeof import('./resources/js/components/DeleteDialog.vue')['default']
     DividendMonths: typeof import('./resources/js/components/DividendMonths.vue')['default']

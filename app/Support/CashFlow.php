@@ -361,7 +361,45 @@ class CashFlow
             ->where('type', TransactionType::Charge->value)
             ->orWhere(fn (Builder $bank) => $bank
                 ->where('type', TransactionType::Withdraw->value)
-                ->whereNotIn('id', self::whereSettlesACard(DB::table('transactions')))));
+                ->whereNotIn('id', self::whereSettlesACard(DB::table('transactions')))
+                // A buy's withdrawal is invested, not spent: classify() puts it there, and
+                // left in it listed under No category with the month's real spending.
+                ->whereNotIn('id', self::whereSettlesATrade(DB::table('transactions')))));
+    }
+
+    /**
+     * The rows behind one category's spending in one window -- the rows whose figures the
+     * breakdown tile adds up, listed. The window is read as facts() reads it: by the day a
+     * row counts on with $onDueDate, otherwise by its own date. A null category is the rows
+     * with none.
+     *
+     * @return Builder<Transaction>
+     */
+    public static function spendingRows(string $from, string $to, bool $onDueDate, ?int $category): Builder
+    {
+        return Transaction::query()
+            ->with(['account', 'category', 'meta'])
+            ->whereHas('account', fn ($q) => $q->whereIn('type', self::accountTypes()))
+            ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->tap(fn (Builder $q) => self::whereSpends($q))
+            ->when(
+                $onDueDate,
+                fn (Builder $q) => $q
+                    ->where(fn (Builder $q) => self::whereCounted($q, '>=', $from))
+                    ->where(fn (Builder $q) => self::whereCounted($q, '<=', $to)),
+                fn (Builder $q) => $q->whereBetween('date', [$from, $to]),
+            )
+            ->when(
+                $category === null,
+                fn (Builder $q) => $q->whereNull('category_id'),
+                fn (Builder $q) => $q->where('category_id', $category),
+            );
+    }
+
+    /** A spending row's figure: a card's own, as the report adds it, and a bank row's amount. */
+    public static function spendingFigure(Transaction $row): BigDecimal
+    {
+        return BigDecimal::of((string) ($row->meta?->meta['card_amount'] ?? $row->amount));
     }
 
     /**

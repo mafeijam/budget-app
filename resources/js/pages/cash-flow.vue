@@ -5,7 +5,7 @@
         <div class="text-h6 text-weight-medium q-mr-md">Cash flow</div>
         <q-select
           v-if="currencies.length > 1"
-          :model-value="ccy ?? ''"
+          v-model="ccy"
           :options="currencyOptions"
           class="app-broker-select"
           dense
@@ -13,7 +13,6 @@
           emit-value
           map-options
           options-dense
-          @update:model-value="value => visit({ ccy: value || null })"
         >
           <template #prepend>
             <q-icon name="payments" size="xs" color="grey-7" />
@@ -65,7 +64,7 @@
         <div class="col-auto app-toolbar row items-center no-wrap">
           <q-icon name="credit_card" size="xs" color="grey-6" class="q-mx-sm" />
           <q-btn-toggle
-            :model-value="card"
+            v-model="card"
             :options="[
               { label: 'By due date', value: 'due' },
               { label: 'By charge date', value: 'charged' },
@@ -78,7 +77,6 @@
             text-color="grey-8"
             padding="xs md"
             class="app-toolbar__toggle text-weight-bold"
-            @update:model-value="value => visit({ card: value })"
           />
         </div>
       </q-card-section>
@@ -179,7 +177,8 @@
                     v-for="(category, i) in [...named(month), ...unnamed(month)]"
                     :key="`${month.month}-${category.id}`"
                     class="app-flow-tile cursor-pointer"
-                    @click="openTransactions(month, category)"
+                    :class="{ 'app-flow-tile--busy': peeked }"
+                    @click="peek(month, category, categoryColour(category, i))"
                   >
                     <div class="row items-center no-wrap">
                       <span
@@ -193,7 +192,18 @@
                         {{ category.name ?? 'No category' }}
                       </span>
                       <q-space />
-                      <q-icon name="open_in_new" size="14px" class="app-flow-tile__open" />
+                      <!-- The tile opens its rows here; this goes on to the full list. -->
+                      <q-btn
+                        flat
+                        round
+                        dense
+                        size="xs"
+                        icon="open_in_new"
+                        color="grey-5"
+                        class="app-flow-tile__open"
+                        aria-label="Open in Transactions"
+                        @click.stop="openTransactions(month, category)"
+                      />
                     </div>
                     <div class="row items-baseline no-wrap q-mt-xs">
                       <span class="money text-weight-bold text-grey-9">
@@ -212,35 +222,51 @@
         </tbody>
       </q-markup-table>
     </q-card>
+
+    <!-- One tile's rows, read when it is opened. -->
+    <CategoryPeek
+      v-model="peeking.open"
+      :name="peeking.category?.name ?? null"
+      :result="peeking.result"
+      :colour="peeking.colour"
+      :period="peeking.month ? monthLabel(peeking.month.month) : ''"
+      @open="openPeeked"
+    />
   </div>
 </template>
 
 <script setup>
 const props = defineProps({
-  report: { type: Array, default: () => [] },
+  views: { type: Object, default: () => ({}) },
   months: { type: Number, default: 12 },
-  ccy: { type: String, default: null },
-  card: { type: String, default: 'due' },
   currencies: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
-  unconverted: { type: Array, default: () => [] },
 })
+
+// The currency and how a card is counted are the browser's to keep, as the other pages'
+// dropdowns are, and not in the URL: the server sends a report for each choice. A stored
+// currency the accounts no longer hold reads as all of them, and is left in storage.
+const keptCcy = useLocalStorage('cashFlow.ccy', '')
+const keptCard = useLocalStorage('cashFlow.card', 'due')
+const ccy = computed({
+  get: () => (props.currencies.includes(keptCcy.value) ? keptCcy.value : ''),
+  set: value => (keptCcy.value = value || ''),
+})
+const card = computed({
+  get: () => (keptCard.value === 'charged' ? 'charged' : 'due'),
+  set: value => (keptCard.value = value),
+})
+const view = computed(() => props.views[card.value]?.[ccy.value || 'all'] ?? {})
+const report = computed(() => view.value.report ?? [])
+const unconverted = computed(() => view.value.unconverted ?? [])
 
 const currencyOptions = computed(() => [
   { label: `All, in ${props.base}`, value: '', caption: "Converted at each day's rate" },
   ...props.currencies.map(code => ({ label: code, value: code, caption: `${code} accounts only` })),
 ])
 
-// Each off the URL at its default: every currency, and card spending by due date.
-const visit = ({ ccy = props.ccy, card = props.card }) =>
-  router.get(
-    '/cash-flow',
-    { ...(ccy ? { ccy } : {}), ...(card === 'due' ? {} : { card }) },
-    { preserveScroll: true, replace: true },
-  )
-
 const cardNote = computed(() =>
-  props.card === 'due'
+  card.value === 'due'
     ? 'A card charge counts in the month its statement is due.'
     : 'A card charge counts in the month it was made.',
 )
@@ -359,7 +385,7 @@ const openTransactions = (month, category) =>
   router.visit('/transactions', {
     data: {
       filter: {
-        ...(props.card === 'due'
+        ...(card.value === 'due'
           ? { counted_from: month.from, counted_to: month.to }
           : { date_from: month.from, date_to: month.to }),
         spending: '1',
@@ -367,4 +393,50 @@ const openTransactions = (month, category) =>
       },
     },
   })
+
+// The tile whose rows are open in the quick view.
+const peeking = reactive({
+  open: false,
+  month: null,
+  category: null,
+  colour: '#94a3b8',
+  result: null,
+})
+
+// The dialog is shown with its rows or not at all: opened first it jumped in empty, then
+// filled in under the reader. A tile is busy while they load, and a failure says so.
+const peeked = ref(false)
+
+const peek = async (month, category, colour) => {
+  if (peeked.value) return
+
+  peeked.value = true
+
+  const query = new URLSearchParams({
+    from: month.from,
+    to: month.to,
+    card: card.value,
+    category: category.id ?? NO_CATEGORY,
+    ...(ccy.value ? { ccy: ccy.value } : {}),
+  })
+
+  try {
+    const response = await fetch(`/cash-flow/transactions?${query}`, {
+      headers: { Accept: 'application/json' },
+    })
+
+    if (!response.ok) throw new Error(String(response.status))
+
+    Object.assign(peeking, { open: true, month, category, colour, result: await response.json() })
+  } catch {
+    notifyFailure('The transactions could not be loaded.')
+  } finally {
+    peeked.value = false
+  }
+}
+
+const openPeeked = () => {
+  peeking.open = false
+  openTransactions(peeking.month, peeking.category)
+}
 </script>

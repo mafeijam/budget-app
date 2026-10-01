@@ -699,7 +699,7 @@ class TransactionFilterTest extends TestCase
 
         $this->cardPaymentOnBank($this->payment('2026-02-01', '120.0000', self::PERIOD));
 
-        $february = collect($this->get('/cash-flow')->viewData('page')['props']['report'][0]['months'])
+        $february = collect($this->get('/cash-flow')->viewData('page')['props']['views']['due']['all']['report'][0]['months'])
             ->firstWhere('month', '2026-02');
         $uncategorised = collect($february['categories'])->firstWhere('id', null);
 
