@@ -40,7 +40,7 @@ class DividendController extends Controller
             $base = $fx->toBase((string) $row->amount, $row->ccy, $row->date);
 
             if ($base === null) {
-                $unconverted[] = $row->ccy;
+                $unconverted[] = ['ccy' => $row->ccy, 'broker' => $row->meta?->meta['brokerage_account_id'] ?? null];
 
                 continue;
             }
@@ -55,14 +55,38 @@ class DividendController extends Controller
             ];
         }
 
-        $paid = collect($paid);
-
-        // This year always, so the page opens on it even before its first payment.
-        $years = $paid->pluck('year')->push($today->year)->unique()->sortDesc()->values();
-        $year = in_array((int) $r->input('year'), $years->all(), true) ? (int) $r->input('year') : $today->year;
+        $everyPayment = collect($paid);
 
         $sum = fn ($list) => $list->reduce(fn (BigDecimal $total, array $p) => $total->plus($p['amount']), BigDecimal::zero());
         $money = fn (BigDecimal $value) => (string) $value->toScale(4);
+
+        // The brokerages that have ever paid, for the page's picker: one that never has is a
+        // page of nothing. Taken before the page is narrowed, or choosing one would leave it
+        // the only option.
+        $brokerNames = Account::query()
+            ->whereIn('id', $everyPayment->pluck('broker')->filter()->unique())
+            ->orderBy('name')
+            ->pluck('name', 'id');
+
+        $brokers = $brokerNames->map(fn (string $name, int $id) => [
+            'id' => $id,
+            'name' => $name,
+            'total' => $money($sum($everyPayment->where('broker', $id))),
+        ])->values();
+
+        // One brokerage's dividends, or 0 for all of them. Anything that names none of the
+        // brokerages above is all of them rather than an empty page: a hand-edited URL, or a
+        // brokerage whose payments have since been moved.
+        $broker = $brokers->contains('id', (int) $r->input('broker')) ? (int) $r->input('broker') : 0;
+
+        $paid = $broker ? $everyPayment->where('broker', $broker) : $everyPayment;
+
+        // This year always, so the page opens on it even before its first payment. Years from
+        // every payment, not the ones narrowed to: a year one brokerage did not pay in is an
+        // empty column, which is what says the year went by without it, and a year list that
+        // moved with the brokerage would move the year under the reader's cursor.
+        $years = $everyPayment->pluck('year')->push($today->year)->unique()->sortDesc()->values();
+        $year = in_array((int) $r->input('year'), $years->all(), true) ? (int) $r->input('year') : $today->year;
 
         $inYear = $paid->where('year', $year);
         $lastYear = $paid->where('year', $year - 1);
@@ -75,6 +99,11 @@ class DividendController extends Controller
             $endOfYear = $today->copy()->endOfYear()->toDateString();
 
             foreach (Forecast::for($today, 12)->expectedDividendList() as $dividend) {
+                // A bonus or a double pay is no brokerage's, so it is left out of one's page.
+                if ($broker && (int) $dividend['broker'] !== $broker) {
+                    continue;
+                }
+
                 $base = $dividend['date'] <= $endOfYear ? $fx->toBase($dividend['amount'], $dividend['ccy'], $today->toDateString()) : null;
 
                 if ($base !== null) {
@@ -100,7 +129,6 @@ class DividendController extends Controller
         $allSymbols = $paid->pluck('symbol')->unique()->sort()->values();
         $allNames = Symbol::namesFor($allSymbols->all());
         $names = Symbol::namesFor($symbols->all());
-        $brokerNames = Account::query()->whereIn('id', $paid->pluck('broker')->filter()->unique())->pluck('name', 'id');
 
         $bySymbol = $symbols->map(function (string $symbol) use ($inYear, $lastYear, $expected, $sum, $money, $months, $names, $brokerNames) {
             $own = $inYear->where('symbol', $symbol);
@@ -122,6 +150,8 @@ class DividendController extends Controller
 
         return inertia('dividend', [
             'year' => $year,
+            'broker' => $broker,
+            'brokers' => $brokers->all(),
             'years' => $years->map(fn (int $y) => [
                 'year' => $y,
                 'total' => $money($sum($paid->where('year', $y))),
@@ -172,7 +202,11 @@ class DividendController extends Controller
             'expectedBySymbol' => $expected->groupBy('symbol')
                 ->map(fn ($list) => $money($sum($list)))
                 ->all(),
-            'unconverted' => array_values(array_unique($unconverted)),
+            // The currencies with no rate, among the payments this page is of: another
+            // brokerage's missing rate is no reason to say part of this one is left out.
+            'unconverted' => collect($unconverted)
+                ->when($broker, fn ($list) => $list->where('broker', $broker))
+                ->pluck('ccy')->unique()->values()->all(),
         ]);
     }
 }

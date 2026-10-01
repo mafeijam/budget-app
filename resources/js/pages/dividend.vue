@@ -3,6 +3,35 @@
     <div>
       <div class="row items-center">
         <div class="text-h6 text-weight-medium q-mr-md">Dividends</div>
+
+        <!-- The Positions page's dropdown, and its place. Unlike there it narrows the whole page
+             and not a chart on it, so it is a request like the year is: the figures here are
+             sums over rows the page does not carry, by symbol and month. -->
+        <q-select
+          v-if="brokers.length > 1"
+          :model-value="broker"
+          :options="brokerOptions"
+          class="app-broker-select"
+          dense
+          outlined
+          emit-value
+          map-options
+          options-dense
+          @update:model-value="chooseBroker"
+        >
+          <template #prepend>
+            <q-icon name="account_balance" size="xs" color="grey-7" />
+          </template>
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>{{ scope.opt.label }}</q-item-section>
+              <q-item-section v-if="scope.opt.total" side class="money text-caption">
+                {{ scope.opt.total }}
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
         <q-space />
         <!-- The Positions page's toolbar, so the pages' controls read alike. -->
         <div class="app-toolbar row items-center no-wrap">
@@ -275,6 +304,10 @@
 <script setup>
 const props = defineProps({
   year: { type: Number, required: true },
+  // The brokerage the page is of, or 0 for all of them, and every one that has paid, each
+  // with what it has paid in all.
+  broker: { type: Number, default: 0 },
+  brokers: { type: Array, default: () => [] },
   // Every year with a dividend, newest first, each with its total.
   years: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
@@ -331,8 +364,23 @@ watchEffect(() => {
   }
 })
 
-const choose = year =>
-  router.get('/dividends', { year }, { preserveScroll: true, preserveState: true })
+// The year and the brokerage together, each kept when the other changes: a year stepped to
+// would otherwise hand the page back to every brokerage, and the dropdown would be lying.
+// Off the URL when it is all of them, as the year is when it is this one's default.
+const visit = ({ year = props.year, broker = props.broker }) =>
+  router.get(
+    '/dividends',
+    { year, ...(broker ? { broker } : {}) },
+    { preserveScroll: true, preserveState: true },
+  )
+
+const choose = year => visit({ year })
+const chooseBroker = broker => visit({ broker })
+
+const brokerOptions = computed(() => [
+  { label: 'All brokerages', value: 0, total: null },
+  ...props.brokers.map(b => ({ label: b.name, value: b.id, total: money(b.total) })),
+])
 
 const yearOptions = computed(() =>
   props.years.map(y => ({ label: String(y.year), value: y.year, total: money(y.total) })),

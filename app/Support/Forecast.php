@@ -460,13 +460,17 @@ class Forecast
      * the estimate the projection puts on its typical line, for the dividends page to show
      * beside what has been paid.
      *
-     * @return list<array{date: string, account_id: int, ccy: string, symbol: string, amount: string, paid: string}>
+     * `broker` is the brokerage whose holding paid the dividend it is derived from, or null:
+     * a bonus or a double pay is no holding's, and a dividend with no brokerage named has none.
+     *
+     * @return list<array{date: string, account_id: int, broker: int|null, ccy: string, symbol: string, amount: string, paid: string}>
      */
     public function expectedDividendList(): array
     {
         return array_map(fn (array $d) => [
             'date' => $d['date'],
             'account_id' => $d['account_id'],
+            'broker' => $d['broker'] ?? null,
             'ccy' => $this->cash[$d['account_id']]->ccy,
             'symbol' => $d['symbol'],
             'amount' => self::money($d['amount']),
@@ -932,6 +936,7 @@ class Forecast
             $this->expected[] = [
                 'date' => $date->toDateString(),
                 'account_id' => $row['account_id'],
+                'broker' => $row['broker'],
                 'amount' => $amount,
                 'symbol' => $row['symbol'],
                 'kind' => 'expected dividend',
