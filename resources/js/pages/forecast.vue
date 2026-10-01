@@ -297,53 +297,62 @@
           <span class="text-right">Today</span>
           <span class="text-right">In {{ months }} months</span>
         </div>
-        <div v-for="account in section.accounts" :key="account.id" class="app-runway-account">
-          <div class="app-runway-account__name">
-            <div class="text-weight-medium text-grey-9 ellipsis">{{ account.name }}</div>
-            <div
-              class="text-caption ellipsis"
-              :class="lowClass(account.lowest.amount) || 'text-grey-6'"
-            >
-              <template v-if="fallsBelowToday(account)">
-                {{ withTypical ? 'known lowest' : 'lowest' }} {{ money(account.lowest.amount) }} on
-                {{ formatDate(account.lowest.date) }}
-              </template>
-              <template v-else>never below today</template>
-            </div>
+        <template v-for="group in accountGroups(section)" :key="group.ccy">
+          <div v-if="group.titled" class="app-runway-group">
+            <div class="text-weight-medium text-grey-8">{{ group.ccy }}</div>
+            <div />
+            <div class="text-right money text-grey-7">{{ group.opening }}</div>
+            <div class="text-right money text-grey-7">{{ group.closing }}</div>
           </div>
+          <div v-for="account in group.accounts" :key="account.id" class="app-runway-account">
+            <div class="app-runway-account__name">
+              <div class="text-weight-medium text-grey-9 ellipsis">{{ account.name }}</div>
+              <div
+                class="text-caption ellipsis"
+                :class="lowClass(account.lowest.amount) || 'text-grey-6'"
+              >
+                <template v-if="fallsBelowToday(account)">
+                  {{ withTypical ? 'known lowest' : 'lowest' }}
+                  {{ money(account.lowest.amount) }} on
+                  {{ formatDate(account.lowest.date) }}
+                </template>
+                <template v-else>never below today</template>
+              </div>
+            </div>
 
-          <!-- Today and each month end, so a dip on the way and the direction both show. -->
-          <div class="app-runway-account__bar">
-            <HomeSpark
-              v-if="account.path.length > 1"
-              :values="account.path.map(point => (withTypical ? point.expected : point.known))"
-              :colour="negative(change(account)) ? '#dc2626' : '#059669'"
-              :label="`${account.name}, today and each month end`"
-              class="app-account-spark"
-            />
-          </div>
+            <!-- Today and each month end, so a dip on the way and the direction both show. -->
+            <div class="app-runway-account__bar">
+              <HomeSpark
+                v-if="account.path.length > 1"
+                :values="account.path.map(point => (withTypical ? point.expected : point.known))"
+                :colour="negative(change(account)) ? '#dc2626' : '#059669'"
+                :label="`${account.name}, today and each month end`"
+                class="app-account-spark"
+              />
+            </div>
 
-          <div class="text-right money">
-            <div class="text-grey-8">{{ money(account.opening) }}</div>
-            <div v-if="foreign(account)" class="text-caption text-grey-6">
-              {{ account.ccy }} {{ money(account.native.opening) }}
+            <div class="text-right money">
+              <div class="text-grey-8">{{ money(account.opening) }}</div>
+              <div v-if="foreign(account)" class="text-caption text-grey-6">
+                {{ account.ccy }} {{ money(account.native.opening) }}
+              </div>
             </div>
-          </div>
 
-          <div class="text-right money">
-            <div class="text-weight-bold text-grey-9">{{ money(closingOf(account)) }}</div>
-            <div class="text-caption" :class="signClass(change(account))">
-              {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
-            </div>
-            <div v-if="expects(account)" class="text-caption app-text-estimate">
-              with ~{{ money(account.dividends) }} dividends
-            </div>
-            <div v-if="foreign(account)" class="text-caption text-grey-6">
-              {{ account.ccy }}
-              {{ money(withTypical ? account.native.closing_expected : account.native.closing) }}
+            <div class="text-right money">
+              <div class="text-weight-bold text-grey-9">{{ money(closingOf(account)) }}</div>
+              <div class="text-caption" :class="signClass(change(account))">
+                {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
+              </div>
+              <div v-if="expects(account)" class="text-caption app-text-estimate">
+                with ~{{ money(account.dividends) }} dividends
+              </div>
+              <div v-if="foreign(account)" class="text-caption text-grey-6">
+                {{ account.ccy }}
+                {{ money(withTypical ? account.native.closing_expected : account.native.closing) }}
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
     </q-card>
 
@@ -754,12 +763,46 @@ const scaled = value => {
 const expects = account => withTypical.value && !isZero(account.dividends)
 const closingOf = account => (expects(account) ? account.closing_expected : account.closing)
 
-const change = account => {
-  const units = scaled(closingOf(account)) - scaled(account.opening)
+const fromUnits = units => {
   const negative = units < 0n
   const digits = (negative ? -units : units).toString().padStart(5, '0')
 
   return `${negative ? '-' : ''}${digits.slice(0, -4)}.${digits.slice(-4)}`
+}
+
+const change = account => fromUnits(scaled(closingOf(account)) - scaled(account.opening))
+
+// The accounts by their own currency, the section's first, the biggest today first within
+// each. A group is titled and totalled only when there is more than one: a list of one
+// currency needs neither. The totals are the columns' own, in the section's currency.
+const accountGroups = section => {
+  const byCcy = new Map()
+
+  section.accounts.forEach(account => {
+    byCcy.set(account.ccy, [...(byCcy.get(account.ccy) ?? []), account])
+  })
+
+  const groups = [...byCcy]
+    .sort(([a], [b]) => (a === section.ccy ? -1 : b === section.ccy ? 1 : a.localeCompare(b)))
+    .map(([ccy, accounts]) => ({
+      ccy,
+      titled: byCcy.size > 1,
+      accounts: [...accounts].sort((a, b) => {
+        const gap = scaled(b.opening) - scaled(a.opening)
+
+        return gap > 0n ? 1 : gap < 0n ? -1 : a.name.localeCompare(b.name)
+      }),
+    }))
+
+  return groups.map(group => ({
+    ...group,
+    opening: money(
+      fromUnits(group.accounts.reduce((sum, account) => sum + scaled(account.opening), 0n)),
+    ),
+    closing: money(
+      fromUnits(group.accounts.reduce((sum, account) => sum + scaled(closingOf(account)), 0n)),
+    ),
+  }))
 }
 
 const fallsBelowToday = account => Number(account.lowest.amount) < Number(account.opening)

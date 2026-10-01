@@ -1531,6 +1531,7 @@ body {
 
 /* Forecast accounts: name, its line, today and the horizon, in one grid so columns line up. */
 .app-runway-accounts__head,
+.app-runway-group,
 .app-runway-account {
   display: grid;
   grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 2fr) minmax(110px, 0.8fr) minmax(130px, 0.9fr);
@@ -1549,17 +1550,27 @@ body {
   border-top: 1px solid var(--app-border);
 }
 
+/* A currency's heading and its total, over the accounts held in it. */
+.app-runway-group {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: #f8fafc;
+  border-top: 1px solid var(--app-border);
+}
+
 .app-runway-account__name {
   min-width: 0;
 }
 
 @media (max-width: 599px) {
   .app-runway-accounts__head,
+  .app-runway-group,
   .app-runway-account {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .app-runway-accounts__head > :nth-child(2),
+  .app-runway-group > :nth-child(2),
   .app-runway-account__bar {
     display: none;
   }
