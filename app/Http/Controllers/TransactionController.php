@@ -529,6 +529,11 @@ class TransactionController extends Controller
             'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'desc'],
         ];
 
+        // The one pending row the action column's post button leaves out, named from the enum
+        // so the frontend does not restate it: posting a payment settles a statement, which is
+        // what the settle dialog and the statement's own refusals are for.
+        $settleType = TransactionType::Payment->value;
+
         return inertia('transaction', compact(
             'formEmpty',
             'data',
@@ -543,6 +548,7 @@ class TransactionController extends Controller
             'refusals',
             'editLocks',
             'directions',
+            'settleType',
             'totals',
             'baseTotals',
             'unconverted',

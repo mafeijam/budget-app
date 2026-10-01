@@ -159,10 +159,16 @@ export function usePost(pagination) {
 
   /** The status this row would be posted to, or null when there is nothing to post here. */
   function canPost(row) {
-    // A card's charge, and nothing else. It is the pending row a list is full of, and the
-    // one whose posting moves a figure somebody is waiting on -- the card's owed. A pending
-    // withdrawal, deposit or dividend is a different question, and the form answers it.
-    if (row?.type !== 'charge' || row?.account_type !== 'card') return null
+    // Every pending row but one, so a cash withdrawal, a deposit or a dividend can be posted
+    // from the list as a card charge already could. Whether it is a confirmation of something
+    // that has happened or a statement about something that will is not asked here: the row is
+    // the user's own entry either way, and posting it is the same one-word save.
+    //
+    // A payment is left out because posting one settles a statement. That is what the settle
+    // dialog is for and what the statement's own refusals guard, and a row in a list of a
+    // hundred is the wrong place to do it from. The type is named by the server, like the
+    // status above, so this does not restate the enum.
+    if (row?.type === usePage().props.settleType) return null
 
     return row.status === countedStatus() ? null : countedStatus()
   }

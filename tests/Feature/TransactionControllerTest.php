@@ -515,6 +515,17 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_index_names_the_one_pending_row_the_post_button_leaves_out(): void
+    {
+        // The action column posts any pending row but a payment, and it reads the exemption
+        // from here rather than naming the type itself -- so this is the whole of the contract
+        // between the server and that button. A page that stopped sending it would leave the
+        // button comparing every row against nothing and posting the settlements too.
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('settleType', TransactionType::Payment->value)
+        );
+    }
+
     public function test_index_lists_the_stored_transactions_with_their_bags(): void
     {
         $this->post('/transactions', [
