@@ -280,6 +280,7 @@
         <ForecastMonths
           :months="monthsShown(section)"
           :current="section.months[0]?.month"
+          :end="section.points.at(-1)?.date"
           :ccy="section.ccy"
           :typical="withTypical && !isZero(section.typical_monthly)"
         />
@@ -552,7 +553,7 @@ const averageTile = (value, row) => {
     label: 'Against an average month',
     value: change?.label ?? '—',
     class: change?.class ?? 'text-grey-7',
-    note: `an average month nets ${signed(row.average_net)}`,
+    note: `the last 12 complete months netted ${signed(row.average_net)} on average`,
   }
 }
 
@@ -765,17 +766,26 @@ const figures = section => {
   const typical = withTypical.value && !isZero(section.typical_monthly)
   const low = section.lowest_ahead?.[typical ? 'typical' : 'known']
 
+  // The estimate first when it is shown: it is the balance there will be. The known one
+  // counts every salary and almost nothing spent, so as the headline it promised a figure
+  // nobody would reach -- 1,050,464 against a likely 737,872 on a year.
   return [
-    { label: `In ${props.months} months`, value: money(last?.known) },
     ...(typical
       ? [
           {
-            label: 'With typical spending',
+            label: `In ${props.months} months`,
             value: money(last?.typical),
             class: 'app-text-estimate',
+            caption: 'with typical spending',
+          },
+          {
+            label: 'Known only',
+            value: money(last?.known),
+            class: 'text-grey-7',
+            caption: 'no everyday spending',
           },
         ]
-      : []),
+      : [{ label: `In ${props.months} months`, value: money(last?.known) }]),
     ...(low
       ? [
           {
