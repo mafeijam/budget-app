@@ -34,6 +34,8 @@ Route::get('cash-flow/transactions', [CashFlowController::class, 'transactions']
 Route::get('net-worth', [NetWorthController::class, 'index'])->name('net-worth');
 Route::get('forecast', [ForecastController::class, 'index'])->name('forecast');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
+// JSON for the page's quick view of the dividends one line has received.
+Route::get('positions/dividends', [PositionController::class, 'dividends'])->name('positions.dividends');
 Route::get('dividends', [DividendController::class, 'index'])->name('dividends');
 Route::post('prices', [PositionController::class, 'store'])->name('prices.store');
 Route::post('prices/fetch', [PositionController::class, 'fetch'])->name('prices.fetch');

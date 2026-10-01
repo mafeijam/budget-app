@@ -183,7 +183,11 @@
               <div class="app-dividend-year__track">
                 <div
                   class="app-dividend-year__plot"
-                  :style="{ '--bar': barHeight(entry.total), '--expect': expectHeight(entry) }"
+                  :style="{
+                    '--bar': barHeight(entry.total),
+                    '--pend': pendHeight(entry),
+                    '--expect': expectHeight(entry),
+                  }"
                 >
                   <div class="app-dividend-year__labels">
                     <div
@@ -197,11 +201,26 @@
                       {{ compact(entry.total) }}
                     </div>
                   </div>
-                  <!-- This year's still expected on top, dashed, as the month chart has it. -->
+                  <!-- This year's still to come on top, dashed, as the month chart has it: what
+                       is pending, which is known, under what is only expected. -->
                   <div
-                    v-if="entry.year === thisYear && Number(expectedThisYear) > 0"
-                    class="app-dividend-year__expected"
-                  />
+                    v-if="
+                      entry.year === thisYear &&
+                      (Number(expectedThisYear) > 0 || Number(pendingThisYear) > 0)
+                    "
+                    class="app-dividend-year__coming"
+                  >
+                    <div
+                      v-if="Number(pendingThisYear) > 0"
+                      class="app-dividend-year__pending"
+                      :style="{ flexGrow: Number(pendingThisYear) }"
+                    />
+                    <div
+                      v-if="Number(expectedThisYear) > 0"
+                      class="app-dividend-year__expected"
+                      :style="{ flexGrow: Number(expectedThisYear) }"
+                    />
+                  </div>
                   <div class="app-dividend-year__fill" />
                 </div>
               </div>
@@ -257,12 +276,22 @@
             class="app-dividend-heat__cell"
             :class="{
               'app-dividend-heat__cell--expected': Number(symbol.expected_months[i]) > 0,
+              'app-dividend-heat__cell--pending': Number(symbol.pending_months[i]) > 0,
             }"
             :style="cellStyle(symbol, i)"
           >
-            <q-tooltip v-if="Number(amount) > 0 || Number(symbol.expected_months[i]) > 0">
+            <q-tooltip
+              v-if="
+                Number(amount) > 0 ||
+                Number(symbol.expected_months[i]) > 0 ||
+                Number(symbol.pending_months[i]) > 0
+              "
+            >
               {{ monthInitials[i].name }}:
               <template v-if="Number(amount) > 0">{{ money(amount) }} paid</template>
+              <template v-if="Number(symbol.pending_months[i]) > 0">
+                {{ money(symbol.pending_months[i]) }} pending
+              </template>
               <template v-if="Number(symbol.expected_months[i]) > 0">
                 ~{{ money(symbol.expected_months[i]) }} expected
               </template>
@@ -283,6 +312,9 @@
 
         <div class="text-right money">
           <div class="text-weight-bold text-grey-9">{{ money(symbol.total) }}</div>
+          <div v-if="Number(symbol.pending) > 0" class="text-caption app-text-pending">
+            {{ money(symbol.pending) }} pending
+          </div>
           <div v-if="Number(symbol.expected) > 0" class="text-caption app-text-estimate">
             ~{{ money(symbol.expected) }} more expected
           </div>
@@ -323,6 +355,7 @@ const props = defineProps({
   total: { type: String, default: '0' },
   previous: { type: String, default: '0' },
   expected: { type: String, default: '0' },
+  pending: { type: String, default: '0' },
   payments: { type: Number, default: 0 },
   // Twelve decimal strings each, January first.
   months: { type: Array, default: () => [] },
@@ -510,6 +543,11 @@ const asYield = (part, whole) => `${((Number(part) / Number(whole)) * 100).toFix
 // it is the yield on what was paid for it, which does not move with the price. The year in
 // progress also says what it comes to with the rest of what is expected, since a yield on
 // four months of a year reads low beside one on a whole one.
+// Still to arrive this year: what last year's payments a year on come to, and what has been
+// entered and not yet paid. Money for reading, so a float.
+const pendingTotal = computed(() => Number(view.value.pending ?? 0))
+const coming = computed(() => Number(view.value.expected) + pendingTotal.value)
+
 const yieldTile = computed(() => {
   const base = { label: 'Yield on cost', class: 'text-grey-9' }
 
@@ -528,8 +566,8 @@ const yieldTile = computed(() => {
 
   const held = `on a cost of ${money(view.value.cost)}${isCurrent.value ? '' : ` at the end of ${props.year}`}`
   const inAll =
-    isCurrent.value && Number(view.value.expected) > 0
-      ? ` · ~${asYield(Number(view.value.total) + Number(view.value.expected), view.value.cost)} with what is expected`
+    isCurrent.value && coming.value > 0
+      ? ` · ~${asYield(Number(view.value.total) + coming.value, view.value.cost)} with what is expected`
       : ''
 
   return { ...base, value: asYield(view.value.total, view.value.cost), note: `${held}${inAll}` }
@@ -537,6 +575,12 @@ const yieldTile = computed(() => {
 
 const tiles = computed(() => {
   const vsLast = change(view.value.total, view.value.previous)
+  // The year in progress against the whole of the last, with what is coming on it as well: four
+  // months of a year set against twelve read low on their own.
+  const withComing =
+    isCurrent.value && coming.value > 0
+      ? change(Number(view.value.total) + coming.value, view.value.previous)
+      : null
   const tiles = [
     {
       label: `Paid in ${props.year}`,
@@ -550,7 +594,7 @@ const tiles = computed(() => {
       label: `Against ${props.year - 1}`,
       value: vsLast?.label ?? '—',
       class: vsLast?.class ?? 'text-grey-7',
-      note: `${props.year - 1} paid ${money(view.value.previous)}${isCurrent.value ? ' in all' : ''}`,
+      note: `${props.year - 1} paid ${money(view.value.previous)}${isCurrent.value ? ' in all' : ''}${withComing ? ` · ~${withComing.label} with what is coming` : ''}`,
     },
     {
       label: 'A month on average',
@@ -563,9 +607,9 @@ const tiles = computed(() => {
   if (isCurrent.value) {
     tiles.push({
       label: 'Still expected this year',
-      value: `~${money(view.value.expected)}`,
+      value: `~${money(coming.value.toFixed(2))}`,
       class: 'app-text-estimate',
-      note: `last year's payments a year on, for about ${money((Number(view.value.total) + Number(view.value.expected)).toFixed(2))} in all`,
+      note: `last year's payments a year on${pendingTotal.value > 0 ? ` and ${money(view.value.pending)} pending` : ''}, for about ${money((Number(view.value.total) + coming.value).toFixed(2))} in all`,
     })
   } else {
     const best = view.value.months.reduce(
@@ -604,6 +648,15 @@ const expectedThisYear = computed(() => {
     : view.value.expected
 })
 
+// And what has been entered and not yet paid, narrowed to the symbol the same way.
+const pendingThisYear = computed(() => {
+  if (!isCurrent.value) return '0'
+
+  return onlySymbol.value
+    ? (view.value.symbols.find(s => s.symbol === onlySymbol.value)?.pending ?? '0')
+    : view.value.pending
+})
+
 // The tallest bar, within the series being shown. Off the page's own years rather than
 // the filtered ones, one symbol's bars would be a sliver against a total ten times their
 // size and the years beside it would say nothing about it.
@@ -613,7 +666,11 @@ const yearPeak = computed(() =>
   Math.max(
     1,
     ...yearsWithChange.value.map(
-      y => Number(y.total) + (y.year === thisYear.value ? Number(expectedThisYear.value) : 0),
+      y =>
+        Number(y.total) +
+        (y.year === thisYear.value
+          ? Number(expectedThisYear.value) + Number(pendingThisYear.value)
+          : 0),
     ),
   ),
 )
@@ -631,6 +688,9 @@ const barHeight = value => `${(Number(value) / yearPeak.value) * 100}%`
 // Only this year's bar carries the dashed top, so every other year's is nothing.
 const expectHeight = entry =>
   entry.year === thisYear.value ? barHeight(expectedThisYear.value) : '0%'
+
+const pendHeight = entry =>
+  entry.year === thisYear.value ? barHeight(pendingThisYear.value) : '0%'
 
 const share = amount =>
   Number(view.value.total) > 0

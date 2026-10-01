@@ -4,6 +4,9 @@
       <div v-for="key in legend" :key="key.label" class="row items-center no-wrap">
         <span class="cash-flow-chart__swatch" :style="{ background: key.colour }" />{{ key.label }}
       </div>
+      <div v-if="hasPending" class="row items-center no-wrap">
+        <span class="cash-flow-chart__swatch app-dividend-pending-swatch" />Pending
+      </div>
       <div v-if="hasExpected" class="row items-center no-wrap">
         <span class="cash-flow-chart__swatch app-dividend-expected-swatch" />Expected
       </div>
@@ -72,13 +75,30 @@
             :height="Math.max(y(segment.from) - y(segment.to) - 1, 0)"
             :fill="segment.colour"
           />
+          <!-- Entered and not yet paid: amber and dashed, on top of what has been. Known, so
+               not drawn as the estimate beyond it is. -->
+          <rect
+            v-if="month.pending > 0"
+            :x="centre(i) - barWidth / 2"
+            :y="y(month.paid + month.pending)"
+            :width="barWidth"
+            :height="Math.max(y(month.paid) - y(month.paid + month.pending) - 1, 0)"
+            :fill="colours.pending"
+            :stroke="colours.pendingEdge"
+            stroke-dasharray="3 2"
+          />
           <!-- Paler and outlined: an estimate, and drawn to look like one. -->
           <rect
             v-if="month.expected > 0"
             :x="centre(i) - barWidth / 2"
-            :y="y(month.paid + month.expected)"
+            :y="y(month.paid + month.pending + month.expected)"
             :width="barWidth"
-            :height="Math.max(y(month.paid) - y(month.paid + month.expected) - 1, 0)"
+            :height="
+              Math.max(
+                y(month.paid + month.pending) - y(month.paid + month.pending + month.expected) - 1,
+                0,
+              )
+            "
             :fill="colours.expected"
             :stroke="colours.expectedEdge"
             stroke-dasharray="3 2"
@@ -139,6 +159,8 @@ const props = defineProps({
 const money = useMoney()
 
 const colours = {
+  pending: '#fef3c7',
+  pendingEdge: '#f59e0b',
   expected: '#e0f2fe',
   expectedEdge: '#7dd3fc',
   previous: '#cbd5e1',
@@ -170,6 +192,10 @@ const legend = computed(() => [
     ? [{ label: `Others (${othersCount.value})`, colour: othersColour.value }]
     : []),
 ])
+
+const hasPending = computed(() =>
+  props.symbols.some(s => (s.pending_months ?? []).some(v => Number(v) > 0)),
+)
 
 const hasExpected = computed(() => props.expectedMonths.some(v => Number(v) > 0))
 
@@ -220,6 +246,7 @@ const stacks = computed(() =>
       long: long.format(day),
       segments,
       paid: running,
+      pending: props.symbols.reduce((total, s) => total + Number(s.pending_months?.[i] ?? 0), 0),
       expected: Number(props.expectedMonths[i] ?? 0),
       previous: Number(props.previousMonths[i] ?? 0),
     }
@@ -234,7 +261,10 @@ const niceStep = raw => {
 }
 
 const scale = computed(() => {
-  const peak = Math.max(1, ...stacks.value.flatMap(m => [m.paid + m.expected, m.previous]))
+  const peak = Math.max(
+    1,
+    ...stacks.value.flatMap(m => [m.paid + m.pending + m.expected, m.previous]),
+  )
   const tick = niceStep(peak / 4)
 
   return { tick, high: Math.ceil(peak / tick) * tick }
@@ -291,6 +321,13 @@ const tooltipRows = computed(() => {
   return [
     ...named,
     ...props.symbols
+      .filter(s => Number(s.pending_months?.[i]) > 0)
+      .map(s => ({
+        label: `${s.symbol}, pending`,
+        value: money(s.pending_months[i]),
+        colour: colours.pendingEdge,
+      })),
+    ...props.symbols
       .filter(s => Number(s.expected_months[i]) > 0)
       .map(s => ({
         label: `${s.symbol}, expected`,
@@ -306,7 +343,10 @@ const tooltipRows = computed(() => {
 const monthTotal = computed(() => {
   const month = stacks.value[hovered.value]
 
-  return { expected: month.expected, value: money((month.paid + month.expected).toFixed(2)) }
+  return {
+    expected: month.expected,
+    value: money((month.paid + month.pending + month.expected).toFixed(2)),
+  }
 })
 
 // Flipped to the left of the band past the middle, so it never runs off the card.

@@ -21,6 +21,50 @@ use Illuminate\Validation\Rule;
 
 class PositionController extends Controller
 {
+    /**
+     * The dividends one symbol paid one brokerage, for the page's quick view: the rows the
+     * Dividends column of that line counted, newest first. The same rows by the same rule as
+     * index() -- counting statuses, up to the day looked back on, matched on the brokerage and
+     * the symbol as a trade normalises it -- so the list adds up to the cell it was opened from.
+     */
+    public function dividends(Request $r)
+    {
+        $data = $r->validate([
+            'broker' => ['required', Rule::exists('accounts', 'id')->where('type', AccountType::Security->value)],
+            'symbol' => ['required', 'string', 'max:40'],
+            'at' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $symbol = Positions::symbol($data['symbol']);
+        $broker = (int) $data['broker'];
+
+        $rows = Transaction::query()
+            ->with(['meta', 'account'])
+            ->where('type', TransactionType::Dividend->value)
+            ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->where('date', '<=', $data['at'] ?? today()->toDateString())
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (Transaction $row) => (int) ($row->meta?->meta['brokerage_account_id'] ?? 0) === $broker
+                && Positions::symbol($row->meta?->meta['symbol'] ?? '') === $symbol)
+            ->values();
+
+        $total = $rows->reduce(fn (BigDecimal $sum, Transaction $row) => $sum->plus((string) $row->amount), BigDecimal::zero());
+
+        return response()->json([
+            'count' => $rows->count(),
+            'total' => (string) $total->toScale(4),
+            'ccy' => $rows->first()?->account->ccy,
+            'rows' => $rows->map(fn (Transaction $row) => [
+                'id' => $row->id,
+                'date' => $row->date,
+                'amount' => (string) BigDecimal::of((string) $row->amount)->toScale(4),
+                'account' => $row->account->name,
+            ])->all(),
+        ]);
+    }
+
     public function index(Request $r)
     {
         // A past day picked to look back on, or today. A malformed or future day is today,

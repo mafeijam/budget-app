@@ -252,6 +252,7 @@
     "usePagination": true,
     "useParallax": true,
     "useParentElement": true,
+    "usePeek": true,
     "usePerformanceObserver": true,
     "usePermission": true,
     "usePointer": true,

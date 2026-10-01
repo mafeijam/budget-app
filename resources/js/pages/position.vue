@@ -163,8 +163,16 @@
             <div class="text-caption money" :class="figure.noteClass">{{ figure.note }}</div>
           </div>
         </div>
-        <div class="text-caption text-grey-7 money q-mt-sm">
-          {{ details(view.figureRows[0].totals) }}
+        <!-- The cost of dealing, as the net worth page shows a change: a tinted pill, then what it is. -->
+        <div
+          v-if="Number(view.figureRows[0].totals.fees) > 0"
+          class="row items-center no-wrap q-mt-md"
+        >
+          <q-badge class="app-change app-tint app-tint--muted q-mr-sm">
+            <q-icon name="receipt_long" size="14px" />
+            <span class="money">{{ money(view.figureRows[0].totals.fees) }}</span>
+          </q-badge>
+          <span class="text-caption text-grey-7">fees paid, not taken off the return</span>
         </div>
 
         <!-- Each currency in its own money, under the sum in the base one. -->
@@ -178,7 +186,7 @@
             {{ figure.label }}
             <span class="text-weight-medium" :class="figure.class">{{ figure.value }}</span>
           </span>
-          <span class="text-grey-7">{{ details(row.totals) }}</span>
+          <span class="text-grey-7">fees {{ money(row.totals.fees) }}</span>
         </div>
       </q-card-section>
 
@@ -288,10 +296,21 @@
                   label="sold out"
                 />
               </div>
-              <div v-if="position.open" class="text-caption text-grey-7 money">
-                {{ quantity(position.quantity) }} @ {{ money(position.average_cost) }}
+              <!-- What is held and at what cost leads; the trades behind it follow as quiet tags. -->
+              <div class="app-holding-line money">
+                <span v-if="position.open" class="app-holding-line__held">
+                  {{ quantity(position.quantity) }}
+                  <span class="app-holding-line__at">@</span>
+                  {{ money(position.average_cost) }}
+                </span>
+                <span class="app-holding-line__tag">{{ activity(position).trades }}</span>
+                <span
+                  v-if="activity(position).fees"
+                  class="app-holding-line__tag app-holding-line__tag--fees"
+                >
+                  fees {{ activity(position).fees }}
+                </span>
               </div>
-              <div class="text-caption text-grey-6">{{ activity(position) }}</div>
             </td>
 
             <!-- The last 30 days' line and its change; empty for a holding with no closes. -->
@@ -381,18 +400,25 @@
             <td
               v-if="view.dividends"
               class="text-right money"
-              :class="{ 'cursor-pointer': position.dividend_count }"
-              @click.stop="openDividends(position, owner)"
+              :class="{ 'cursor-pointer app-peek-trigger': position.dividend_count }"
+              @click.stop="peekDividends(position, owner)"
             >
               <template v-if="position.dividend_count">
                 <span class="text-grey-9">{{ money(position.dividends) }}</span>
                 <div class="text-caption text-grey-6">
                   {{ payments(position.dividend_count) }}
-                  <q-icon name="open_in_new" size="xs">
-                    <q-tooltip :delay="500" :offset="[0, 6]">
-                      This symbol's dividend transactions
-                    </q-tooltip>
-                  </q-icon>
+                  <!-- The cell opens the payments here; this goes on to the full list. -->
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    size="xs"
+                    icon="open_in_new"
+                    color="grey-5"
+                    class="app-open-link"
+                    aria-label="Open in Transactions"
+                    @click.stop="openDividends(position)"
+                  />
                 </div>
               </template>
               <span v-else class="text-grey-5">—</span>
@@ -428,6 +454,19 @@
         {{ view.traded ? 'Everything here has been sold.' : 'No trades yet.' }}
       </q-card-section>
     </q-card>
+
+    <!-- One line's dividends, read when it is opened. -->
+    <PeekDialog
+      v-model="peek.open"
+      :title="peek.meta?.position.symbol ?? ''"
+      :subtitle="peekSubtitle"
+      :total="peek.data?.total"
+      :unit="peek.data?.ccy ?? ''"
+      :count="peek.data?.count"
+      noun="payment"
+      :rows="peekRows"
+      @open="openPeeked"
+    />
   </div>
 </template>
 
@@ -712,6 +751,41 @@ const openDividends = position => {
   })
 }
 
+// The dividends one line has received, shown with its payments or not at all.
+const peek = usePeek()
+
+const peekDividends = (position, owner) => {
+  // A blank cell has no payments behind it to show.
+  if (!position.dividend_count) return
+
+  peek.show(
+    '/positions/dividends',
+    { broker: owner.id, symbol: position.symbol, ...(props.at ? { at: props.at } : {}) },
+    { position, owner },
+  )
+}
+
+const peekSubtitle = computed(() => {
+  const meta = peek.meta
+
+  return meta
+    ? [props.names[meta.position.symbol], meta.owner.name].filter(Boolean).join(' · ')
+    : ''
+})
+
+const peekRows = computed(() =>
+  (peek.data?.rows ?? []).map(row => ({
+    id: row.id,
+    label: formatDate(row.date),
+    amount: row.amount,
+  })),
+)
+
+const openPeeked = () => {
+  peek.open = false
+  openDividends(peek.meta.position)
+}
+
 // The trades page's own query shape, so the filter row and its chips open already set:
 // a value it writes as one string, not a bracketed array. The brokerage is named because
 // the same ticker at two brokerages is two rows, and a symbol on its own would open the
@@ -791,19 +865,17 @@ const headline = totals => [
   },
 ]
 
-// What the return is before: fees are not taken off it.
-const details = totals => `Fees ${money(totals.fees)}, not taken off the return`
-
 // Trades, the last of them, and the fees a row has only sometimes. What the line realised
 // is not repeated here: it has a column of its own now.
-const activity = position =>
-  [
+const activity = position => ({
+  trades: [
     `${position.trades} trade${position.trades === 1 ? '' : 's'}`,
     position.last_trade_date ? `last ${formatDate(position.last_trade_date)}` : null,
-    received(position.fees) ? `fees ${money(position.fees)}` : null,
   ]
     .filter(Boolean)
-    .join(' · ')
+    .join(' · '),
+  fees: received(position.fees) ? money(position.fees) : null,
+})
 
 // The day most prices are from, so only a price older than it, or set by hand, says when.
 const latestPriceDate = computed(() =>

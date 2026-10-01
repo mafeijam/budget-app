@@ -25,15 +25,20 @@ class DividendController extends Controller
     public function index(Request $r)
     {
         $today = today();
-        $rows = Transaction::query()
+        // The received, and the pending beside them: entered but not yet paid, so in no total
+        // and in no balance, and drawn in the months they fall in so the page does not read a
+        // month with one coming as a month with nothing.
+        $all = Transaction::query()
             ->with('meta')
             ->where('type', TransactionType::Dividend->value)
-            ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->whereIn('status', [...TransactionStatus::countingTowardBalance(), TransactionStatus::Pending->value])
             ->whereHas('account', fn ($q) => $q->where('type', AccountType::Cash->value))
             ->orderBy('date')
             ->get();
 
-        $fx = Fx::for($rows->pluck('ccy')->push(Fx::BASE->value)->unique()->all());
+        $rows = $all->reject(fn (Transaction $row) => $row->status === TransactionStatus::Pending->value);
+
+        $fx = Fx::for($all->pluck('ccy')->push(Fx::BASE->value)->unique()->all());
         $unconverted = [];
         $paid = [];
 
@@ -57,6 +62,19 @@ class DividendController extends Controller
         }
 
         $everyPayment = collect($paid);
+
+        $pending = $all->filter(fn (Transaction $row) => $row->status === TransactionStatus::Pending->value)
+            ->map(function (Transaction $row) use ($fx) {
+                $base = $fx->toBase((string) $row->amount, $row->ccy, $row->date);
+
+                return $base === null ? null : [
+                    'year' => (int) substr($row->date, 0, 4),
+                    'month' => (int) substr($row->date, 5, 2),
+                    'symbol' => Positions::symbol($row->meta?->meta['symbol'] ?? '') ?: '—',
+                    'broker' => $row->meta?->meta['brokerage_account_id'] ?? null,
+                    'amount' => $base,
+                ];
+            })->filter()->values();
 
         $sum = fn ($list) => $list->reduce(fn (BigDecimal $total, array $p) => $total->plus($p['amount']), BigDecimal::zero());
         $money = fn (BigDecimal $value) => (string) $value->toScale(4);
@@ -106,6 +124,7 @@ class DividendController extends Controller
         $context = [
             'paid' => $everyPayment,
             'expected' => $expected,
+            'pending' => $pending,
             'unconverted' => collect($unconverted),
             'years' => $years,
             'year' => $year,
@@ -145,6 +164,8 @@ class DividendController extends Controller
         // A bonus or a double pay is no brokerage's, so it is left out of one's page.
         $expected = $broker ? $c['expected']->filter(fn (array $e) => (int) $e['broker'] === $broker) : $c['expected'];
 
+        $pending = ($broker ? $c['pending']->where('broker', $broker) : $c['pending'])->where('year', $year);
+
         $inYear = $paid->where('year', $year);
         $lastYear = $paid->where('year', $year - 1);
 
@@ -155,7 +176,7 @@ class DividendController extends Controller
             range(1, 12)
         );
 
-        $symbols = $inYear->pluck('symbol')->merge($expected->pluck('symbol'))->unique()->values();
+        $symbols = $inYear->pluck('symbol')->merge($expected->pluck('symbol'))->merge($pending->pluck('symbol'))->unique()->values();
 
         // Every symbol that has ever paid, not just this year's: a symbol no longer held
         // is exactly the one whose line across the years is worth reading, so the year's
@@ -165,7 +186,7 @@ class DividendController extends Controller
         $names = Symbol::namesFor($symbols->all());
         $brokerNames = $c['brokerNames'];
 
-        $bySymbol = $symbols->map(function (string $symbol) use ($inYear, $lastYear, $expected, $sum, $money, $months, $names, $brokerNames) {
+        $bySymbol = $symbols->map(function (string $symbol) use ($inYear, $lastYear, $expected, $pending, $sum, $money, $months, $names, $brokerNames) {
             $own = $inYear->where('symbol', $symbol);
 
             return [
@@ -173,6 +194,8 @@ class DividendController extends Controller
                 'name' => $names[$symbol] ?? null,
                 'months' => $months($own),
                 'expected_months' => $months($expected->where('symbol', $symbol)),
+                'pending_months' => $months($pending->where('symbol', $symbol)),
+                'pending' => $money($sum($pending->where('symbol', $symbol))),
                 'total' => $money($sum($own)),
                 'expected' => $money($sum($expected->where('symbol', $symbol))),
                 'previous' => $money($sum($lastYear->where('symbol', $symbol))),
@@ -203,6 +226,8 @@ class DividendController extends Controller
             'total' => $money($sum($inYear)),
             'previous' => $money($sum($lastYear)),
             'expected' => $money($sum($expected)),
+            // Entered and not yet paid, so in no total; the year in progress counts it as coming.
+            'pending' => $money($sum($pending)),
             'payments' => $inYear->count(),
             'months' => $months($inYear),
             'expectedMonths' => $months($expected),

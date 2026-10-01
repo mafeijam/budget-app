@@ -185,6 +185,16 @@ body {
   border-color: #94a3b8;
 }
 
+/* A cell that opens a quick view: tinted under the pointer, so it reads as a button. */
+.app-peek-trigger {
+  transition: background-color 0.15s;
+}
+
+/* !important: the row's own hover tint is set on its cells and would otherwise win. */
+.app-peek-trigger:hover {
+  background: #eff6ff !important;
+}
+
 /* The quick view of a breakdown tile's rows: a name and a figure to a line, largest first. */
 .app-peek {
   width: 460px;
@@ -239,14 +249,14 @@ body {
 }
 
 /* !important on the hover colours: a button's colour prop is a utility class that is. */
-.app-flow-tile__open {
+.app-open-link {
   color: #94a3b8;
   transition:
     color 0.15s,
     background-color 0.15s;
 }
 
-.app-flow-tile__open:hover {
+.app-open-link:hover {
   color: var(--q-primary) !important;
   background: #eff6ff;
 }
@@ -381,6 +391,43 @@ body {
 }
 
 /* Classes rather than color props: Quasar's palette has no shade mixed from the brand. */
+/* A holding's second line: what is held at what cost, then its trades as quiet tags. */
+.app-holding-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.app-holding-line__held {
+  margin-right: 2px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.app-holding-line__at {
+  padding: 0 1px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.app-holding-line__tag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* The cost of dealing, apart from the history beside it. */
+.app-holding-line__tag--fees {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
 .app-tint {
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
@@ -1667,6 +1714,13 @@ body {
 }
 
 /* Dividends: the expected part of a month, pale and dashed as in the chart. */
+/* Pending: the amber dashed edge the heatmap draws it with. */
+.app-dividend-pending-swatch {
+  background: #fef3c7;
+  outline: 1px dashed #f59e0b;
+  outline-offset: -1px;
+}
+
 .app-dividend-expected-swatch {
   background: #e0f2fe;
   outline: 1px dashed #7dd3fc;
@@ -1732,8 +1786,8 @@ body {
   inset: 0 0 0 0;
 }
 
-/* The expected sits on the paid part, so the paid part's top is square under it. */
-.app-dividend-year__expected + .app-dividend-year__fill {
+/* What is still to come sits on the paid part, so the paid part's top is square under it. */
+.app-dividend-year__coming + .app-dividend-year__fill {
   border-radius: 0;
 }
 
@@ -1748,24 +1802,41 @@ body {
   border-radius: 4px 4px 0 0;
 }
 
-.app-dividend-year__expected {
+/* Pending at the bottom, the expected above it: one dashed block of two kinds. */
+.app-dividend-year__coming {
   position: absolute;
   bottom: var(--bar, 0%);
   left: 0;
   right: 0;
-  height: var(--expect, 0%);
+  height: calc(var(--pend, 0%) + var(--expect, 0%));
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 4px 4px 0 0;
+}
+
+/* Shares of the block by amount: flex-grow is set to each one's figure. */
+.app-dividend-year__pending {
+  flex: 1 1 0;
+  background: #fef3c7;
+  border: 1px dashed #f59e0b;
+  border-bottom: none;
+}
+
+.app-dividend-year__expected {
+  flex: 1 1 0;
   background: #e0f2fe;
   border: 1px dashed #7dd3fc;
   border-bottom: none;
-  border-radius: 4px 4px 0 0;
 }
+
 
 /* The total rides just above its own bar rather than in a row across the top. */
 .app-dividend-year__labels {
   position: absolute;
   left: -12px;
   right: -12px;
-  bottom: calc(var(--bar, 0%) + var(--expect, 0%) + 2px);
+  bottom: calc(var(--bar, 0%) + var(--pend, 0%) + var(--expect, 0%) + 2px);
   white-space: nowrap;
 }
 
@@ -1824,6 +1895,17 @@ body {
 /* A month still to come that last year paid in: outlined, not filled, as an estimate. */
 .app-dividend-heat__cell--expected {
   box-shadow: inset 0 0 0 1.5px #7dd3fc;
+}
+
+/* Entered and not yet paid: a dashed amber edge, over the fill if the month also paid. */
+.app-dividend-heat__cell--pending {
+  outline: 1.5px dashed #f59e0b;
+  outline-offset: -2px;
+  background-color: #fffbeb;
+}
+
+.app-text-pending {
+  color: var(--q-warning);
 }
 
 @media (max-width: 599px) {

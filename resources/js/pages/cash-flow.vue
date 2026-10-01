@@ -177,8 +177,8 @@
                     v-for="(category, i) in [...named(month), ...unnamed(month)]"
                     :key="`${month.month}-${category.id}`"
                     class="app-flow-tile cursor-pointer"
-                    :class="{ 'app-flow-tile--busy': peeked }"
-                    @click="peek(month, category, categoryColour(category, i))"
+                    :class="{ 'app-flow-tile--busy': peek.busy }"
+                    @click="peekTile(month, category, categoryColour(category, i))"
                   >
                     <div class="row items-center no-wrap">
                       <span
@@ -200,7 +200,7 @@
                         size="xs"
                         icon="open_in_new"
                         color="grey-5"
-                        class="app-flow-tile__open"
+                        class="app-open-link"
                         aria-label="Open in Transactions"
                         @click.stop="openTransactions(month, category)"
                       />
@@ -224,12 +224,18 @@
     </q-card>
 
     <!-- One tile's rows, read when it is opened. -->
-    <CategoryPeek
-      v-model="peeking.open"
-      :name="peeking.category?.name ?? null"
-      :result="peeking.result"
-      :colour="peeking.colour"
-      :period="peeking.month ? monthLabel(peeking.month.month) : ''"
+    <PeekDialog
+      v-model="peek.open"
+      :title="peek.meta?.category.name ?? 'No category'"
+      :muted="!peek.meta?.category.name"
+      :subtitle="peek.meta ? `${monthLabel(peek.meta.month.month)} · spending` : ''"
+      :colour="peek.meta?.colour"
+      :total="peek.data?.total"
+      :unit="peek.data?.ccy"
+      :count="peek.data?.count"
+      :notice="peekNotice"
+      :more="peekMore"
+      :rows="peekRows"
       @open="openPeeked"
     />
   </div>
@@ -395,48 +401,49 @@ const openTransactions = (month, category) =>
   })
 
 // The tile whose rows are open in the quick view.
-const peeking = reactive({
-  open: false,
-  month: null,
-  category: null,
-  colour: '#94a3b8',
-  result: null,
+const peek = usePeek()
+
+const peekTile = (month, category, colour) =>
+  peek.show(
+    '/cash-flow/transactions',
+    {
+      from: month.from,
+      to: month.to,
+      card: card.value,
+      category: category.id ?? NO_CATEGORY,
+      ...(ccy.value ? { ccy: ccy.value } : {}),
+    },
+    { month, category, colour },
+  )
+
+// Largest first, each at its base figure with its own beneath where that differs.
+const peekRows = computed(() =>
+  (peek.data?.rows ?? []).map(row => ({
+    id: row.id,
+    label: row.description,
+    amount: row.base ?? row.amount,
+    tag: row.one_off ? 'one-off' : null,
+    native: row.ccy !== peek.data.ccy ? `${row.ccy} ${money(row.amount)}` : null,
+    missing: row.base === null ? 'no rate' : null,
+  })),
+)
+
+const peekNotice = computed(() => {
+  const left = peek.data?.unconverted
+
+  return left
+    ? `${left} without a rate on their day ${left === 1 ? 'is' : 'are'} left out of the total.`
+    : ''
 })
 
-// The dialog is shown with its rows or not at all: opened first it jumped in empty, then
-// filled in under the reader. A tile is busy while they load, and a failure says so.
-const peeked = ref(false)
-
-const peek = async (month, category, colour) => {
-  if (peeked.value) return
-
-  peeked.value = true
-
-  const query = new URLSearchParams({
-    from: month.from,
-    to: month.to,
-    card: card.value,
-    category: category.id ?? NO_CATEGORY,
-    ...(ccy.value ? { ccy: ccy.value } : {}),
-  })
-
-  try {
-    const response = await fetch(`/cash-flow/transactions?${query}`, {
-      headers: { Accept: 'application/json' },
-    })
-
-    if (!response.ok) throw new Error(String(response.status))
-
-    Object.assign(peeking, { open: true, month, category, colour, result: await response.json() })
-  } catch {
-    notifyFailure('The transactions could not be loaded.')
-  } finally {
-    peeked.value = false
-  }
-}
+const peekMore = computed(() =>
+  peek.data && peek.data.count > peek.data.rows.length
+    ? `The largest ${peek.data.rows.length} of ${peek.data.count}: the total is of all of them.`
+    : '',
+)
 
 const openPeeked = () => {
-  peeking.open = false
-  openTransactions(peeking.month, peeking.category)
+  peek.open = false
+  openTransactions(peek.meta.month, peek.meta.category)
 }
 </script>

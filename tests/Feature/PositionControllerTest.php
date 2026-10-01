@@ -313,6 +313,45 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_a_lines_dividends_are_the_rows_its_cell_counted(): void
+    {
+        $other = Account::create(['name' => 'Another Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $other->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->dividend($this->broker, '12.5000');
+        $this->dividend($this->broker, '7.5000', symbol: ' nvda ');
+        // Not this line's: pending, another symbol, and the same symbol at another brokerage.
+        $this->dividend($this->broker, '99.0000', 'pending');
+        $this->dividend($this->broker, '5.0000', symbol: 'AAPL');
+        $this->dividend($other, '3.0000');
+
+        $query = http_build_query(['broker' => $this->broker->id, 'symbol' => 'NVDA']);
+        $listed = $this->getJson("/positions/dividends?{$query}")->assertOk();
+
+        $this->assertSame(2, $listed['count']);
+        $this->assertSame('20.0000', $listed['total']);
+        $this->assertSame('USD', $listed['ccy']);
+        // Paid the same day, so the later entered first.
+        $this->assertSame(['7.5000', '12.5000'], array_column($listed['rows'], 'amount'));
+
+        // The cell it was opened from counted the same.
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where('brokerages.1.positions.0.dividends', $listed['total'])
+            ->where('brokerages.1.positions.0.dividend_count', $listed['count'])
+        );
+
+        // Looking back on a day before they were paid, there are none.
+        $this->getJson("/positions/dividends?{$query}&at=2026-02-01")->assertJsonPath('count', 0);
+    }
+
+    public function test_a_lines_dividends_refuse_a_malformed_request(): void
+    {
+        $this->getJson('/positions/dividends?symbol=NVDA')->assertStatus(422);
+        $this->getJson("/positions/dividends?broker={$this->bank->id}&symbol=NVDA")->assertStatus(422);
+        $this->getJson("/positions/dividends?broker={$this->broker->id}&symbol=NVDA&at=soon")->assertStatus(422);
+    }
+
     private function dividend(Account $broker, string $amount, string $status = 'posted', string $symbol = 'NVDA'): void
     {
         $this->post('/transactions', [

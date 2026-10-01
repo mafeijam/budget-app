@@ -304,6 +304,29 @@ class DividendPageTest extends TestCase
         );
     }
 
+    public function test_a_pending_dividend_is_marked_in_its_month_and_counted_in_no_total(): void
+    {
+        $this->dividend('2026-02-10', '0005.HK', '50');
+        $this->dividend('2026-04-10', '0005.HK', '70', status: 'pending');
+        $this->dividend('2026-04-12', '0700.HK', '30', status: 'pending');
+
+        $this->get('/dividends')->assertInertia(fn (Assert $page) => $page
+            // Not received: in neither the year's total nor its payments.
+            ->where('total', '50.0000')
+            ->where('payments', 1)
+            ->where('symbols.0.symbol', '0005.HK')
+            ->where('symbols.0.months.3', '0.0000')
+            ->where('symbols.0.pending_months.3', '70.0000')
+            ->where('symbols.0.pending', '70.0000')
+            ->where('pending', '100.0000')
+            // A symbol with only a pending payment is on the page, with nothing paid yet.
+            ->where('symbols.1.symbol', '0700.HK')
+            ->where('symbols.1.total', '0.0000')
+            ->where('symbols.1.pending_months.3', '30.0000')
+            ->where('byBroker.'.$this->broker->id.'.symbols.1.pending', '30.0000')
+        );
+    }
+
     private function otherBroker(): Account
     {
         $other = Account::create(['name' => 'Other broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
@@ -312,11 +335,11 @@ class DividendPageTest extends TestCase
         return $other;
     }
 
-    private function dividend(string $date, string $symbol, string $amount, ?Account $broker = null): void
+    private function dividend(string $date, string $symbol, string $amount, ?Account $broker = null, string $status = 'posted'): void
     {
         $this->post('/transactions', [
             'account_id' => $this->bank->id, 'date' => $date, 'type' => 'dividend', 'description' => 'Dividend',
-            'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
+            'amount' => $amount, 'ccy' => 'HKD', 'status' => $status,
             'meta_data' => ['symbol' => $symbol, 'brokerage_account_id' => ($broker ?? $this->broker)->id],
         ])->assertSessionHasNoErrors();
     }
