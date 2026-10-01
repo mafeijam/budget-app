@@ -24,7 +24,10 @@ class Fx
         return $ccy.self::BASE->value.'=X';
     }
 
-    /** @var array<string, array<string, string>> pair => [date => close], ascending */
+    /** @var array<string, list<string>> pair => its days with a close, ascending */
+    private array $dates = [];
+
+    /** @var array<string, list<string>> pair => the closes on those days, in step */
     private array $closes = [];
 
     /** @param  list<string>  $currencies  every currency to be converted */
@@ -37,7 +40,8 @@ class Fx
         // Rows, not models: a pair is a close a day for years, read on most pages, and two
         // columns of each are all a rate needs.
         foreach (DB::table('prices')->whereIn('symbol', $pairs)->orderBy('date')->get(['symbol', 'date', 'close']) as $price) {
-            $fx->closes[$price->symbol][$price->date] = (string) $price->close;
+            $fx->dates[$price->symbol][] = $price->date;
+            $fx->closes[$price->symbol][] = (string) $price->close;
         }
 
         return $fx;
@@ -50,17 +54,26 @@ class Fx
             return '1';
         }
 
+        // The last close on or before the day, found by halving: a rate is asked of every row
+        // a report converts, and walking a pair's years of closes from the start for each was
+        // ten thousand rows times a thousand closes.
+        $pair = self::pair($ccy);
+        $dates = $this->dates[$pair] ?? [];
+        [$low, $high] = [0, count($dates) - 1];
         $found = null;
 
-        foreach ($this->closes[self::pair($ccy)] ?? [] as $date => $close) {
-            if ($date > $day) {
-                break;
-            }
+        while ($low <= $high) {
+            $mid = intdiv($low + $high, 2);
 
-            $found = $close;
+            if ($dates[$mid] <= $day) {
+                $found = $mid;
+                $low = $mid + 1;
+            } else {
+                $high = $mid - 1;
+            }
         }
 
-        return $found;
+        return $found === null ? null : $this->closes[$pair][$found];
     }
 
     /** $amount of $ccy in the base currency, or null when there is no rate yet. */
