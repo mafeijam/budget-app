@@ -100,10 +100,6 @@ export const byAmountDescending = (a, b) => {
  * carries that one row's own money and the row beneath carries its worth in the card's
  * currency, so nothing is printed twice.
  *
- * `converted` is the gap between the card's own figure and the base group's: the rows in
- * another currency, already worth the card's currency. Without it the two figures on the card
- * differ by an amount nothing names, and no heading reaches the card's figure on its own.
- *
  * @param list<{ccy: string, total: string, own: string, converted: bool}> items
  * @param string base
  */
@@ -150,15 +146,5 @@ export function groupedByCurrency(items, base) {
     group.inBase = group.base || group.items.every(item => item.converted)
   }
 
-  const foreign = sorted.filter(group => !group.base && group.inBase)
-
-  return {
-    groups: sorted,
-    converted: foreign.length
-      ? {
-          total: foreign.reduce((sum, group) => plus(sum, group.total), '0'),
-          from: foreign.map(group => group.ccy),
-        }
-      : null,
-  }
+  return { groups: sorted }
 }

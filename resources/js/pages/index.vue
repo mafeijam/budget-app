@@ -63,8 +63,7 @@
                   <!-- What the run comes to in the currency the heading names. A run of one
                        has no sum to state: its own money is on the row beneath it, and two
                        figures a few pixels apart is one figure read twice. The run in the
-                       card's own currency is the exception, since its figure is what the note
-                       under it reconciles with the card's. -->
+                       card's own currency keeps its figure regardless. -->
                   <div
                     v-if="group.ownShown"
                     class="text-caption text-weight-medium text-grey-8 money"
@@ -75,13 +74,6 @@
                     <q-tooltip v-if="rateFor(group)" :delay="500" :offset="[0, 6]">
                       1 {{ group.ccy }} = {{ rateFor(group) }} {{ base }}
                     </q-tooltip>
-                  </div>
-                  <!-- Only on the run in the card's own currency, and only where something
-                       converted: this is what turns the figure above into the card's figure,
-                       which the base run's money alone falls short of by exactly this. -->
-                  <div v-if="group.base && figure.converted" class="app-home-list__group-note">
-                    +{{ money(figure.converted.total) }} converted from
-                    {{ figure.converted.from.join(', ') }}
                   </div>
                 </div>
               </div>
@@ -469,8 +461,6 @@ const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value
 const heldCash = computed(() => cashItems.value.filter(item => !item.empty))
 const openBrokers = computed(() => brokerItems.value.filter(item => !item.empty))
 
-// Grouped once, and the heading and the note that bridges it to the card's figure both come
-// off the same answer: the second is the sum of the first's runs outside the base currency.
 const cashGroups = computed(() => groupedByCurrency(heldCash.value, props.base))
 const brokerGroups = computed(() => groupedByCurrency(openBrokers.value, props.base))
 
@@ -512,7 +502,6 @@ const headlineFigures = computed(() => {
       noun: 'account',
       items: heldCash.value,
       groups: cashGroups.value.groups,
-      converted: cashGroups.value.converted,
       more: emptyCash ? `+${emptyCash} empty` : null,
       empty: 'No cash account yet.',
     },
@@ -527,7 +516,6 @@ const headlineFigures = computed(() => {
       noun: 'brokerage',
       items: openBrokers.value,
       groups: brokerGroups.value.groups,
-      converted: brokerGroups.value.converted,
     },
     {
       label: 'Cards owe',
