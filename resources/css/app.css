@@ -2126,9 +2126,10 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
-/* Compact statements: a short row a card, more of them across. */
+/* Compact statements: a short row a card, more of them across -- six on a wide screen, the
+   name giving way to an ellipsis before the amount or Settle does. */
 .app-statement-tiles--compact {
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 8px;
 }
 
