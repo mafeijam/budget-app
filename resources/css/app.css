@@ -795,9 +795,16 @@ body {
 /* The positions page: three figures that say how the holdings are doing. */
 .app-position-headline {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
-  max-width: 1100px;
+  max-width: 1500px;
+}
+
+/* Six figures at heading size need about 900px; fewer to a line below that. */
+@media (max-width: 1279px) {
+  .app-position-headline {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .app-position-currency {

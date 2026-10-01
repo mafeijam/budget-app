@@ -151,7 +151,8 @@
         />
       </q-card-section>
 
-      <!-- The four figures that say how the holdings are doing, and the rest in a line. -->
+      <!-- The figures that say how the holdings are doing, the return last as the sum of its legs,
+           and the fees in a line. -->
       <q-card-section class="q-pt-none">
         <div class="app-position-headline">
           <div v-for="figure in headline(view.figureRows[0].totals)" :key="figure.label">
@@ -768,6 +769,20 @@ const headline = totals => [
     noteClass: signClass(totals.unrealised),
   },
   {
+    label: 'Realised',
+    value: signed(totals.realised),
+    class: signClass(totals.realised),
+    note: 'on what was sold',
+    noteClass: 'text-grey-6',
+  },
+  {
+    label: 'Dividends',
+    value: money(totals.dividends),
+    class: 'text-grey-9',
+    note: 'received in all',
+    noteClass: 'text-grey-6',
+  },
+  {
     label: 'Total return',
     value: totals.pnl === null ? '—' : signed(totals.pnl),
     class: signClass(totals.pnl),
@@ -776,13 +791,8 @@ const headline = totals => [
   },
 ]
 
-// The legs of the total return, and the fees it is before.
-const details = totals =>
-  [
-    `Realised ${signed(totals.realised)}`,
-    `Dividends ${money(totals.dividends)}`,
-    `Fees ${money(totals.fees)}, not taken off the return`,
-  ].join(' · ')
+// What the return is before: fees are not taken off it.
+const details = totals => `Fees ${money(totals.fees)}, not taken off the return`
 
 // Trades, the last of them, and the fees a row has only sometimes. What the line realised
 // is not repeated here: it has a column of its own now.
