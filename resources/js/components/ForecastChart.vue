@@ -179,8 +179,9 @@ const props = defineProps({
   typical: { type: Boolean, default: true },
   // Every known movement ahead, for the markers and the tooltip.
   events: { type: Array, default: () => [] },
-  // The page's what-if: typical spending scaled, and every income taken away.
-  whatIf: { type: Object, default: () => ({ factor: 1, noIncome: false }) },
+  // The page's what-if: typical spending scaled, every income taken away, and the one-offs
+  // left out.
+  whatIf: { type: Object, default: () => ({ factor: 1, noIncome: false, oneOffs: true }) },
 })
 
 const money = useMoney()
@@ -209,18 +210,23 @@ const hovered = ref(null)
 // Per chart, so a second one on the page does not clip by the first's box.
 const clipId = `forecast-${useId()}`
 
-const adjusted = computed(() => props.whatIf.factor !== 1 || props.whatIf.noIncome)
+const adjusted = computed(
+  () => props.whatIf.factor !== 1 || props.whatIf.noIncome || props.whatIf.oneOffs === false,
+)
 
 // Numbers for geometry, and for the what-if, which has no server figure to show: the
 // known line less any recurring income taken away, the typical one less the scaled
-// allowance and plus typical income unless that is taken away too. Unadjusted, every figure shown is the server's string.
+// allowance and one-offs and plus typical income unless that is taken away too. Unadjusted,
+// every figure shown is the server's string.
 const numbers = computed(() =>
   props.points.map(point => {
     const known = Number(point.known) - (props.whatIf.noIncome ? Number(point.recurring_in) : 0)
 
     const earned = props.whatIf.noIncome ? 0 : Number(point.earned)
+    const spent =
+      Number(point.allowance) + (props.whatIf.oneOffs === false ? 0 : Number(point.one_offs ?? 0))
 
-    return { known, typical: known - Number(point.allowance) * props.whatIf.factor + earned }
+    return { known, typical: known - spent * props.whatIf.factor + earned }
   }),
 )
 

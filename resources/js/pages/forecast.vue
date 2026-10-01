@@ -182,6 +182,15 @@
             </span>
           </div>
           <q-toggle v-model="noIncome" label="No income" dense color="negative" />
+          <!-- On by default: off is the question "what if the year has no large month". -->
+          <q-toggle
+            v-if="!isZero(section.typical_basis?.one_offs ?? '0')"
+            v-model="oneOffs"
+            label="One-offs"
+            :disable="!withTypical"
+            dense
+            color="warning"
+          />
           <q-btn
             v-if="whatIfOn"
             flat
@@ -208,15 +217,19 @@
                 <span>Cards, on each card's statement due dates</span>
                 <span class="money">{{ money(section.typical_basis.card) }}</span>
               </div>
+              <div class="app-basis__row">
+                <span>One-offs, from tomorrow</span>
+                <span class="money">{{ money(section.typical_basis.one_offs ?? '0') }}</span>
+              </div>
               <div class="app-basis__row app-basis__row--total">
                 <span>A month</span>
-                <span class="money app-text-estimate">{{ money(section.typical_monthly) }}</span>
+                <span class="money app-text-estimate">{{ money(typicalTotal(section)) }}</span>
               </div>
               <div class="app-basis__note">
-                Each is the median month of the last 12, less the recurring rules the chart already
-                has as their own payments, so one large month does not set it. For comparison, all
-                spending averaged {{ money(section.typical_basis.average) }} a month,
-                {{ money(section.typical_basis.recurring) }} of it recurring rules.
+                Cash and cards are the median month of the last 12, less the recurring rules the
+                chart already has as their own payments, so one large month does not set them. The
+                one-offs are what the year spent beyond that, so the three and the rules come to its
+                average, {{ money(section.typical_basis.average) }} a month.
               </div>
             </div>
           </div>
@@ -477,14 +490,17 @@ const withTypical = useLocalStorage('forecast.typical', true)
 // The what-if is a question asked of the chart, so it is not remembered.
 const spendingChange = ref(0)
 const noIncome = ref(false)
+const oneOffs = ref(true)
 const whatIf = computed(() => ({
   factor: withTypical.value ? 1 + spendingChange.value / 100 : 0,
   noIncome: noIncome.value,
+  oneOffs: oneOffs.value,
 }))
-const whatIfOn = computed(() => spendingChange.value !== 0 || noIncome.value)
+const whatIfOn = computed(() => spendingChange.value !== 0 || noIncome.value || !oneOffs.value)
 const resetWhatIf = () => {
   spendingChange.value = 0
   noIncome.value = false
+  oneOffs.value = true
 }
 
 // Past the 27th this month is all but over, and its outlook is zeros to come.
@@ -633,6 +649,10 @@ const soon = computed(() => {
 
 // The month the forecast starts in, left off when nothing is left of it: on its last day
 // it is an empty column labelled "rest of".
+// The month the box adds up to: the ordinary month and the one-offs.
+const typicalTotal = section =>
+  plus(section.typical_monthly, section.typical_basis?.one_offs ?? '0')
+
 const monthsShown = section =>
   section.months.filter(
     (month, i) => i > 0 || [month.in, month.out, month.typical].some(value => !isZero(value)),
@@ -644,8 +664,9 @@ const whatIfEnd = section => {
   const last = section.points.at(-1)
   const known = Number(last.known) - (noIncome.value ? Number(last.recurring_in) : 0)
   const earned = noIncome.value ? 0 : Number(last.earned)
+  const spent = Number(last.allowance) + (oneOffs.value ? Number(last.one_offs ?? 0) : 0)
 
-  return known - Number(last.allowance) * whatIf.value.factor + earned
+  return known - spent * whatIf.value.factor + earned
 }
 
 const soonPoint = computed(() => {
@@ -654,7 +675,10 @@ const soonPoint = computed(() => {
   return points[Math.min(props.upcomingDays, points.length - 1)] ?? null
 })
 
-const soonAllowance = computed(() => soonPoint.value?.allowance ?? null)
+// The one-offs with the ordinary allowance: the column beside it spends both.
+const soonAllowance = computed(() =>
+  soonPoint.value ? plus(soonPoint.value.allowance, soonPoint.value.one_offs ?? '0') : null,
+)
 const soonEarned = computed(() => soonPoint.value?.earned ?? '0')
 
 // Three months is the default, so it stays off the URL.
