@@ -60,7 +60,7 @@
       <q-separator />
 
       <div
-        v-for="account in section.accounts"
+        v-for="account in section.shown"
         :key="account.id"
         class="app-account-row cursor-pointer"
         :class="{ 'app-account-row--closed': account.status !== 'active' }"
@@ -155,6 +155,27 @@
           <AppTableActions :cell="{ row: account }" />
         </div>
       </div>
+
+      <!-- The Positions page's fold button, at the foot of what it folds. -->
+      <template v-if="section.folded">
+        <q-separator />
+        <div class="row justify-center q-py-xs">
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="grey-8"
+            class="text-caption q-px-sm"
+            :icon-right="showNothingDue ? 'expand_less' : 'expand_more'"
+            :label="
+              showNothingDue
+                ? 'Hide those with nothing due'
+                : `Show ${section.folded} with nothing due`
+            "
+            @click="showNothingDue = !showNothingDue"
+          />
+        </div>
+      </template>
     </q-card>
 
     <q-card v-if="!sections.length" flat bordered class="q-pa-lg text-center text-grey-7">
@@ -242,17 +263,29 @@ const byBill = accounts =>
     return (props.lastUsed[b.id] ?? '').localeCompare(props.lastUsed[a.id] ?? '')
   })
 
+// A card owing nothing and with no bill folds under the list, remembered per browser. One
+// with a balance stays in view, as a closed account holding money does.
+const showNothingDue = useStorage('accounts.showNothingDue', false)
+const foldable = account => account.type === 'card' && isEmpty(account)
+
 const sections = computed(() =>
   props.typeOptions
-    .map(type => ({
-      type,
-      total: props.summary[totalKeys[type]] ?? '0',
-      accounts: (type === 'card' ? byBill : list => list)(
+    .map(type => {
+      const accounts = (type === 'card' ? byBill : list => list)(
         props.data.data.filter(
           account => account.type === type && (showClosed.value || !hidden(account)),
         ),
-      ),
-    }))
+      )
+      const folded = accounts.filter(foldable).length
+
+      return {
+        type,
+        total: props.summary[totalKeys[type]] ?? '0',
+        accounts,
+        shown: showNothingDue.value ? accounts : accounts.filter(account => !foldable(account)),
+        folded,
+      }
+    })
     .filter(section => section.accounts.length),
 )
 
