@@ -95,6 +95,48 @@
       </q-card-section>
     </q-card>
 
+    <q-card flat bordered>
+      <q-card-section class="row items-center q-col-gutter-md">
+        <div class="col">
+          <div class="text-subtitle1 text-weight-medium">Over time</div>
+          <div class="text-caption text-grey-7">
+            A snapshot at the end of each {{ periodName }}, and today's.
+          </div>
+        </div>
+        <!-- The Positions page's toolbar, so the pages' controls read alike. -->
+        <div class="col-auto app-toolbar row items-center no-wrap">
+          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
+          <q-btn-toggle
+            :model-value="months"
+            :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
+            no-caps
+            unelevated
+            dense
+            toggle-color="blue-1"
+            toggle-text-color="primary"
+            text-color="grey-8"
+            padding="xs md"
+            class="app-toolbar__toggle text-weight-bold"
+            @update:model-value="choose"
+          />
+        </div>
+      </q-card-section>
+
+      <q-separator />
+
+      <q-card-section>
+        <NetWorthChart
+          v-if="history.length"
+          :history="history"
+          :base="base"
+          :months="months"
+          :selected="at ?? history.at(-1)?.date"
+          @select="pick"
+        />
+        <div v-else class="text-grey-6">No transactions yet.</div>
+      </q-card-section>
+    </q-card>
+
     <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
     <div>
       <div class="row q-col-gutter-md">
@@ -374,48 +416,6 @@
         </div>
       </div>
     </div>
-
-    <q-card flat bordered>
-      <q-card-section class="row items-center q-col-gutter-md">
-        <div class="col">
-          <div class="text-subtitle1 text-weight-medium">Over time</div>
-          <div class="text-caption text-grey-7">
-            A snapshot at the end of each {{ periodName }}, and today's.
-          </div>
-        </div>
-        <!-- The Positions page's toolbar, so the pages' controls read alike. -->
-        <div class="col-auto app-toolbar row items-center no-wrap">
-          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
-          <q-btn-toggle
-            :model-value="months"
-            :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
-            no-caps
-            unelevated
-            dense
-            toggle-color="blue-1"
-            toggle-text-color="primary"
-            text-color="grey-8"
-            padding="xs md"
-            class="app-toolbar__toggle text-weight-bold"
-            @update:model-value="choose"
-          />
-        </div>
-      </q-card-section>
-
-      <q-separator />
-
-      <q-card-section>
-        <NetWorthChart
-          v-if="history.length"
-          :history="history"
-          :base="base"
-          :months="months"
-          :selected="at ?? history.at(-1)?.date"
-          @select="pick"
-        />
-        <div v-else class="text-grey-6">No transactions yet.</div>
-      </q-card-section>
-    </q-card>
   </div>
 </template>
 
