@@ -98,7 +98,7 @@
 
     <q-card flat bordered>
       <q-card-section>
-        <div class="app-outlook">
+        <div class="app-outlook app-outlook--fit">
           <div
             v-for="tile in tiles"
             :key="tile.label"
@@ -308,6 +308,10 @@ const props = defineProps({
   // with what it has paid in all.
   broker: { type: Number, default: 0 },
   brokers: { type: Array, default: () => [] },
+  // What the holdings cost, in the base currency, on the day the yield is read against: the
+  // year's last, or today's. Null where a currency had no rate, named in costUnconverted.
+  cost: { type: String, default: null },
+  costUnconverted: { type: Array, default: () => [] },
   // Every year with a dividend, newest first, each with its total.
   years: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
@@ -465,6 +469,39 @@ const yearsWithChange = computed(() => {
 const yearTotal = entry =>
   onlySymbol.value ? (entry.bySymbol?.[onlySymbol.value] ?? '0') : entry.total
 
+// A share for reading, not money: two places, since a yield is a few percent and a tenth of one
+// is a tenth of its size.
+const asYield = (part, whole) => `${((Number(part) / Number(whole)) * 100).toFixed(2)}%`
+
+// What the year's payments are of what was held. Against the cost and not the market value:
+// it is the yield on what was paid for it, which does not move with the price. The year in
+// progress also says what it comes to with the rest of what is expected, since a yield on
+// four months of a year reads low beside one on a whole one.
+const yieldTile = computed(() => {
+  const base = { label: 'Yield on cost', class: 'text-grey-9' }
+
+  if (props.cost === null) {
+    return {
+      ...base,
+      value: '—',
+      class: 'text-grey-7',
+      note: `No ${props.costUnconverted.join(', ')} rate, so what it cost is not known`,
+    }
+  }
+
+  if (!(Number(props.cost) > 0)) {
+    return { ...base, value: '—', class: 'text-grey-7', note: 'Nothing held' }
+  }
+
+  const held = `on a cost of ${money(props.cost)}${isCurrent.value ? '' : ` at the end of ${props.year}`}`
+  const inAll =
+    isCurrent.value && Number(props.expected) > 0
+      ? ` · ~${asYield(Number(props.total) + Number(props.expected), props.cost)} with what is expected`
+      : ''
+
+  return { ...base, value: asYield(props.total, props.cost), note: `${held}${inAll}` }
+})
+
 const tiles = computed(() => {
   const vsLast = change(props.total, props.previous)
   const tiles = [
@@ -475,6 +512,7 @@ const tiles = computed(() => {
       note: `${props.payments} payment${props.payments === 1 ? '' : 's'} from ${ranked.value.filter(s => Number(s.total) > 0).length} symbols`,
       total: true,
     },
+    yieldTile.value,
     {
       label: `Against ${props.year - 1}`,
       value: vsLast?.label ?? '—',

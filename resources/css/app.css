@@ -1877,9 +1877,10 @@ body {
   The runway's figures: three of them, or five or six with the estimates on, so as many
   across as fit. The four-column grid would orphan a fifth and a sixth onto a second row
   of their own. Declared down here rather than beside app-outlook, whose narrower-screen
-  rule would otherwise win on source order.
+  rule would otherwise win on source order. The dividends page's five take it too.
 */
-.app-outlook--runway {
+.app-outlook--runway,
+.app-outlook--fit {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 

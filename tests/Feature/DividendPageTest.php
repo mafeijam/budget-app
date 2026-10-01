@@ -245,6 +245,79 @@ class DividendPageTest extends TestCase
         );
     }
 
+    public function test_the_cost_is_what_was_held_on_the_last_day_of_the_year(): void
+    {
+        // A dividend in each year, so each is a year the page can be of.
+        $this->dividend('2024-03-10', '0005.HK', '5');
+        $this->dividend('2025-03-10', '0005.HK', '5');
+        $this->dividend('2026-01-10', '0005.HK', '5');
+
+        $this->buy('2024-06-01', '0005.HK', '100');
+        $this->buy('2025-06-01', '0005.HK', '50');
+        $this->buy('2026-01-15', '0005.HK', '100');
+
+        // Each year against the capital it was paid on: today's 2,500 under 2024's money would
+        // be a yield on shares bought a year and a half later.
+        foreach ([2024 => '1000.0000', 2025 => '1500.0000', 2026 => '2500.0000'] as $year => $cost) {
+            $this->get("/dividends?year={$year}")->assertInertia(fn (Assert $page) => $page
+                ->where('cost', $cost)
+                ->where('costUnconverted', [])
+            );
+        }
+    }
+
+    public function test_the_cost_leaves_out_what_was_sold_and_is_the_brokerages_own(): void
+    {
+        $other = $this->otherBroker();
+
+        $this->dividend('2025-03-10', '0005.HK', '5');
+        $this->dividend('2025-03-10', '0700.HK', '5', $other);
+
+        $this->buy('2025-01-02', '0005.HK', '100');
+        $this->buy('2025-01-02', '0700.HK', '30', $other);
+        $this->sell('2025-02-01', '0005.HK', '40');
+
+        // 60 left of the first at 10, and all 30 of the other: sold shares are no longer cost.
+        $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
+            ->where('cost', '900.0000')
+        );
+
+        $this->get("/dividends?year=2025&broker={$other->id}")->assertInertia(fn (Assert $page) => $page
+            ->where('cost', '300.0000')
+        );
+
+        $this->get("/dividends?year=2025&broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
+            ->where('cost', '600.0000')
+        );
+    }
+
+    public function test_a_cost_in_a_currency_with_no_rate_is_no_figure_and_says_so(): void
+    {
+        $usd = Account::create(['name' => 'Broker US', 'status' => 'active', 'type' => 'security', 'ccy' => 'USD']);
+        $usd->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        $this->dividend('2025-03-10', '0005.HK', '5');
+        $this->buy('2025-01-02', '0005.HK', '100');
+        $this->post('/transactions', [
+            'account_id' => $usd->id, 'date' => '2025-01-02', 'type' => 'buy', 'description' => 'Buy',
+            'ccy' => 'USD', 'status' => 'posted',
+            'meta_data' => ['symbol' => 'AAPL', 'quantity' => '10', 'unit_price' => '10', 'no_cash' => true],
+        ])->assertSessionHasNoErrors();
+
+        // Null, not the HKD part alone: a cost missing a brokerage is a yield on less than was
+        // held, which reads higher than the truth and gives no sign of it.
+        $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
+            ->where('cost', null)
+            ->where('costUnconverted', ['USD'])
+        );
+
+        // The HKD brokerage on its own has every rate it needs.
+        $this->get("/dividends?year=2025&broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
+            ->where('cost', '1000.0000')
+            ->where('costUnconverted', [])
+        );
+    }
+
     private function otherBroker(): Account
     {
         $other = Account::create(['name' => 'Other broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
@@ -259,6 +332,17 @@ class DividendPageTest extends TestCase
             'account_id' => $this->bank->id, 'date' => $date, 'type' => 'dividend', 'description' => 'Dividend',
             'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
             'meta_data' => ['symbol' => $symbol, 'brokerage_account_id' => ($broker ?? $this->broker)->id],
+        ])->assertSessionHasNoErrors();
+    }
+
+    private function sell(string $date, string $symbol, string $quantity): void
+    {
+        $this->post('/transactions', [
+            'account_id' => $this->broker->id, 'date' => $date, 'type' => 'sell', 'description' => 'Sell',
+            'ccy' => 'HKD', 'status' => 'posted',
+            'meta_data' => [
+                'symbol' => $symbol, 'quantity' => $quantity, 'unit_price' => '10', 'no_cash' => true,
+            ],
         ])->assertSessionHasNoErrors();
     }
 

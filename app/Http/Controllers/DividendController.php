@@ -12,6 +12,7 @@ use App\Support\Forecast;
 use App\Support\Fx;
 use App\Support\Positions;
 use Brick\Math\BigDecimal;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 /**
@@ -91,6 +92,8 @@ class DividendController extends Controller
         $inYear = $paid->where('year', $year);
         $lastYear = $paid->where('year', $year - 1);
 
+        [$cost, $costUnconverted] = $this->costHeld($year, $broker, $today);
+
         // What the rest of this year is expected to pay, as the forecast has it: only this
         // year's page has days still to come.
         $expected = collect();
@@ -152,6 +155,10 @@ class DividendController extends Controller
             'year' => $year,
             'broker' => $broker,
             'brokers' => $brokers->all(),
+            // What the holdings cost, for the yield the year's payments are a share of, and
+            // the currencies it could not be counted in for want of a rate.
+            'cost' => $cost,
+            'costUnconverted' => $costUnconverted,
             'years' => $years->map(fn (int $y) => [
                 'year' => $y,
                 'total' => $money($sum($paid->where('year', $y))),
@@ -208,5 +215,66 @@ class DividendController extends Controller
                 ->when($broker, fn ($list) => $list->where('broker', $broker))
                 ->pluck('ccy')->unique()->values()->all(),
         ]);
+    }
+
+    /**
+     * What is held cost, in the base currency, as the yield on it is read against: the open
+     * positions' remaining cost on the last day of the year, or today's on the year in
+     * progress. Of one brokerage when one is chosen, at the rate of that day.
+     *
+     * The day is the year's end and not today even for a past year: a payment is a share of
+     * what was held while it was paid, and today's cost holds positions bought since and
+     * leaves out ones sold, which would put a different year's capital under this year's
+     * money. It is still not exact -- a position sold during the year paid but is not in the
+     * cost at its end -- and a yield on a book that turned over reads a little high.
+     *
+     * A currency with no rate that day is left out and named, and the figure is then null:
+     * a cost missing a brokerage reads as a yield on less than was held, which is higher.
+     *
+     * @return array{0: string|null, 1: list<string>}
+     */
+    private function costHeld(int $year, int $broker, Carbon $today): array
+    {
+        $on = $year === $today->year ? $today->toDateString() : "{$year}-12-31";
+
+        $accounts = Account::query()
+            ->where('type', AccountType::Security->value)
+            ->when($broker, fn ($query) => $query->whereKey($broker))
+            ->get();
+
+        $fx = Fx::for($accounts->pluck('ccy')->push(Fx::BASE->value)->unique()->all());
+        $total = BigDecimal::zero();
+        $unconverted = [];
+
+        foreach ($accounts as $account) {
+            $held = array_filter(
+                Positions::fromTrades(array_values(array_filter(
+                    Positions::tradesOf($account),
+                    fn (array $trade) => $trade['date'] <= $on
+                ))),
+                fn (array $position) => $position['open']
+            );
+
+            $own = array_reduce($held, fn (BigDecimal $sum, array $p) => $sum->plus($p['cost']), BigDecimal::zero());
+
+            if ($own->isZero()) {
+                continue;
+            }
+
+            $inBase = $fx->toBase((string) $own, $account->ccy, $on);
+
+            if ($inBase === null) {
+                $unconverted[] = $account->ccy;
+
+                continue;
+            }
+
+            $total = $total->plus($inBase);
+        }
+
+        return [
+            $unconverted === [] ? (string) $total->toScale(4) : null,
+            array_values(array_unique($unconverted)),
+        ];
     }
 }
