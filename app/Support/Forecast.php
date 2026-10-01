@@ -777,6 +777,7 @@ class Forecast
     private function recurring(): void
     {
         $rules = RecurringTransaction::query()->where('active', true)->with('account.meta')->get();
+        $banks = [];
 
         foreach ($rules as $rule) {
             foreach ($rule->dueThrough($this->end) as $date) {
@@ -791,7 +792,11 @@ class Forecast
                 // A card charge reaches the bank when the statement it falls in is paid.
                 if ($rule->account?->type === AccountType::Card->value && $rule->type === TransactionType::Charge->value) {
                     $cycle = CardStatementCycle::fromMeta($rule->account->meta?->meta);
-                    $bank = $rule->account->settlementAccount();
+                    // Once per card, not per date: a query each, and a weekly rule over a
+                    // year is fifty of them.
+                    $bank = array_key_exists($rule->account_id, $banks)
+                        ? $banks[$rule->account_id]
+                        : ($banks[$rule->account_id] = $rule->account->settlementAccount());
 
                     if ($cycle === null || $bank === null || ! $this->cash->has($bank->id)) {
                         continue;
@@ -1243,14 +1248,16 @@ class Forecast
         $through = $this->today->copy()->startOfMonth()->subDay()->toDateString();
         $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->get();
 
-        $charged = Transaction::query()
-            ->with('meta')
+        // Plain rows and their bags, as CashFlow::facts() reads its year: a model each was
+        // a third of a second for two keys.
+        $charged = DB::table('transactions')
             ->whereIn('account_id', $cards->pluck('id'))
             ->where('type', TransactionType::Charge->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
             ->whereBetween('date', [$from, $through])
-            ->get()
-            ->groupBy('account_id');
+            ->get(['id', 'account_id', 'amount', 'date']);
+        $bags = CashFlow::bagsOf($charged->pluck('id')->all());
+        $charged = $charged->groupBy('account_id');
 
         $rules = RecurringTransaction::query()
             ->where('active', true)
@@ -1274,14 +1281,16 @@ class Forecast
             $byMonth = array_fill_keys($months, BigDecimal::zero());
 
             foreach ($charged[$card->id] ?? [] as $row) {
-                if (self::oneOff($row)) {
+                $bag = $bags[$row->id] ?? [];
+
+                if ($bag['one_off'] ?? false) {
                     continue;
                 }
 
                 $month = substr((string) $row->date, 0, 7);
 
                 if (isset($byMonth[$month])) {
-                    $byMonth[$month] = $byMonth[$month]->plus((string) ($row->meta?->meta['card_amount'] ?? $row->amount));
+                    $byMonth[$month] = $byMonth[$month]->plus((string) ($bag['card_amount'] ?? $row->amount));
                 }
             }
 

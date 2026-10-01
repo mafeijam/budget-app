@@ -138,8 +138,11 @@ class CashFlow
         $first = $today->copy()->startOfMonth()->subMonthsNoOverflow($count - 1);
         $last = $today->copy()->endOfMonth();
 
+        // Read as plain rows, not models: a year is a couple of thousand of them, and
+        // hydrating each with its bag, account and category was most of the page's time
+        // -- four fifths of the forecast's -- for six columns and three keys of a bag.
+        // The window is still whereCounted(), so the list a month links to cannot drift.
         $rows = Transaction::query()
-            ->with(['meta', 'account', 'category'])
             ->whereHas('account', fn ($q) => $q->whereIn('type', self::accountTypes()))
             ->whereIn('status', TransactionStatus::countingTowardBalance())
             ->when(
@@ -149,14 +152,21 @@ class CashFlow
                     ->where(fn (Builder $q) => self::whereCounted($q, '<=', $last->toDateString())),
                 fn (Builder $q) => $q->whereBetween('date', [$first->toDateString(), $last->toDateString()]),
             )
-            ->get();
+            ->toBase()
+            ->get(['id', 'account_id', 'category_id', 'type', 'amount', 'date']);
 
-        $partners = self::partnersOf($rows);
+        $bags = self::bagsOf($rows->pluck('id')->all());
+        $accounts = DB::table('accounts')->get(['id', 'type', 'ccy'])->keyBy('id');
+        $categories = DB::table('categories')->pluck('name', 'id');
+        $partners = self::partnersOf($rows, $bags);
 
         $facts = [];
 
         foreach ($rows as $row) {
-            $flow = self::classify($row, $partners[$row->id] ?? null);
+            $bag = $bags[$row->id] ?? null;
+            $account = $accounts[$row->account_id];
+            $partner = $partners[$row->id] ?? null;
+            $flow = self::classify($row, $account->type, $bag, $partner?->type, $partner === null ? null : $accounts[$partner->account_id]->type ?? null);
 
             if ($flow === null) {
                 continue;
@@ -166,13 +176,13 @@ class CashFlow
 
             $facts[] = [
                 'kind' => $kind,
-                'part' => self::part($row, $kind),
+                'part' => self::part($row->type, $account->type, $kind),
                 'figure' => $figure,
-                'ccy' => $row->account->ccy,
-                'month' => substr($onDueDate ? self::countedOn($row) : $row->date, 0, 7),
+                'ccy' => $account->ccy,
+                'month' => substr($onDueDate ? self::countedOnDay($row->type, $row->date, $bag) : $row->date, 0, 7),
                 'date' => $row->date,
-                'category' => $kind === 'spending' ? ['id' => $row->category_id, 'name' => $row->category?->name] : null,
-                'one_off' => (bool) ($row->meta?->meta['one_off'] ?? false),
+                'category' => $kind === 'spending' ? ['id' => $row->category_id, 'name' => $categories[$row->category_id] ?? null] : null,
+                'one_off' => (bool) ($bag['one_off'] ?? false),
             ];
         }
 
@@ -185,9 +195,35 @@ class CashFlow
      */
     public static function countedOn(Transaction $row): string
     {
-        $due = $row->type === TransactionType::Charge->value ? ($row->meta?->meta['due_date'] ?? null) : null;
+        return self::countedOnDay($row->type, $row->date, $row->meta?->meta?->getArrayCopy());
+    }
 
-        return $due ?? $row->date;
+    /** @param  array<string, mixed>|null  $bag */
+    private static function countedOnDay(string $type, string $date, ?array $bag): string
+    {
+        $due = $type === TransactionType::Charge->value ? ($bag['due_date'] ?? null) : null;
+
+        return $due ?? $date;
+    }
+
+    /**
+     * Each row's bag, decoded, by transaction id. The first a row has, as morphOne() takes
+     * it, so a row with two reads as it does everywhere else.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array<string, mixed>>
+     */
+    public static function bagsOf(array $ids): array
+    {
+        $bags = [];
+
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            foreach (DB::table('meta')->where('model_type', Transaction::class)->whereIn('model_id', $chunk)->orderBy('id')->get(['model_id', 'meta']) as $bag) {
+                $bags[$bag->model_id] ??= json_decode($bag->meta, true) ?? [];
+            }
+        }
+
+        return $bags;
     }
 
     /**
@@ -283,22 +319,23 @@ class CashFlow
     /**
      * Each paired row's partner, read in one query rather than one per row.
      *
-     * @param  iterable<Transaction>  $rows
-     * @return array<int, Transaction>
+     * @param  iterable<object{id: int}>  $rows
+     * @param  array<int, array<string, mixed>>  $bags
+     * @return array<int, object{id: int, type: string, account_id: int}>
      */
-    private static function partnersOf(iterable $rows): array
+    private static function partnersOf(iterable $rows, array $bags): array
     {
         $pairs = [];
 
         foreach ($rows as $row) {
-            $partner = $row->meta?->meta['paired_transaction_id'] ?? null;
+            $partner = $bags[$row->id]['paired_transaction_id'] ?? null;
 
             if ($partner !== null) {
                 $pairs[$row->id] = (int) $partner;
             }
         }
 
-        $found = Transaction::with('account')->whereIn('id', array_unique($pairs))->get()->keyBy('id');
+        $found = DB::table('transactions')->whereIn('id', array_unique($pairs))->get(['id', 'type', 'account_id'])->keyBy('id');
 
         return array_filter(array_map(fn (int $id) => $found[$id] ?? null, $pairs));
     }
@@ -307,11 +344,12 @@ class CashFlow
      * A row's kind and figure, or null for money that only moved between these accounts.
      * The direction is movesBalanceOn()'s, so a new type is classified rather than dropped.
      *
+     * @param  array<string, mixed>|null  $bag
      * @return array{0: string, 1: BigDecimal}|null
      */
-    private static function classify(Transaction $row, ?Transaction $partner): ?array
+    private static function classify(object $row, string $accountType, ?array $bag, ?string $partnerType, ?string $partnerAccountType): ?array
     {
-        $accountType = AccountType::from($row->account->type);
+        $accountType = AccountType::from($accountType);
         $sign = TransactionType::from($row->type)->movesBalanceOn($accountType);
 
         if ($sign === 0) {
@@ -326,17 +364,17 @@ class CashFlow
                 return null;
             }
 
-            $stated = $row->meta?->meta['card_amount'] ?? null;
+            $stated = $bag['card_amount'] ?? null;
 
             return ['spending', $stated === null ? $amount : BigDecimal::of($stated)];
         }
 
-        if ($partner !== null && $partner->account?->type === AccountType::Card->value) {
+        if ($partnerType !== null && $partnerAccountType === AccountType::Card->value) {
             return null;
         }
 
         // Signed, so a sell's proceeds take back what a buy put in.
-        if ($partner !== null && TransactionType::from($partner->type)->derivesAmount()) {
+        if ($partnerType !== null && TransactionType::from($partnerType)->derivesAmount()) {
             return ['invested', $sign < 0 ? $amount : $amount->negated()];
         }
 
@@ -455,11 +493,11 @@ class CashFlow
      * spending. The rest of each kind is the other share, taken by subtraction in
      * currencyReport() rather than summed, so the two always add up to the kind's figure.
      */
-    private static function part(Transaction $row, string $kind): ?string
+    private static function part(string $type, string $accountType, string $kind): ?string
     {
         return match (true) {
-            $kind === 'income' && $row->type === TransactionType::Dividend->value => 'dividend',
-            $kind === 'spending' && $row->account->type === AccountType::Card->value => 'card_spending',
+            $kind === 'income' && $type === TransactionType::Dividend->value => 'dividend',
+            $kind === 'spending' && $accountType === AccountType::Card->value => 'card_spending',
             default => null,
         };
     }
