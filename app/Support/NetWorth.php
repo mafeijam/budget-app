@@ -5,7 +5,6 @@ namespace App\Support;
 use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\Price;
-use App\Models\Transaction;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\Carbon;
@@ -349,7 +348,8 @@ class NetWorth
      */
     public function historyDays(int $months, Carbon $today, ?int $limit = null): array
     {
-        $first = Transaction::query()->min('date');
+        // From the first whole year, as every page that counts back starts: see Ledger.
+        $first = Ledger::start();
 
         if ($first === null) {
             return [];

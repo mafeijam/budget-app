@@ -134,6 +134,19 @@ class NetWorthTest extends TestCase
         $this->assertSame($sorted, $dates);
     }
 
+    public function test_a_ledger_begun_mid_year_counts_from_its_first_whole_year(): void
+    {
+        // Opened in June on the balances brought in: seven months and an opening entry, which
+        // the chart and the "since" figure would otherwise start from.
+        $this->row($this->bank, 'deposit', '2019-06-10', '100');
+        $this->row($this->bank, 'deposit', '2021-03-10', '50');
+
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
+            ->where('since.date', '2020-01-31')
+            ->where('history.0.date', '2020-12-31')
+        );
+    }
+
     public function test_the_page_takes_an_offered_spacing_and_ignores_any_other(): void
     {
         $this->row($this->bank, 'deposit', '2026-02-10', '100');

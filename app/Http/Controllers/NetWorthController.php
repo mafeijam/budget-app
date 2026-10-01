@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Transaction;
 use App\Support\Fx;
+use App\Support\Ledger;
 use App\Support\NetWorth;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
@@ -26,7 +26,8 @@ class NetWorthController extends Controller
             (int) substr($at, 5, 2), (int) substr($at, 8, 2), (int) substr($at, 0, 4)
         ) && $at < $today->toDateString() ? Carbon::parse($at) : $today;
 
-        $first = Transaction::query()->min('date');
+        // The comparison's start, where the chart starts: the first whole year (Ledger).
+        $first = Ledger::start();
 
         // The cards' three snapshots and the chart's, asked for together. One at a time each
         // meant a full balance aggregate over every transaction and a read of the closes, and
