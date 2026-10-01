@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppLogo: typeof import('./resources/js/components/AppLogo.vue')['default']
     AppTable: typeof import('./resources/js/components/AppTable.vue')['default']
     AppTableActions: typeof import('./resources/js/components/AppTableActions.vue')['default']
     CardStatements: typeof import('./resources/js/components/CardStatements.vue')['default']

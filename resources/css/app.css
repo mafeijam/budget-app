@@ -1164,6 +1164,21 @@ body {
   }
 }
 
+/* The name beside the logo, in the logo's ink and its line's green, set in Unbounded, whose
+   round ends are the logo's. Roboto behind it, so a font that has not loaded yet still
+   reads as a wordmark. */
+.app-wordmark {
+  font-family: 'Unbounded', Roboto, sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.app-wordmark__stop {
+  color: #10b981;
+}
+
 /* Card statements on the transactions page: a tile per statement still owing. */
 .app-statement-tiles {
   display: grid;

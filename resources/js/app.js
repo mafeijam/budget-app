@@ -4,6 +4,9 @@ import layout from './layout.vue'
 import quasar from './plugins/quasar'
 import globalHelper from './plugins/global-helper'
 
+// The wordmark's face, the one weight it is set in and only its Latin letters: the rest of
+// the app is Roboto.
+import '@fontsource/unbounded/latin-700.css'
 import '../css/app.css'
 
 createInertiaApp({

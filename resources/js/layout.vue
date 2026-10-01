@@ -3,8 +3,10 @@
     <q-header bordered class="bg-white text-grey-9">
       <q-toolbar class="q-px-md">
         <q-btn dense flat round icon="menu" color="grey-8" @click="show = !show" />
-        <q-avatar size="32px" color="primary" text-color="white" icon="menu_book" class="q-ml-sm" />
-        <q-toolbar-title class="text-weight-bold text-primary">Ledger</q-toolbar-title>
+        <AppLogo :size="32" class="q-ml-sm" />
+        <q-toolbar-title class="app-wordmark"
+          >Ledger<span class="app-wordmark__stop">.</span></q-toolbar-title
+        >
       </q-toolbar>
     </q-header>
 
