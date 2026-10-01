@@ -241,9 +241,9 @@ class ForecastTest extends TestCase
 
     public function test_typical_income_is_the_median_month_less_what_the_rules_bring(): void
     {
-        // The window is the twelve months to today, 2025-01-21 onwards: a steady 250 a month
-        // of deposits no rule accounts for, one month carrying a 2600 lump on top of it, and
-        // 1000 in this month from setUp.
+        // The window is the twelve complete months, 2025 itself: a steady 250 a month of
+        // deposits no rule accounts for from February, one month carrying a 2600 lump on top of
+        // it. setUp's 1000 is this month's, which is never one of the twelve.
         $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
         $this->row('deposit', '2025-06-01', '2600');
 
@@ -254,21 +254,60 @@ class ForecastTest extends TestCase
         $section = Forecast::for(today(), 3)->projection()[0];
         $points = collect($section['points'])->keyBy('date');
 
-        // Ten months at 250 with the rule's 100 off, so 150 an ordinary month. The mean is
-        // 529, because the 2600 and the 1000 each land in a single month of the twelve.
+        // Ten months at 250 with the rule's 100 off, so 150 an ordinary month: the rule has
+        // written nothing yet, so it is taken off every month at its amount. The mean is 446,
+        // because the 2600 lands in a single month of the twelve.
         $this->assertSame('150.0000', $section['typical_income']);
         $this->assertSame('150.0000', $section['typical_income_basis']['median']);
-        $this->assertSame(['average' => '529.1667', 'median' => '150.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
+        $this->assertSame(['average' => '445.8333', 'median' => '150.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
         // Earned from tomorrow, and on the typical line only.
         $this->assertSame('0.0000', $points['2026-01-20']['earned']);
         $this->assertTrue((float) $points['2026-02-20']['typical'] > (float) $points['2026-02-20']['known']);
     }
 
+    public function test_this_month_is_not_one_of_the_twelve_a_typical_figure_is_taken_over(): void
+    {
+        // 300 a month in the first half of 2025 and 100 in the second, so 200 is the median of
+        // the twelve complete months. Taken over the twelve to this month instead, January
+        // 2025 drops out and this month's three weeks of nothing come in -- a part-month that
+        // is a whole month's empty slot, which put the median at 100.
+        foreach (range(1, 12) as $month) {
+            $this->row('withdraw', sprintf('2025-%02d-10', $month), $month <= 6 ? '300' : '100');
+        }
+
+        $this->assertSame('200.0000', Forecast::for(today(), 3)->projection()[0]['typical_monthly']);
+    }
+
+    public function test_a_raise_inside_the_year_is_the_rules_and_not_income_lost(): void
+    {
+        // The salary rule pays 120 now. Its own rows paid 100 until August, 120 from
+        // September, and twice that in December. 30 a month of other deposits besides.
+        $this->rule(['type' => 'deposit', 'amount' => '120', 'description' => 'SALARY', 'start_date' => '2025-01-01']);
+
+        foreach (range(1, 12) as $month) {
+            $salary = match (true) {
+                $month === 12 => '240',
+                $month >= 9 => '120',
+                default => '100',
+            };
+
+            $this->row('deposit', sprintf('2025-%02d-01', $month), $salary, description: 'SALARY');
+            $this->row('deposit', sprintf('2025-%02d-15', $month), '30', description: 'Interest');
+        }
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+
+        // 30 in every month. Today's 120 off each of them read the eight months at the old
+        // salary as 10, and the median with them; the December double is the rule's too, and
+        // is placed on its own date rather than read as a month of income.
+        $this->assertSame('30.0000', $section['typical_income']);
+    }
+
     public function test_a_month_that_pays_a_lump_does_not_set_the_typical_month(): void
     {
-        // 1000 from setUp and 2600 more, both in single months, against ten months that pay
-        // nothing at all: there is no ordinary month to find, so the median is the rule's
-        // 100 taken off an empty month and the figure floors at nothing.
+        // A 2600 in a single month against eleven that pay nothing at all (setUp's 1000 is
+        // this month's, and not one of the twelve): there is no ordinary month to find, so the
+        // median is the rule's 100 taken off an empty month and the figure floors at nothing.
         $this->row('deposit', '2025-06-01', '2600');
         $this->rule(['type' => 'deposit', 'amount' => '100', 'start_date' => '2026-02-01']);
 
@@ -276,7 +315,7 @@ class ForecastTest extends TestCase
 
         $this->assertSame('0.0000', $section['typical_income']);
         // The mean is still reported, so the reader can see what the month would be on it.
-        $this->assertSame('300.0000', $section['typical_income_basis']['average']);
+        $this->assertSame('216.6667', $section['typical_income_basis']['average']);
     }
 
     public function test_a_bonus_is_placed_on_the_date_it_was_paid_rather_than_spread(): void
@@ -459,9 +498,10 @@ class ForecastTest extends TestCase
         $this->assertSame('200.0000', $account['dividends']);
         $this->assertSame('1435.0000', $account['closing_expected']);
 
-        // Taken out of typical income, which would otherwise count them a second time: the
-        // year's 235, the declared row included as the cash flow month counts it.
-        $this->assertSame('19.5833', $section['typical_income_basis']['dividends']);
+        // Taken out of typical income, which would otherwise count them a second time: the 190
+        // of the twelve complete months. The declared 45 is this month's, and this month is
+        // never one of the twelve.
+        $this->assertSame('15.8333', $section['typical_income_basis']['dividends']);
     }
 
     public function test_coming_up_lists_an_expected_dividend_as_an_estimate(): void

@@ -58,7 +58,9 @@ class Forecast
     private array $warnings = [];
 
     /**
-     * The last twelve months' cash flow, read once.
+     * The cash flow of this month and the twelve complete ones before it, read once. Every
+     * typical figure is taken over the twelve, through completeMonths(); this month is only
+     * ever "so far".
      *
      * Both typicalSpending() and monthOutlook() need it, for the same $today, and it is a
      * full scan of a year of rows -- so calling it twice is half a second of the page
@@ -614,7 +616,7 @@ class Forecast
                 'typical_income_rest' => self::money($typicalIncomeRest),
                 'likely_known' => self::money($known),
                 'likely_net' => self::money($known->minus($typicalRest)->plus($typicalIncomeRest)),
-                'average_net' => self::money(BigDecimal::of($section['totals']['net'])->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp)),
+                'average_net' => self::money(self::monthlyMean(self::completeMonths($section), 'net')),
             ];
         }
 
@@ -1132,7 +1134,29 @@ class Forecast
     /** @return list<array<string, mixed>> */
     private function lastMonths(): array
     {
-        return $this->lastMonths ??= CashFlow::lastMonths($this->today);
+        return $this->lastMonths ??= CashFlow::lastMonths($this->today, CashFlow::MONTHS + 1);
+    }
+
+    /**
+     * A section's twelve complete months, this one left out.
+     *
+     * This month is never a month's worth: on the first it is a day, and as one of twelve it
+     * was a month of almost nothing in every median -- on the first of October it took 1,549
+     * a month off typical card spending, and read as a month with no income at all.
+     *
+     * @param  array{months: list<array<string, mixed>>}  $section
+     * @return list<array<string, mixed>>
+     */
+    private static function completeMonths(array $section): array
+    {
+        return array_slice($section['months'], 0, CashFlow::MONTHS);
+    }
+
+    /** @param  list<array<string, mixed>>  $months */
+    private static function monthlyMean(array $months, string $key): BigDecimal
+    {
+        return array_reduce($months, fn (BigDecimal $sum, array $m) => $sum->plus($m[$key]), BigDecimal::zero())
+            ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
     }
 
     /**
@@ -1150,7 +1174,9 @@ class Forecast
             return $this->cardTypical;
         }
 
-        $from = $this->today->copy()->startOfMonth()->subMonthsNoOverflow(CashFlow::MONTHS - 1)->toDateString();
+        // The twelve complete months, as the cash median takes: see completeMonths().
+        $from = $this->today->copy()->startOfMonth()->subMonthsNoOverflow(CashFlow::MONTHS)->toDateString();
+        $through = $this->today->copy()->startOfMonth()->subDay()->toDateString();
         $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->get();
 
         $charged = Transaction::query()
@@ -1158,7 +1184,7 @@ class Forecast
             ->whereIn('account_id', $cards->pluck('id'))
             ->where('type', TransactionType::Charge->value)
             ->whereIn('status', TransactionStatus::countingTowardBalance())
-            ->whereBetween('date', [$from, $this->today->copy()->endOfMonth()->toDateString()])
+            ->whereBetween('date', [$from, $through])
             ->get()
             ->groupBy('account_id');
 
@@ -1174,7 +1200,7 @@ class Forecast
 
         $months = [];
 
-        for ($month = Carbon::parse($from); $month->lessThanOrEqualTo($this->today); $month->addMonthNoOverflow()) {
+        for ($month = Carbon::parse($from); $month->toDateString() <= $through; $month->addMonthNoOverflow()) {
             $months[] = $month->format('Y-m');
         }
 
@@ -1229,6 +1255,7 @@ class Forecast
         $recurring = [];
         $cardRecurring = [];
         $earning = [];
+        $earningRules = [];
 
         $rules = RecurringTransaction::query()->where('active', true)->with('account')->get();
 
@@ -1250,6 +1277,7 @@ class Forecast
 
             if ($earns) {
                 $earning[$rule->account->ccy] = ($earning[$rule->account->ccy] ?? BigDecimal::zero())->plus($monthly);
+                $earningRules[] = ['rule' => $rule, 'monthly' => $monthly];
 
                 continue;
             }
@@ -1270,17 +1298,20 @@ class Forecast
             $cards[$ccy] = ($cards[$ccy] ?? BigDecimal::zero())->plus($card['monthly']);
         }
 
+        $brought = $this->broughtByRules($earningRules);
+
         foreach ($this->lastMonths() as $section) {
+            $months = self::completeMonths($section);
+
             // The median month, not the mean: one month of a holiday's charges set the mean,
             // and with it every month the forecast looked ahead at, a fifth above an ordinary
             // one. The mean stays as the figure shown for comparison.
             $cashMedian = self::median(array_map(
                 fn (array $month) => BigDecimal::of($month['cash_spending']),
-                $section['months']
+                $months
             ));
 
-            $average = BigDecimal::of($section['totals']['spending'])
-                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+            $average = self::monthlyMean($months, 'spending');
             $covered = $recurring[$section['ccy']] ?? BigDecimal::zero();
             $cardCovered = $cardRecurring[$section['ccy']] ?? BigDecimal::zero();
 
@@ -1288,10 +1319,8 @@ class Forecast
             $card = $cards[$section['ccy']] ?? BigDecimal::zero();
             $cash = $floor($cashMedian->minus($covered->minus($cardCovered)));
 
-            $incomeAverage = BigDecimal::of($section['totals']['income'])
-                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
-            $dividendAverage = BigDecimal::of($section['totals']['dividend'])
-                ->dividedBy(CashFlow::MONTHS, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
+            $incomeAverage = self::monthlyMean($months, 'income');
+            $dividendAverage = self::monthlyMean($months, 'dividend');
             $earned = $earning[$section['ccy']] ?? BigDecimal::zero();
 
             // The median month, not the mean, for the same reason spending takes one: a
@@ -1300,14 +1329,14 @@ class Forecast
             // eleven times over for a payment that arrives once. The mean is kept below as
             // the figure shown for comparison.
             //
-            // What is left of each month is what its rules did not bring, and the rule is
-            // subtracted rather than what was actually paid: it is the figure the forecast
-            // places on future days, so the typical line comes to be the exact mirror of
-            // the known one. A raise inside the window therefore reads light by the
-            // difference, for as many months as it took to land.
+            // What is left of each month is what its rules did not bring that month: see
+            // broughtByRules(). Today's rule amount taken off every month instead read a raise
+            // as income lost -- nine months of a salary paid at the old figure each came out
+            // 2,116 short, four of them below nothing, and the median with them.
             $incomeMedian = self::median(array_map(
-                fn (array $month) => BigDecimal::of($month['other_income'])->minus($earned),
-                $section['months'],
+                fn (array $month) => BigDecimal::of($month['other_income'])
+                    ->minus($brought[$section['ccy']][$month['month']] ?? BigDecimal::zero()),
+                $months,
             ));
 
             $typical[$section['ccy']] = [
@@ -1328,6 +1357,68 @@ class Forecast
         }
 
         return $typical;
+    }
+
+    /**
+     * What the earning rules brought in each of the twelve complete months, per currency and
+     * month, for typical income to be what is left.
+     *
+     * A rule that has written rows in the window is taken at what those rows paid, month by
+     * month: the recorder writes an occurrence with the rule's account, type and description,
+     * the match the Recurring page finds a rule's rows by. So a raise, a month paid twice and
+     * a back payment are the rule's and not other income -- the double pay is placed on its
+     * own date by expectedDoublePay(), and counted here as well it would be counted twice.
+     *
+     * A rule with no rows in the window is taken at its amount every month, as before: it was
+     * made after the money it records began, which arrived as some other deposit, and without
+     * this that deposit stays in typical income while the rule adds it to the known line.
+     *
+     * Rules alike in all three share their rows, which are taken once, not once a rule.
+     *
+     * @param  list<array{rule: RecurringTransaction, monthly: BigDecimal}>  $rules
+     * @return array<string, array<string, BigDecimal>>
+     */
+    private function broughtByRules(array $rules): array
+    {
+        if ($rules === []) {
+            return [];
+        }
+
+        $from = $this->today->copy()->startOfMonth()->subMonthsNoOverflow(CashFlow::MONTHS);
+        $through = $this->today->copy()->startOfMonth()->subDay();
+
+        $months = [];
+
+        for ($month = $from->copy(); $month->lessThanOrEqualTo($through); $month->addMonthNoOverflow()) {
+            $months[] = $month->format('Y-m');
+        }
+
+        $key = fn ($accountId, string $type, string $description) => "{$accountId}|{$type}|{$description}";
+
+        $rows = Transaction::query()
+            ->whereIn('account_id', collect($rules)->pluck('rule.account_id')->unique())
+            ->whereIn('status', TransactionStatus::countingTowardBalance())
+            ->whereBetween('date', [$from->toDateString(), $through->toDateString()])
+            ->get(['account_id', 'type', 'description', 'date', 'amount'])
+            ->groupBy(fn (Transaction $row) => $key($row->account_id, $row->type, (string) $row->description));
+
+        $brought = [];
+
+        foreach (collect($rules)->groupBy(fn (array $r) => $key($r['rule']->account_id, $r['rule']->type, (string) $r['rule']->description)) as $match => $alike) {
+            $ccy = $alike->first()['rule']->account->ccy;
+            $own = $rows->get($match);
+
+            foreach ($months as $month) {
+                $amount = $own === null
+                    ? $alike->reduce(fn (BigDecimal $sum, array $r) => $sum->plus($r['monthly']), BigDecimal::zero())
+                    : $own->filter(fn (Transaction $row) => str_starts_with((string) $row->date, $month))
+                        ->reduce(fn (BigDecimal $sum, Transaction $row) => $sum->plus((string) $row->amount), BigDecimal::zero());
+
+                $brought[$ccy][$month] = ($brought[$ccy][$month] ?? BigDecimal::zero())->plus($amount);
+            }
+        }
+
+        return $brought;
     }
 
     /**
