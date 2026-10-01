@@ -1662,6 +1662,151 @@ body {
 }
 
 /* Forecast months: the chart at its own width, the months as figures in what is left. */
+/* Year in review: twelve months side by side, each its in and out bars over its net. */
+.app-review-months {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.app-review-month {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 2px;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.app-review-month:hover {
+  background: #f8fafc;
+}
+
+.app-review-month--best {
+  background: var(--app-positive-tint);
+}
+
+.app-review-month--worst {
+  background: var(--app-negative-tint);
+}
+
+.app-review-month__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 96px;
+  margin-bottom: 4px;
+}
+
+.app-review-month__bar {
+  width: 22px;
+  min-height: 1px;
+  border-radius: 3px 3px 0 0;
+}
+
+/* The review's tiles sit on the page's ground, not in a card, so they carry its surface. */
+.app-review-tile {
+  background: var(--app-surface);
+}
+
+/* As tall as the two columns of categories beside it. */
+.app-review-donut {
+  width: 300px;
+  height: 300px;
+  flex: none;
+}
+
+.app-review-donut__arc {
+  cursor: pointer;
+  transition: stroke-width 0.15s;
+}
+
+/* The middle's words are for reading, and must not take the pointer off the ring. */
+.app-review-donut text {
+  pointer-events: none;
+}
+
+.app-review-donut__label {
+  font-size: 9px;
+  fill: #64748b;
+}
+
+.app-review-donut__value {
+  font-size: 13px;
+  font-weight: 700;
+  fill: #0f172a;
+}
+
+/* The donut and the categories beside it, in two columns. */
+.app-review-where {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.app-review-categories {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+}
+
+.app-review-categories .q-item {
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-review-investing {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1023px) {
+  .app-review-where {
+    flex-direction: column;
+  }
+
+  .app-review-categories,
+  .app-review-investing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.app-review-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.app-review-category--on {
+  background: #f8fafc;
+}
+
+/* A category's share of the year's spending, as a thin bar under its name. */
+.app-review-share {
+  height: 8px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.app-review-share span {
+  display: block;
+  height: 100%;
+}
+
+.app-review-category:hover {
+  background: #f8fafc;
+}
+
+@media (max-width: 599px) {
+  .app-review-months {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
 /* Spare cash as its sum: lowest ahead, minus the reserve, equals the spare. */
 .app-spare {
   display: flex;

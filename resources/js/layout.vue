@@ -78,6 +78,7 @@ const menus = computed(() => {
         item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
         item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
         item('Forecast', 'forecast', 'query_stats', '/forecast'),
+        item('Year in review', 'review', 'auto_stories', '/review'),
       ],
     },
     {
