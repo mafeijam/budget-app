@@ -510,10 +510,11 @@ class Forecast
      * Per currency: this month so far, what is known still to come before it ends, typical
      * spending for the days left, and the likely net at month end beside the year's average.
      *
-     * So far is CashFlow's month, which already counts a posted row dated later this month;
-     * to come is what it cannot see yet, pending rows and occurrences not written. A card
-     * charge is spending on its own date, and a statement payment is not spending at all,
-     * as in the cash flow report.
+     * So far is CashFlow's month, which already counts a posted row dated later this month
+     * and a card charge on the due date of the statement it falls in. To come is what that
+     * cannot see yet, cash pending rows and cash occurrences not written; a card charge is
+     * left out of it entirely, because the statement already carries that charge to the
+     * month it is paid in. A statement payment is not spending at all, as in the report.
      *
      * @return list<array<string, mixed>>
      */
@@ -535,16 +536,17 @@ class Forecast
             ->where('status', TransactionStatus::Pending->value)
             // This month's only: posted, an earlier one counts in its own month.
             ->whereBetween('date', [$this->today->copy()->startOfMonth()->toDateString(), $monthEnd])
-            ->whereHas('account', fn ($q) => $q->whereIn('type', [AccountType::Cash->value, AccountType::Card->value]))
+            // Cash only, because a card's pending charge reaches the bank with its statement.
+            ->whereHas('account', fn ($q) => $q->where('type', AccountType::Cash->value))
             ->get();
 
         foreach ($pending as $row) {
-            $this->classifyToCome($row->account, $row->type, (string) ($row->meta?->meta['card_amount'] ?? $row->amount), $bump);
+            $this->classifyToCome($row->account, $row->type, (string) $row->amount, $bump);
         }
 
         foreach (RecurringTransaction::query()->where('active', true)->with('account')->get() as $rule) {
             foreach ($rule->dueThrough($this->today->copy()->endOfMonth()) as $date) {
-                $this->classifyToCome($rule->account, $rule->type, (string) ($rule->card_amount ?? $rule->amount), $bump);
+                $this->classifyToCome($rule->account, $rule->type, (string) $rule->amount, $bump);
             }
         }
 
@@ -629,7 +631,7 @@ class Forecast
         return [$combined];
     }
 
-    /** Money in or spent, as the cash flow report reads it; anything else is neither. */
+    /** Cash money in or spent this month, as the cash flow report reads it; a card is not here. */
     private function classifyToCome(?Account $account, string $type, string $amount, callable $bump): void
     {
         if ($account === null) {
@@ -638,11 +640,11 @@ class Forecast
 
         $sign = TransactionType::from($type)->movesBalanceOn(AccountType::from($account->type));
 
+        // A card is not a here: the statement carries the charge to its due date, which is
+        // the month the money leaves the bank. `so_far` counts it there and the projection
+        // places it there, so counting it on the charge's own month as well would charge
+        // this one twice and put it in a month it never leaves in.
         if ($account->type === AccountType::Card->value) {
-            if ($sign < 0) {
-                $bump($account->ccy, 'spending', BigDecimal::of($amount));
-            }
-
             return;
         }
 

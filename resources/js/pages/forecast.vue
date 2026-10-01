@@ -426,6 +426,20 @@ const visit = ({ months = props.months, ccy = props.ccy }) =>
 // The known figures alone while the estimate is switched off.
 const likely = row => (withTypical.value ? row.likely_net : row.likely_known)
 
+// Both halves when there is money in each. Early in a month one side is usually empty, and
+// "+0.00 / −0.00" says less than the side that is not empty.
+const stillToCome = row => {
+  const [comingIn, comingOut] = [row.to_come.income, row.to_come.spending]
+
+  if (isZero(comingIn) && isZero(comingOut)) return 'nothing cash left to come'
+
+  return isZero(comingIn)
+    ? `−${money(comingOut)}`
+    : isZero(comingOut)
+      ? `+${money(comingIn)}`
+      : `+${money(comingIn)} / −${money(comingOut)}`
+}
+
 // A comparison for reading, not money, so a float percentage is fine.
 const versus = row => against(likely(row), row)
 
@@ -577,11 +591,11 @@ const outlookCard = computed(() => {
         },
         {
           label: 'Still to come',
-          value: `+${money(row.to_come.income)} / −${money(row.to_come.spending)}`,
+          value: stillToCome(row),
           class: 'text-grey-9',
           note: withTypical.value
             ? `and +${money(row.typical_income_rest)} / −${money(row.typical_rest)} typical`
-            : 'known only',
+            : 'cash only',
         },
         {
           label: 'Likely month end',

@@ -203,8 +203,8 @@
                 </div>
               </div>
               <div class="text-caption text-grey-6 q-mt-sm">
-                In {{ base }} at today's rate. Solid is done, paler is known still to come, palest
-                the typical spending of the days left.
+                In {{ base }} at today's rate. Solid is done, paler is the cash known still to come,
+                palest the typical spending of the days left.
               </div>
             </q-card-section>
           </q-card>
@@ -595,7 +595,12 @@ const monthTiles = computed(() => {
       note:
         isZero(m.to_come.spending) && isZero(m.typical_rest)
           ? 'nothing more expected'
-          : `−${money(m.to_come.spending)} known and ~${money(m.typical_rest)} typical to come`,
+          : [
+              isZero(m.to_come.spending) ? null : `−${money(m.to_come.spending)} known`,
+              isZero(m.typical_rest) ? null : `~${money(m.typical_rest)} typical`,
+            ]
+              .filter(Boolean)
+              .join(' and ') + ' to come',
     },
     {
       label: 'Likely month end',

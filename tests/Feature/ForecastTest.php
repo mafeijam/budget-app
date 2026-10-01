@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Price;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
+use App\Support\CardStatementCycle;
 use App\Support\Forecast;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -119,6 +120,36 @@ class ForecastTest extends TestCase
         $this->assertSame('140.0000', $outlook['to_come']['spending']);
         $this->assertSame('860.0000', $outlook['likely_known']);
         $this->assertSame(11, $outlook['days_left']);
+    }
+
+    public function test_the_outlook_leaves_a_card_charge_to_the_statement_that_carries_it(): void
+    {
+        // A card charge made this month is paid on the due date of the statement it falls
+        // in, which is next month on these terms. Counting it here as well charged January
+        // for it twice, and put it in a month the money never leaves the bank in.
+        $this->rule(['account_id' => $this->card->id, 'type' => 'charge', 'amount' => '70', 'start_date' => '2026-01-25']);
+        $this->charge('2026-01-05', '55', 'pending');
+        $this->rule(['type' => 'withdraw', 'amount' => '40', 'start_date' => '2026-01-25']);
+
+        $outlook = Forecast::for(today(), 3)->monthOutlook()[0];
+
+        $this->assertSame('40.0000', $outlook['to_come']['spending']);
+        $this->assertSame('0.0000', $outlook['to_come']['income']);
+    }
+
+    public function test_the_card_charge_the_outlook_leaves_out_is_still_in_the_forecast(): void
+    {
+        $this->rule(['account_id' => $this->card->id, 'type' => 'charge', 'amount' => '70', 'start_date' => '2026-01-25']);
+
+        $events = collect(Forecast::for(today(), 3)->projection()[0]['events']);
+
+        // On the due date of the statement it falls in, not on the day it was charged. The
+        // outlook's leaving it out is not losing it, only moving it to the month it is paid.
+        $due = CardStatementCycle::fromMeta($this->card->meta?->meta)
+            ->dueDateFor(Carbon::parse('2026-01-25'))->toDateString();
+
+        $this->assertGreaterThan('2026-01-31', $due);
+        $this->assertSame('-70.0000', $events->firstWhere('date', $due)['amount']);
     }
 
     public function test_every_currency_is_merged_in_hkd_or_one_is_shown_in_its_own(): void

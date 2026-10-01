@@ -167,6 +167,14 @@ generated **and committed** — a build can dirty them.
   period's debt.
 - **Money is never a float.** BigDecimal server-side, decimal strings over the
   wire. `AMOUNT_SCALE` is 4.
+- **A card states its own amount, so card money never needs a rate.** A charge in
+  another currency puts the card's own figure in `card_amount`, and every card here
+  is HKD, so that figure is the HKD amount — read a card row's money as
+  `card_amount ?? amount` and it is already base, with nothing to convert. A foreign
+  *cash* row is the opposite case and has no figure at all: leave it out and name its
+  currency rather than counting it at one-for-one or inventing a rate for it, since
+  either puts a yen row into an HKD total as that many dollars and the total is then
+  wrong with nothing to show for it (`TransactionController::baseFigure()`).
 - `pending` rows never count toward a balance
   (`TransactionStatus::countingTowardBalance()`).
 - Constraints the property types cannot express go in the DTO's `rules()`. Anything
