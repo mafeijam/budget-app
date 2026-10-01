@@ -141,15 +141,14 @@ class CashFlow
         // Read as plain rows, not models: a year is a couple of thousand of them, and
         // hydrating each with its bag, account and category was most of the page's time
         // -- four fifths of the forecast's -- for six columns and three keys of a bag.
-        // The window is still whereCounted(), so the list a month links to cannot drift.
+        // The window is still countedSql(), so the list a month links to cannot drift.
         $rows = Transaction::query()
             ->whereHas('account', fn ($q) => $q->whereIn('type', self::accountTypes()))
             ->whereIn('status', TransactionStatus::countingTowardBalance())
             ->when(
                 $onDueDate,
                 fn (Builder $q) => $q
-                    ->where(fn (Builder $q) => self::whereCounted($q, '>=', $first->toDateString()))
-                    ->where(fn (Builder $q) => self::whereCounted($q, '<=', $last->toDateString())),
+                    ->tap(fn (Builder $q) => self::whereCountedBetween($q, $first->toDateString(), $last->toDateString())),
                 fn (Builder $q) => $q->whereBetween('date', [$first->toDateString(), $last->toDateString()]),
             )
             ->toBase()
@@ -233,16 +232,36 @@ class CashFlow
      */
     public static function whereCounted(Builder $q, string $operator, string $day): Builder
     {
-        $charge = TransactionType::Charge->value;
-        $due = fn (Builder $bag) => $bag->whereNotNull('meta->due_date');
+        if (! in_array($operator, ['>=', '<='], true)) {
+            throw new \InvalidArgumentException("whereCounted() compares with >= or <=, not {$operator}.");
+        }
 
-        return $q
-            ->where(fn (Builder $q) => $q
-                ->where('type', $charge)
-                ->whereHas('meta', fn (Builder $bag) => $bag->where('meta->due_date', $operator, $day)))
-            ->orWhere(fn (Builder $q) => $q
-                ->where(fn (Builder $q) => $q->where('type', '!=', $charge)->orWhereDoesntHave('meta', $due))
-                ->where('date', $operator, $day));
+        return $q->whereRaw(self::countedSql()." {$operator} ?", [Transaction::class, $day]);
+    }
+
+    /** whereCounted() at both ends, which reads the row's bag once rather than twice. */
+    public static function whereCountedBetween(Builder $q, string $from, string $to): Builder
+    {
+        return $q->whereRaw(self::countedSql().' BETWEEN ? AND ?', [Transaction::class, $from, $to]);
+    }
+
+    /**
+     * The day a row counts on, as one expression: a charge's due date where its bag has one,
+     * and the row's own date otherwise. One subquery a row, where a whereHas() for the due
+     * date and a whereDoesntHave() for its absence were two -- four for a window, over
+     * every transaction there is, and most of the cash flow's query.
+     *
+     * A due date stored as JSON null is no due date, as Laravel's whereNotNull() on a JSON
+     * path reads it: unquoted, it is the string "null", which sorts after every date.
+     */
+    private static function countedSql(): string
+    {
+        $due = "JSON_EXTRACT(m.meta, '$.\"due_date\"')";
+
+        return "(CASE WHEN transactions.type = '".TransactionType::Charge->value."' THEN COALESCE("
+            ."(SELECT CASE WHEN JSON_TYPE({$due}) != 'NULL' THEN JSON_UNQUOTE({$due}) END"
+            .' FROM meta m WHERE m.model_id = transactions.id AND m.model_type = ?), transactions.date)'
+            .' ELSE transactions.date END)';
     }
 
     /**
@@ -423,8 +442,7 @@ class CashFlow
             ->when(
                 $onDueDate,
                 fn (Builder $q) => $q
-                    ->where(fn (Builder $q) => self::whereCounted($q, '>=', $from))
-                    ->where(fn (Builder $q) => self::whereCounted($q, '<=', $to)),
+                    ->tap(fn (Builder $q) => self::whereCountedBetween($q, $from, $to)),
                 fn (Builder $q) => $q->whereBetween('date', [$from, $to]),
             )
             ->when(
