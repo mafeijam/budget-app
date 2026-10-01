@@ -3,9 +3,9 @@
 namespace App\Support;
 
 use App\Enums\Currency;
-use App\Models\Price;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Converting into the base currency, at Yahoo's FX pair for the day, kept in the prices
@@ -34,7 +34,9 @@ class Fx
 
         $pairs = array_map(self::pair(...), array_diff(array_unique($currencies), [self::BASE->value]));
 
-        foreach (Price::query()->whereIn('symbol', $pairs)->orderBy('date')->get() as $price) {
+        // Rows, not models: a pair is a close a day for years, read on most pages, and two
+        // columns of each are all a rate needs.
+        foreach (DB::table('prices')->whereIn('symbol', $pairs)->orderBy('date')->get(['symbol', 'date', 'close']) as $price) {
             $fx->closes[$price->symbol][$price->date] = (string) $price->close;
         }
 

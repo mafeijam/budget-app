@@ -89,23 +89,36 @@ class Price extends Model
         $days = array_values(array_unique($days));
         sort($days);
 
-        // Which stretch a close falls in: the first asked day on or after it, found by
+        // The first day's stretch is everything before it, and latestFor() answers that
+        // without reading it.
+        $series = [];
+
+        foreach (self::latestFor($symbols, $days[0]) as $price) {
+            $series[$price->symbol][$price->date] = ['close' => (string) $price->close, 'ccy' => $price->ccy];
+        }
+
+        $later = array_slice($days, 1);
+
+        if ($later === []) {
+            return $series;
+        }
+
+        // Which later stretch a close falls in: the first asked day on or after it, found by
         // halving rather than a CASE down the list, which tried every day on every close --
         // a monthly chart is 125 days against fifty thousand closes, and twice the query.
         $bindings = [];
-        $stretch = self::stretchOf($days, 0, count($days) - 1, $bindings);
-
-        $series = [];
+        $stretch = self::stretchOf($later, 0, count($later) - 1, $bindings);
 
         foreach (
             DB::table('prices')
                 ->joinSub(
                     self::closes($symbols)
                         ->select('symbol', DB::raw('max(date) as date'))
+                        ->where('date', '>', $days[0])
                         ->where('date', '<=', end($days))
                         ->groupBy('symbol')
                         // One day is one stretch, and a bare 0 there is GROUP BY's first column.
-                        ->when(count($days) > 1, fn (Builder $q) => $q->groupByRaw($stretch, $bindings)),
+                        ->when(count($later) > 1, fn (Builder $q) => $q->groupByRaw($stretch, $bindings)),
                     'latest',
                     fn (JoinClause $join) => $join
                         ->on('prices.symbol', '=', 'latest.symbol')
@@ -115,6 +128,12 @@ class Price extends Model
                 ->get(['prices.symbol', 'prices.date', 'prices.close', 'prices.ccy']) as $price
         ) {
             $series[$price->symbol][$price->date] = ['close' => (string) $price->close, 'ccy' => $price->ccy];
+        }
+
+        // Ascending by date, as the caller walks it: the first stretch came first, then the
+        // rest in date order, and ksort says so rather than leaving it to that.
+        foreach ($series as &$closes) {
+            ksort($closes);
         }
 
         return $series;
@@ -152,23 +171,29 @@ class Price extends Model
             return [];
         }
 
+        // A lookup per symbol, the newest close on or before the day off the (symbol, date)
+        // index, and nothing else read. MAX(date) grouped by symbol looked like the same
+        // thing and was not: MySQL scans every close up to the day to find each maximum,
+        // which on a recent day is all fifty thousand, 75 ms against 15.
+        $dives = array_map(
+            fn (string $symbol) => DB::table('prices')
+                ->where('symbol', $symbol)
+                ->where('date', '<=', $onOrBefore)
+                ->orderByDesc('date')
+                ->limit(1),
+            array_values(array_unique($symbols))
+        );
+
+        $union = array_shift($dives);
+
+        foreach ($dives as $dive) {
+            $union->unionAll($dive);
+        }
+
         return self::query()
-            ->joinSub(
-                self::closes($symbols)
-                    // The latest day per symbol, which (symbol, date) indexed answers as a
-                    // range scan. Ranking the rows instead reads every close a symbol ever
-                    // had to decide which one is last, and that is the difference between
-                    // 33 lookups and fifty thousand rows -- read four times on the home page.
-                    ->select('symbol', DB::raw('max(date) as date'))
-                    ->where('date', '<=', $onOrBefore)
-                    ->groupBy('symbol'),
-                'latest',
-                fn (JoinClause $join) => $join
-                    ->on('prices.symbol', '=', 'latest.symbol')
-                    ->on('prices.date', '=', 'latest.date')
-            )
+            ->fromSub($union, 'prices')
             ->orderBy('symbol')
-            ->get(['prices.*'])
+            ->get()
             ->keyBy('symbol')
             ->all();
     }
