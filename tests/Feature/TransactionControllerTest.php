@@ -1266,6 +1266,33 @@ class TransactionControllerTest extends TestCase
         $this->assertSame('2026-03-12', $transaction->fresh()->meta_data['due_date']);
     }
 
+    public function test_an_edit_that_keeps_the_date_keeps_the_period_after_the_terms_change(): void
+    {
+        $transaction = $this->storedCharge();
+        $this->assertSame('2026-02-09', $transaction->meta_data['due_date']);
+
+        // A new statement day, then an edit to the description that sends no bag at all.
+        $this->card->meta->update(['meta' => ['term_days' => 15, 'statement_day' => 10]]);
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload(['description' => 'Cafe, corrected']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-02-09', $transaction->fresh()->meta_data['due_date']);
+    }
+
+    public function test_an_edit_that_keeps_the_date_cannot_name_another_period(): void
+    {
+        // The form has no due date control, so a different one is not the form's: the
+        // stored period stands, rather than the charge walking into another statement.
+        $transaction = $this->storedCharge();
+
+        $this->put("/transactions/{$transaction->id}", $this->chargePayload([
+            'meta_data' => ['due_date' => '2026-03-12'],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-02-09', $transaction->fresh()->meta_data['due_date']);
+    }
+
     public function test_re_dating_a_charge_takes_it_out_of_the_old_statement(): void
     {
         // The point of the move, and the reason a stale due_date is worse than a wrong

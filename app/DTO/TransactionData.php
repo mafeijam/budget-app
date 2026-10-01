@@ -304,8 +304,20 @@ class TransactionData extends Data
             return;
         }
 
-        // Otherwise a changed statement day would re-bill a year of history.
+        // Neither moved, so the period has not: the stored due date, whatever the payload
+        // says. Re-derived, a changed statement day would re-bill a year of history, and a
+        // payload that left the key out re-derived without a word. Taken from the payload,
+        // a request naming another day put the charge in or out of a settled statement
+        // past every guard -- the form has no control for it, so the payload's is only ever
+        // the stored one echoed back, or something not sent by the form.
         if ($this->date === $charge->date && $this->account_id === $charge->account_id) {
+            $stored = $charge->meta?->meta['due_date'] ?? null;
+
+            if ($stored !== null) {
+                $this->meta_data ??= new TransactionMetaData;
+                $this->meta_data->due_date = $stored;
+            }
+
             return;
         }
 
