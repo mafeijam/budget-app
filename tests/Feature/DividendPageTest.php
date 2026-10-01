@@ -153,7 +153,7 @@ class DividendPageTest extends TestCase
         );
     }
 
-    public function test_a_brokerage_narrows_the_page_to_what_its_holdings_paid(): void
+    public function test_each_brokerage_has_its_own_page_of_what_its_holdings_paid(): void
     {
         $other = $this->otherBroker();
 
@@ -161,50 +161,50 @@ class DividendPageTest extends TestCase
         $this->dividend('2024-03-10', '0005.HK', '20');
         $this->dividend('2025-09-12', '0700.HK', '30', $other);
 
-        $this->get("/dividends?year=2025&broker={$other->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('broker', $other->id)
-            ->where('total', '30.0000')
-            ->where('payments', 1)
-            ->where('symbols.0.symbol', '0700.HK')
-            ->where('symbols.0.brokers', ['Other broker'])
-            ->has('symbols', 1)
+        $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
+            // The page as it was: every brokerage together, which is what none chosen is.
+            ->where('total', '80.0000')
+            ->where("byBroker.{$other->id}.total", '30.0000')
+            ->where("byBroker.{$other->id}.payments", 1)
+            ->where("byBroker.{$other->id}.symbols.0.symbol", '0700.HK')
+            ->where("byBroker.{$other->id}.symbols.0.brokers", ['Other broker'])
+            ->has("byBroker.{$other->id}.symbols", 1)
             // The symbols it ever paid, not the page's: the picker lists what there is to pick.
-            ->where('allSymbols', fn ($all) => array_column($all->all(), 'symbol') === ['0700.HK'])
+            ->where("byBroker.{$other->id}.allSymbols", fn ($all) => array_column($all->all(), 'symbol') === ['0700.HK'])
             // The year list is every year there was a payment in, whichever brokerage: the
             // other one's 2024 is an empty column here, not a year that went missing.
-            ->where('years', [
+            ->where("byBroker.{$other->id}.years", [
                 ['year' => 2026, 'total' => '0.0000', 'bySymbol' => []],
                 ['year' => 2025, 'total' => '30.0000', 'bySymbol' => ['0700.HK' => '30.0000']],
                 ['year' => 2024, 'total' => '0.0000', 'bySymbol' => []],
             ])
-            // The picker never narrows to itself, by name, and carries what each has paid in all.
+            // The picker lists them by name, each with what it has paid in all.
             ->where('brokers', [
                 ['id' => $this->broker->id, 'name' => 'Broker', 'total' => '70.0000'],
                 ['id' => $other->id, 'name' => 'Other broker', 'total' => '30.0000'],
             ])
-        );
-
-        $this->get("/dividends?year=2025&broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('total', '50.0000')
+            ->where("byBroker.{$this->broker->id}.total", '50.0000')
             // The year before is narrowed too, or the comparison would set one brokerage's
             // year against everyone's: the other one paid nothing in 2024.
-            ->where('previous', '20.0000')
-            ->where('symbols.0.symbol', '0005.HK')
-            ->has('symbols', 1)
+            ->where("byBroker.{$this->broker->id}.previous", '20.0000')
+            ->where("byBroker.{$this->broker->id}.symbols.0.symbol", '0005.HK')
+            ->has("byBroker.{$this->broker->id}.symbols", 1)
         );
     }
 
-    public function test_a_brokerage_that_names_none_is_all_of_them(): void
+    public function test_the_page_of_every_brokerage_does_not_depend_on_the_ones_beside_it(): void
     {
-        $this->dividend('2025-03-10', '0005.HK', '50');
-        $this->dividend('2025-09-12', '0700.HK', '30', $this->otherBroker());
+        $other = $this->otherBroker();
 
-        // A hand-edited URL, a brokerage that has never paid, and the one id that is an
-        // account but no brokerage of this page's: none is an empty page.
-        foreach ([999, $this->bank->id, 0] as $id) {
-            $this->get("/dividends?year=2025&broker={$id}")->assertInertia(fn (Assert $page) => $page
-                ->where('broker', 0)
+        $this->dividend('2025-03-10', '0005.HK', '50');
+        $this->dividend('2025-09-12', '0700.HK', '30', $other);
+
+        // The choice is the browser's and not the URL's: a `broker` in it is not read, so a
+        // link carrying one is the same page as one without.
+        foreach (['', "&broker={$other->id}", '&broker=999'] as $query) {
+            $this->get("/dividends?year=2025{$query}")->assertInertia(fn (Assert $page) => $page
                 ->where('total', '80.0000')
+                ->missing('broker')
             );
         }
     }
@@ -216,6 +216,7 @@ class DividendPageTest extends TestCase
 
         $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
             ->where('brokers', [['id' => $this->broker->id, 'name' => 'Broker', 'total' => '50.0000']])
+            ->has('byBroker', 1)
         );
     }
 
@@ -228,20 +229,14 @@ class DividendPageTest extends TestCase
         $this->dividend('2025-03-10', '0005.HK', '20');
         $this->dividend('2025-03-10', '0700.HK', '10', $other);
 
-        $this->get('/dividends')->assertInertia(fn (Assert $page) => $page
-            ->where('expected', '30.0000')
-        );
-
         // A brokerage is expected to pay what its own holdings paid a year ago, and nothing
         // of what another's will.
-        $this->get("/dividends?broker={$other->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('expected', '10.0000')
-            ->where('expectedBySymbol', ['0700.HK' => '10.0000'])
-        );
-
-        $this->get("/dividends?broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('expected', '20.0000')
-            ->where('expectedBySymbol', ['0005.HK' => '20.0000'])
+        $this->get('/dividends')->assertInertia(fn (Assert $page) => $page
+            ->where('expected', '30.0000')
+            ->where("byBroker.{$other->id}.expected", '10.0000')
+            ->where("byBroker.{$other->id}.expectedBySymbol", ['0700.HK' => '10.0000'])
+            ->where("byBroker.{$this->broker->id}.expected", '20.0000')
+            ->where("byBroker.{$this->broker->id}.expectedBySymbol", ['0005.HK' => '20.0000'])
         );
     }
 
@@ -280,14 +275,8 @@ class DividendPageTest extends TestCase
         // 60 left of the first at 10, and all 30 of the other: sold shares are no longer cost.
         $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
             ->where('cost', '900.0000')
-        );
-
-        $this->get("/dividends?year=2025&broker={$other->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('cost', '300.0000')
-        );
-
-        $this->get("/dividends?year=2025&broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('cost', '600.0000')
+            ->where("byBroker.{$other->id}.cost", '300.0000')
+            ->where("byBroker.{$this->broker->id}.cost", '600.0000')
         );
     }
 
@@ -304,17 +293,14 @@ class DividendPageTest extends TestCase
             'meta_data' => ['symbol' => 'AAPL', 'quantity' => '10', 'unit_price' => '10', 'no_cash' => true],
         ])->assertSessionHasNoErrors();
 
-        // Null, not the HKD part alone: a cost missing a brokerage is a yield on less than was
-        // held, which reads higher than the truth and gives no sign of it.
         $this->get('/dividends?year=2025')->assertInertia(fn (Assert $page) => $page
+            // Null, not the HKD part alone: a cost missing a brokerage is a yield on less than
+            // was held, which reads higher than the truth and gives no sign of it.
             ->where('cost', null)
             ->where('costUnconverted', ['USD'])
-        );
-
-        // The HKD brokerage on its own has every rate it needs.
-        $this->get("/dividends?year=2025&broker={$this->broker->id}")->assertInertia(fn (Assert $page) => $page
-            ->where('cost', '1000.0000')
-            ->where('costUnconverted', [])
+            // The HKD brokerage on its own has every rate it needs.
+            ->where("byBroker.{$this->broker->id}.cost", '1000.0000')
+            ->where("byBroker.{$this->broker->id}.costUnconverted", [])
         );
     }
 

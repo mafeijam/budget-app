@@ -62,8 +62,7 @@ class DividendController extends Controller
         $money = fn (BigDecimal $value) => (string) $value->toScale(4);
 
         // The brokerages that have ever paid, for the page's picker: one that never has is a
-        // page of nothing. Taken before the page is narrowed, or choosing one would leave it
-        // the only option.
+        // page of nothing.
         $brokerNames = Account::query()
             ->whereIn('id', $everyPayment->pluck('broker')->filter()->unique())
             ->orderBy('name')
@@ -75,42 +74,27 @@ class DividendController extends Controller
             'total' => $money($sum($everyPayment->where('broker', $id))),
         ])->values();
 
-        // One brokerage's dividends, or 0 for all of them. Anything that names none of the
-        // brokerages above is all of them rather than an empty page: a hand-edited URL, or a
-        // brokerage whose payments have since been moved.
-        $broker = $brokers->contains('id', (int) $r->input('broker')) ? (int) $r->input('broker') : 0;
-
-        $paid = $broker ? $everyPayment->where('broker', $broker) : $everyPayment;
-
         // This year always, so the page opens on it even before its first payment. Years from
-        // every payment, not the ones narrowed to: a year one brokerage did not pay in is an
-        // empty column, which is what says the year went by without it, and a year list that
-        // moved with the brokerage would move the year under the reader's cursor.
+        // every payment, not the ones a brokerage is narrowed to: a year one brokerage did not
+        // pay in is an empty column, which is what says the year went by without it, and a
+        // year list that moved with the brokerage would move the year under the reader.
         $years = $everyPayment->pluck('year')->push($today->year)->unique()->sortDesc()->values();
         $year = in_array((int) $r->input('year'), $years->all(), true) ? (int) $r->input('year') : $today->year;
 
-        $inYear = $paid->where('year', $year);
-        $lastYear = $paid->where('year', $year - 1);
-
-        [$cost, $costUnconverted] = $this->costHeld($year, $broker, $today);
-
         // What the rest of this year is expected to pay, as the forecast has it: only this
-        // year's page has days still to come.
+        // year's page has days still to come. Converted once, each still naming the brokerage
+        // whose holding it is derived from, for the views below to narrow.
         $expected = collect();
 
         if ($year === $today->year) {
             $endOfYear = $today->copy()->endOfYear()->toDateString();
 
             foreach (Forecast::for($today, 12)->expectedDividendList() as $dividend) {
-                // A bonus or a double pay is no brokerage's, so it is left out of one's page.
-                if ($broker && (int) $dividend['broker'] !== $broker) {
-                    continue;
-                }
-
                 $base = $dividend['date'] <= $endOfYear ? $fx->toBase($dividend['amount'], $dividend['ccy'], $today->toDateString()) : null;
 
                 if ($base !== null) {
                     $expected->push([
+                        'broker' => $dividend['broker'],
                         'month' => (int) substr($dividend['date'], 5, 2),
                         'symbol' => $dividend['symbol'],
                         'amount' => $base,
@@ -118,6 +102,53 @@ class DividendController extends Controller
                 }
             }
         }
+
+        $context = [
+            'paid' => $everyPayment,
+            'expected' => $expected,
+            'unconverted' => collect($unconverted),
+            'years' => $years,
+            'year' => $year,
+            'brokerNames' => $brokerNames,
+            'costs' => $this->costsHeld($year, $today),
+            'sum' => $sum,
+            'money' => $money,
+        ];
+
+        return inertia('dividend', [
+            'year' => $year,
+            'base' => Fx::BASE->value,
+            'today' => $today->toDateString(),
+            'brokers' => $brokers->all(),
+            // The page of every brokerage together: what it is when none is chosen.
+            ...$this->view(0, $context),
+            // And of each brokerage alone, all sent: the choice is the browser's, kept there
+            // as the Positions page keeps its own, and switching it is no request. Narrowing
+            // here rather than there because these figures are sums over rows the page does
+            // not carry, by symbol and by month.
+            'byBroker' => $brokers->mapWithKeys(fn (array $b) => [$b['id'] => $this->view($b['id'], $context)])->all(),
+        ]);
+    }
+
+    /**
+     * The page's figures for one brokerage's payments, or for all of them with 0.
+     *
+     * @param  array<string, mixed>  $c  what index() has read, shared by every view
+     * @return array<string, mixed>
+     */
+    private function view(int $broker, array $c): array
+    {
+        ['sum' => $sum, 'money' => $money, 'year' => $year] = $c;
+
+        $paid = $broker ? $c['paid']->where('broker', $broker) : $c['paid'];
+
+        // A bonus or a double pay is no brokerage's, so it is left out of one's page.
+        $expected = $broker ? $c['expected']->filter(fn (array $e) => (int) $e['broker'] === $broker) : $c['expected'];
+
+        $inYear = $paid->where('year', $year);
+        $lastYear = $paid->where('year', $year - 1);
+
+        [$cost, $costUnconverted] = $this->costOf($c['costs'], $broker);
 
         $months = fn ($list) => array_map(
             fn (int $m) => $money($sum($list->where('month', $m))),
@@ -132,6 +163,7 @@ class DividendController extends Controller
         $allSymbols = $paid->pluck('symbol')->unique()->sort()->values();
         $allNames = Symbol::namesFor($allSymbols->all());
         $names = Symbol::namesFor($symbols->all());
+        $brokerNames = $c['brokerNames'];
 
         $bySymbol = $symbols->map(function (string $symbol) use ($inYear, $lastYear, $expected, $sum, $money, $months, $names, $brokerNames) {
             $own = $inYear->where('symbol', $symbol);
@@ -151,15 +183,12 @@ class DividendController extends Controller
             ];
         })->sortByDesc(fn (array $s) => (float) $s['total'] + (float) $s['expected'])->values()->all();
 
-        return inertia('dividend', [
-            'year' => $year,
-            'broker' => $broker,
-            'brokers' => $brokers->all(),
+        return [
             // What the holdings cost, for the yield the year's payments are a share of, and
             // the currencies it could not be counted in for want of a rate.
             'cost' => $cost,
             'costUnconverted' => $costUnconverted,
-            'years' => $years->map(fn (int $y) => [
+            'years' => $c['years']->map(fn (int $y) => [
                 'year' => $y,
                 'total' => $money($sum($paid->where('year', $y))),
                 // What each symbol paid that year, so the year's bars can be read one
@@ -171,8 +200,6 @@ class DividendController extends Controller
                     ->map(fn ($list) => $money($sum($list)))
                     ->all(),
             ])->all(),
-            'base' => Fx::BASE->value,
-            'today' => $today->toDateString(),
             'total' => $money($sum($inYear)),
             'previous' => $money($sum($lastYear)),
             'expected' => $money($sum($expected)),
@@ -211,16 +238,17 @@ class DividendController extends Controller
                 ->all(),
             // The currencies with no rate, among the payments this page is of: another
             // brokerage's missing rate is no reason to say part of this one is left out.
-            'unconverted' => collect($unconverted)
+            'unconverted' => $c['unconverted']
                 ->when($broker, fn ($list) => $list->where('broker', $broker))
                 ->pluck('ccy')->unique()->values()->all(),
-        ]);
+        ];
     }
 
     /**
-     * What is held cost, in the base currency, as the yield on it is read against: the open
-     * positions' remaining cost on the last day of the year, or today's on the year in
-     * progress. Of one brokerage when one is chosen, at the rate of that day.
+     * What each brokerage holds cost, in the base currency, as the yield on it is read
+     * against: the open positions' remaining cost on the last day of the year, or today's on
+     * the year in progress, at the rate of that day. One entry a brokerage that holds
+     * anything, its figure null where its currency has no rate that day.
      *
      * The day is the year's end and not today even for a past year: a payment is a share of
      * what was held while it was paid, and today's cost holds positions bought since and
@@ -228,23 +256,16 @@ class DividendController extends Controller
      * money. It is still not exact -- a position sold during the year paid but is not in the
      * cost at its end -- and a yield on a book that turned over reads a little high.
      *
-     * A currency with no rate that day is left out and named, and the figure is then null:
-     * a cost missing a brokerage reads as a yield on less than was held, which is higher.
-     *
-     * @return array{0: string|null, 1: list<string>}
+     * @return list<array{id: int, ccy: string, base: BigDecimal|null}>
      */
-    private function costHeld(int $year, int $broker, Carbon $today): array
+    private function costsHeld(int $year, Carbon $today): array
     {
         $on = $year === $today->year ? $today->toDateString() : "{$year}-12-31";
 
-        $accounts = Account::query()
-            ->where('type', AccountType::Security->value)
-            ->when($broker, fn ($query) => $query->whereKey($broker))
-            ->get();
+        $accounts = Account::query()->where('type', AccountType::Security->value)->get();
 
         $fx = Fx::for($accounts->pluck('ccy')->push(Fx::BASE->value)->unique()->all());
-        $total = BigDecimal::zero();
-        $unconverted = [];
+        $costs = [];
 
         foreach ($accounts as $account) {
             $held = array_filter(
@@ -261,20 +282,37 @@ class DividendController extends Controller
                 continue;
             }
 
-            $inBase = $fx->toBase((string) $own, $account->ccy, $on);
-
-            if ($inBase === null) {
-                $unconverted[] = $account->ccy;
-
-                continue;
-            }
-
-            $total = $total->plus($inBase);
+            $costs[] = [
+                'id' => $account->id,
+                'ccy' => $account->ccy,
+                'base' => $fx->toBase((string) $own, $account->ccy, $on),
+            ];
         }
 
-        return [
-            $unconverted === [] ? (string) $total->toScale(4) : null,
-            array_values(array_unique($unconverted)),
-        ];
+        return $costs;
+    }
+
+    /**
+     * One brokerage's cost, or every brokerage's with 0, and the currencies that could not be
+     * counted.
+     *
+     * Null when any is missing a rate: a cost missing a brokerage reads as a yield on less
+     * than was held, which is higher, and nothing on the page would say so.
+     *
+     * @param  list<array{id: int, ccy: string, base: BigDecimal|null}>  $costs
+     * @return array{0: string|null, 1: list<string>}
+     */
+    private function costOf(array $costs, int $broker): array
+    {
+        $mine = array_filter($costs, fn (array $c) => ! $broker || $c['id'] === $broker);
+        $missing = array_values(array_unique(array_column(array_filter($mine, fn (array $c) => $c['base'] === null), 'ccy')));
+
+        $total = array_reduce(
+            $mine,
+            fn (BigDecimal $sum, array $c) => $c['base'] === null ? $sum : $sum->plus($c['base']),
+            BigDecimal::zero()
+        );
+
+        return [$missing === [] ? (string) $total->toScale(4) : null, $missing];
     }
 }

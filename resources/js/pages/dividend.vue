@@ -4,12 +4,11 @@
       <div class="row items-center">
         <div class="text-h6 text-weight-medium q-mr-md">Dividends</div>
 
-        <!-- The Positions page's dropdown, and its place. Unlike there it narrows the whole page
-             and not a chart on it, so it is a request like the year is: the figures here are
-             sums over rows the page does not carry, by symbol and month. -->
+        <!-- The Positions page's dropdown, and its place. It narrows the whole page and not a
+             chart on it, but is kept as there: in the browser, and no request to change. -->
         <q-select
           v-if="brokers.length > 1"
-          :model-value="broker"
+          v-model="broker"
           :options="brokerOptions"
           class="app-broker-select"
           dense
@@ -17,7 +16,6 @@
           emit-value
           map-options
           options-dense
-          @update:model-value="chooseBroker"
         >
           <template #prepend>
             <q-icon name="account_balance" size="xs" color="grey-7" />
@@ -91,7 +89,11 @@
       </div>
     </div>
 
-    <div v-for="code in unconverted" :key="code" class="app-note app-note--warning row no-wrap">
+    <div
+      v-for="code in view.unconverted"
+      :key="code"
+      class="app-note app-note--warning row no-wrap"
+    >
       <q-icon name="warning_amber" size="xs" class="app-note__icon q-mr-sm q-mt-xs" />
       <div>No {{ code }} rate for some days, so part of the {{ code }} dividends is left out.</div>
     </div>
@@ -121,13 +123,13 @@
         <DividendMonths
           :year="year"
           :symbols="ranked"
-          :expected-months="expectedMonths"
-          :previous-months="previousMonths"
+          :expected-months="view.expectedMonths"
+          :previous-months="view.previousMonths"
           :base="base"
         />
       </q-card-section>
 
-      <template v-if="years.length > 1">
+      <template v-if="view.years.length > 1">
         <q-separator />
 
         <!-- Each year's total on one scale; a click shows that year. -->
@@ -304,10 +306,11 @@
 <script setup>
 const props = defineProps({
   year: { type: Number, required: true },
-  // The brokerage the page is of, or 0 for all of them, and every one that has paid, each
-  // with what it has paid in all.
-  broker: { type: Number, default: 0 },
+  // Every brokerage that has paid, each with what it has paid in all, and the page of each
+  // alone by id. The props below are the page of all of them together; `view` is whichever of
+  // the two the dropdown has chosen.
   brokers: { type: Array, default: () => [] },
+  byBroker: { type: Object, default: () => ({}) },
   // What the holdings cost, in the base currency, on the day the yield is read against: the
   // year's last, or today's. Null where a currency had no rate, named in costUnconverted.
   cost: { type: String, default: null },
@@ -341,13 +344,48 @@ const formatDay = useCalendarDay()
 // browser and not the URL, as the Positions page's brokerage: it narrows one chart of data
 // already on the page, where the year above it is the page's own subject. Named for what
 // it does rather than `symbol`, which the by-symbol table's rows already take.
-const onlySymbol = useStorage('dividends.symbol', '')
+const storedSymbol = useStorage('dividends.symbol', '')
+
+// 0 is all of them. Remembered per browser as the Positions page remembers its own, and not in
+// the URL: the page of each brokerage is already here, so changing it is no request. With one
+// brokerage there is no dropdown and nothing to choose between.
+const brokerId = useStorage('dividends.broker', 0)
+
+const chosen = computed(() =>
+  props.brokers.length > 1 && props.byBroker[brokerId.value] ? brokerId.value : 0,
+)
+
+const broker = computed({
+  get: () => chosen.value,
+  set: id => (brokerId.value = id),
+})
+
+// A stored id that no longer names a brokerage falls back to all of them rather than to nothing.
+watchEffect(() => {
+  if (props.brokers.length > 1 && brokerId.value !== 0 && !props.byBroker[brokerId.value]) {
+    brokerId.value = 0
+  }
+})
+
+// The page's figures: of every brokerage together, which is what the props are, or of the one
+// chosen. Everything below that is about payments reads this rather than the props.
+const view = computed(() => (chosen.value ? props.byBroker[chosen.value] : props))
+
+// A symbol this brokerage has never paid is not one that can be shown, and would leave the
+// select holding a value it has no option for, which renders blank. It reads as all of them
+// while it is out of the list, and is kept stored rather than cleared: switching to another
+// brokerage and back should not have forgotten it.
+const onlySymbol = computed({
+  get: () =>
+    view.value.allSymbols.some(s => s.symbol === storedSymbol.value) ? storedSymbol.value : '',
+  set: symbol => (storedSymbol.value = symbol),
+})
 
 const symbolOptions = computed(() => [
   { label: 'All symbols', value: '', total: money(yearsTotal.value), caption: null },
   // Biggest first, since the figure beside each is what it has paid in all, and that is
   // what the bars it filters are shares of.
-  ...[...props.allSymbols]
+  ...[...view.value.allSymbols]
     .sort((a, b) => Number(b.total) - Number(a.total))
     .map(s => ({
       label: s.symbol,
@@ -359,27 +397,8 @@ const symbolOptions = computed(() => [
     })),
 ])
 
-// A stored symbol that no longer pays anything would leave the select holding a value it
-// has no option for, which renders blank. Back to all of them, as a stored brokerage id
-// that no longer names one does on the Positions page.
-watchEffect(() => {
-  if (onlySymbol.value && !props.allSymbols.some(s => s.symbol === onlySymbol.value)) {
-    onlySymbol.value = ''
-  }
-})
-
-// The year and the brokerage together, each kept when the other changes: a year stepped to
-// would otherwise hand the page back to every brokerage, and the dropdown would be lying.
-// Off the URL when it is all of them, as the year is when it is this one's default.
-const visit = ({ year = props.year, broker = props.broker }) =>
-  router.get(
-    '/dividends',
-    { year, ...(broker ? { broker } : {}) },
-    { preserveScroll: true, preserveState: true },
-  )
-
-const choose = year => visit({ year })
-const chooseBroker = broker => visit({ broker })
+const choose = year =>
+  router.get('/dividends', { year }, { preserveScroll: true, preserveState: true })
 
 const brokerOptions = computed(() => [
   { label: 'All brokerages', value: 0, total: null },
@@ -387,13 +406,13 @@ const brokerOptions = computed(() => [
 ])
 
 const yearOptions = computed(() =>
-  props.years.map(y => ({ label: String(y.year), value: y.year, total: money(y.total) })),
+  view.value.years.map(y => ({ label: String(y.year), value: y.year, total: money(y.total) })),
 )
 
 // Newest first, so the one before in the list is the newer year.
-const at = computed(() => props.years.findIndex(y => y.year === props.year))
-const newer = computed(() => props.years[at.value - 1]?.year ?? null)
-const older = computed(() => props.years[at.value + 1]?.year ?? null)
+const at = computed(() => view.value.years.findIndex(y => y.year === props.year))
+const newer = computed(() => view.value.years[at.value - 1]?.year ?? null)
+const older = computed(() => view.value.years[at.value + 1]?.year ?? null)
 
 // How many hold a colour, and below what share of the year one is too thin to name --
 // PositionAllocation's rule, so the two charts agree on what is too small to point at.
@@ -404,15 +423,17 @@ const smallest = 0.03
 // means one symbol on every year rather than a different one each time the year changes.
 // The entry is kept whole rather than just its position, because the table's all-time
 // column is the same figure and one lookup should not be able to disagree with the other.
-const allTime = computed(() => new Map(props.allSymbols.map((s, i) => [s.symbol, { ...s, at: i }])))
+const allTime = computed(
+  () => new Map(view.value.allSymbols.map((s, i) => [s.symbol, { ...s, at: i }])),
+)
 
 const ranked = computed(() =>
-  props.symbols.map(symbol => {
+  view.value.symbols.map(symbol => {
     // A symbol the all-time list does not name is past the palette, so it reads as Others
     // rather than taking a colour from one that is.
     const entry = allTime.value.get(symbol.symbol)
-    const at = entry?.at ?? props.allSymbols.length
-    const share = Number(props.total) > 0 ? Number(symbol.total) / Number(props.total) : 0
+    const at = entry?.at ?? view.value.allSymbols.length
+    const share = Number(view.value.total) > 0 ? Number(symbol.total) / Number(view.value.total) : 0
     const other = at >= named || share < smallest
 
     return {
@@ -456,7 +477,9 @@ const monthsSoFar = computed(() => (isCurrent.value ? Number(props.today.slice(5
 // the page against itself. A year the symbol did not pay in is zero rather than dropped:
 // the empty column is what says the year went by without it.
 const yearsWithChange = computed(() => {
-  const ordered = [...props.years].reverse().map(entry => ({ ...entry, total: yearTotal(entry) }))
+  const ordered = [...view.value.years]
+    .reverse()
+    .map(entry => ({ ...entry, total: yearTotal(entry) }))
 
   return ordered.map((entry, i) => ({
     ...entry,
@@ -480,36 +503,36 @@ const asYield = (part, whole) => `${((Number(part) / Number(whole)) * 100).toFix
 const yieldTile = computed(() => {
   const base = { label: 'Yield on cost', class: 'text-grey-9' }
 
-  if (props.cost === null) {
+  if (view.value.cost === null) {
     return {
       ...base,
       value: '—',
       class: 'text-grey-7',
-      note: `No ${props.costUnconverted.join(', ')} rate, so what it cost is not known`,
+      note: `No ${view.value.costUnconverted.join(', ')} rate, so what it cost is not known`,
     }
   }
 
-  if (!(Number(props.cost) > 0)) {
+  if (!(Number(view.value.cost) > 0)) {
     return { ...base, value: '—', class: 'text-grey-7', note: 'Nothing held' }
   }
 
-  const held = `on a cost of ${money(props.cost)}${isCurrent.value ? '' : ` at the end of ${props.year}`}`
+  const held = `on a cost of ${money(view.value.cost)}${isCurrent.value ? '' : ` at the end of ${props.year}`}`
   const inAll =
-    isCurrent.value && Number(props.expected) > 0
-      ? ` · ~${asYield(Number(props.total) + Number(props.expected), props.cost)} with what is expected`
+    isCurrent.value && Number(view.value.expected) > 0
+      ? ` · ~${asYield(Number(view.value.total) + Number(view.value.expected), view.value.cost)} with what is expected`
       : ''
 
-  return { ...base, value: asYield(props.total, props.cost), note: `${held}${inAll}` }
+  return { ...base, value: asYield(view.value.total, view.value.cost), note: `${held}${inAll}` }
 })
 
 const tiles = computed(() => {
-  const vsLast = change(props.total, props.previous)
+  const vsLast = change(view.value.total, view.value.previous)
   const tiles = [
     {
       label: `Paid in ${props.year}`,
-      value: money(props.total),
+      value: money(view.value.total),
       class: 'text-positive',
-      note: `${props.payments} payment${props.payments === 1 ? '' : 's'} from ${ranked.value.filter(s => Number(s.total) > 0).length} symbols`,
+      note: `${view.value.payments} payment${view.value.payments === 1 ? '' : 's'} from ${ranked.value.filter(s => Number(s.total) > 0).length} symbols`,
       total: true,
     },
     yieldTile.value,
@@ -517,11 +540,11 @@ const tiles = computed(() => {
       label: `Against ${props.year - 1}`,
       value: vsLast?.label ?? '—',
       class: vsLast?.class ?? 'text-grey-7',
-      note: `${props.year - 1} paid ${money(props.previous)}${isCurrent.value ? ' in all' : ''}`,
+      note: `${props.year - 1} paid ${money(view.value.previous)}${isCurrent.value ? ' in all' : ''}`,
     },
     {
       label: 'A month on average',
-      value: money((Number(props.total) / Math.max(monthsSoFar.value, 1)).toFixed(2)),
+      value: money((Number(view.value.total) / Math.max(monthsSoFar.value, 1)).toFixed(2)),
       class: 'text-grey-9',
       note: isCurrent.value ? `over the ${monthsSoFar.value} months so far` : 'over the year',
     },
@@ -530,13 +553,13 @@ const tiles = computed(() => {
   if (isCurrent.value) {
     tiles.push({
       label: 'Still expected this year',
-      value: `~${money(props.expected)}`,
+      value: `~${money(view.value.expected)}`,
       class: 'app-text-estimate',
-      note: `last year's payments a year on, for about ${money((Number(props.total) + Number(props.expected)).toFixed(2))} in all`,
+      note: `last year's payments a year on, for about ${money((Number(view.value.total) + Number(view.value.expected)).toFixed(2))} in all`,
     })
   } else {
-    const best = props.months.reduce(
-      (top, v, i) => (Number(v) > Number(props.months[top]) ? i : top),
+    const best = view.value.months.reduce(
+      (top, v, i) => (Number(v) > Number(view.value.months[top]) ? i : top),
       0,
     )
 
@@ -544,7 +567,7 @@ const tiles = computed(() => {
       label: 'Best month',
       value: monthInitials[best].name,
       class: 'text-grey-9',
-      note: money(props.months[best]),
+      note: money(view.value.months[best]),
     })
   }
 
@@ -558,7 +581,6 @@ const monthInitials = Array.from({ length: 12 }, (_, i) => {
   return { key: i, label: String(i + 1), name }
 })
 
-const years = computed(() => props.years)
 const thisYear = computed(() => Number(props.today.slice(0, 4)))
 
 // Only on this year's page does the server work out what is still expected, and a
@@ -567,13 +589,15 @@ const thisYear = computed(() => Number(props.today.slice(0, 4)))
 const expectedThisYear = computed(() => {
   if (!isCurrent.value) return '0'
 
-  return onlySymbol.value ? (props.expectedBySymbol?.[onlySymbol.value] ?? '0') : props.expected
+  return onlySymbol.value
+    ? (view.value.expectedBySymbol?.[onlySymbol.value] ?? '0')
+    : view.value.expected
 })
 
 // The tallest bar, within the series being shown. Off the page's own years rather than
 // the filtered ones, one symbol's bars would be a sliver against a total ten times their
 // size and the years beside it would say nothing about it.
-const yearsTotal = computed(() => props.years.reduce((total, y) => total + Number(y.total), 0))
+const yearsTotal = computed(() => view.value.years.reduce((total, y) => total + Number(y.total), 0))
 
 const yearPeak = computed(() =>
   Math.max(
@@ -599,7 +623,9 @@ const expectHeight = entry =>
   entry.year === thisYear.value ? barHeight(expectedThisYear.value) : '0%'
 
 const share = amount =>
-  Number(props.total) > 0 ? `${Math.round((Number(amount) / Number(props.total)) * 100)}%` : ''
+  Number(view.value.total) > 0
+    ? `${Math.round((Number(amount) / Number(view.value.total)) * 100)}%`
+    : ''
 
 const growth = symbol => change(symbol.total, symbol.previous)
 
