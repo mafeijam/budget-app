@@ -467,7 +467,7 @@ const seeded = page.props.params?.filter ?? {}
 const keptOpen = useStorage('transactions.filtersOpen', false)
 
 // Shared with the page, which draws the totals: the same key, so the two stay in step.
-const showTotals = useStorage('transactions.totalsOpen', false)
+const showTotals = useShowTotals()
 const rowOpen = ref(keptOpen.value || Object.keys(seeded).length > 0)
 
 const toggleRow = () => {
@@ -500,27 +500,21 @@ const parse = filter => ({
   due_month: list(filter.due_month),
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
   unpaid: filter.unpaid ?? '',
-  hide_transfers: filter.hide_transfers ?? '',
 })
 
 const filters = reactive(parse(seeded))
 
-// A choice about the page and not a filter on one search, so it is remembered per browser as
-// Totals is, and Clear all leaves it. A link that names it wins for that visit without
-// changing the choice. The server cannot see the browser's storage, so a remembered yes
-// asks for the list again on arrival.
-const hideTransfersKept = useStorage('transactions.hideTransfers', false)
+// A choice about the page and not a filter on one search, so Clear all leaves it. Kept in a
+// cookie and not in storage or the URL, so the server applies it to the first request: from
+// storage the page loaded the whole list and then asked again. The server says whether it
+// applied it, which a link naming it can change for one visit without changing the choice.
 const hideTransfers = computed({
-  get: () => filters.hide_transfers === '1',
+  get: () => page.props.hideTransfers === true,
   set: on => {
-    hideTransfersKept.value = on
-    filters.hide_transfers = on ? '1' : ''
+    writeCookie(HIDE_TRANSFERS_COOKIE, on ? '1' : '0')
+    apply({ dropHideTransfers: true })
   },
 })
-
-const askedForTransfers = hideTransfersKept.value && !('hide_transfers' in seeded)
-
-if (askedForTransfers) filters.hide_transfers = '1'
 
 // What the list on screen is filtered by: the server's echo of the last request, not the
 // controls. The chips and Clear all read this, so they change when the rows do -- off the
@@ -670,7 +664,10 @@ const shownChips = computed(() =>
     : chips.value,
 )
 
-const apply = () => {
+// The cookie's name, as TransactionController::HIDE_TRANSFERS_COOKIE has it.
+const HIDE_TRANSFERS_COOKIE = 'transactions_hide_transfers'
+
+const apply = ({ dropHideTransfers = false } = {}) => {
   const { sort, dir, per_page: perPage } = page.props.params ?? {}
   const fallback = page.props.meta?.sort ?? {}
   const params = {}
@@ -679,6 +676,12 @@ const apply = () => {
   if (perPage) params.per_page = perPage
 
   const filter = query()
+
+  // A link's hide_transfers is the request's only while nothing is changed on it. Switching
+  // the toggle hands the choice back to the cookie it just wrote.
+  const linked = page.props.params?.filter?.hide_transfers
+
+  if (linked !== undefined && !dropHideTransfers) filter.hide_transfers = linked
 
   if (Object.keys(filter).length) params.filter = filter
 
@@ -720,9 +723,5 @@ const showStatement = (cardId, dueDate) => {
 
 defineExpose({ showStatement, clear })
 
-watch(filters, apply, { deep: true })
-
-onMounted(() => {
-  if (askedForTransfers) apply()
-})
+watch(filters, () => apply(), { deep: true })
 </script>

@@ -522,6 +522,37 @@ class TransactionFilterTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->has('data.data', 5));
     }
 
+    public function test_hide_transfers_is_read_from_its_cookie_and_a_link_wins_for_its_visit(): void
+    {
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-02-10',
+            'description' => 'Flight',
+            'amount' => '50.0000',
+        ]))->assertSessionHasNoErrors();
+        $this->settle(['due_date' => '2026-03-12', 'owed' => '50.0000'])->assertSessionHasNoErrors();
+
+        $account = ['filter' => ['account_id' => (string) $this->bank->id], 'per_page' => 20];
+        $cookie = TransactionController::HIDE_TRANSFERS_COOKIE;
+        $listed = fn ($response) => collect($response->viewData('page')['props']['data']['data'])->pluck('description')->all();
+
+        // The cookie applies it to the first request, and the page is told so; the filter it
+        // echoes back is the one the request named, without the cookie's addition.
+        $on = $this->withUnencryptedCookie($cookie, '1')->get('/transactions?'.http_build_query($account));
+        $this->assertSame(['Salary', 'Rent'], $listed($on));
+        $on->assertInertia(fn (Assert $page) => $page
+            ->where('hideTransfers', true)
+            ->where('params.filter', ['account_id' => (string) $this->bank->id]));
+
+        // A link that names it off wins for that visit.
+        $off = $this->withUnencryptedCookie($cookie, '1')
+            ->get('/transactions?'.http_build_query(['filter' => ['account_id' => (string) $this->bank->id, 'hide_transfers' => '0'], 'per_page' => 20]));
+        $this->assertCount(3, $listed($off));
+        $off->assertInertia(fn (Assert $page) => $page->where('hideTransfers', false));
+
+        // And with it off, nothing is hidden.
+        $this->assertCount(3, $listed($this->withUnencryptedCookie($cookie, '0')->get('/transactions?'.http_build_query($account))));
+    }
+
     public function test_a_value_that_does_not_say_yes_filters_nothing(): void
     {
         $this->assertListed(['filter' => ['unpaid' => '0']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
@@ -629,7 +660,7 @@ class TransactionFilterTest extends TestCase
         // Two charges of 120, a withdrawal of 9000 and a deposit of 30000, on pages of one.
         // Three of the four are counted: the second charge is pending, and a pending row
         // is not a figure the reader has yet.
-        $this->get('/transactions?per_page=5&filter[ccy]=HKD')->assertInertia(fn (Assert $page) => $page
+        $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1')->get('/transactions?per_page=5&filter[ccy]=HKD')->assertInertia(fn (Assert $page) => $page
             ->where('totals', [[
                 'ccy' => 'HKD',
                 'count' => 3,
@@ -645,10 +676,23 @@ class TransactionFilterTest extends TestCase
     {
         // The same rows as the HKD filter above, since every row here is HKD: the card stays
         // when the last filter goes rather than taking the page's height with it.
-        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+        $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1')->get('/transactions')->assertInertia(fn (Assert $page) => $page
             ->where('totals.0.count', 3)
             ->where('totals.0.net', '20880.0000')
         );
+    }
+
+    public function test_the_totals_are_not_worked_out_while_their_panel_is_closed(): void
+    {
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('showTotals', false)
+            ->where('totals', [])
+            ->where('baseTotals', null)
+        );
+
+        $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1')
+            ->get('/transactions')
+            ->assertInertia(fn (Assert $page) => $page->where('showTotals', true)->has('totals', 1));
     }
 
     public function test_a_card_payment_is_hidden_unless_the_filter_asks_for_it(): void
@@ -708,7 +752,7 @@ class TransactionFilterTest extends TestCase
 
         // The block's own month and its own category, read off the report, put through the
         // filter the cash flow page builds for its link.
-        $this->get('/transactions?'.http_build_query([
+        $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1')->get('/transactions?'.http_build_query([
             'per_page' => 20,
             'filter' => [
                 'counted_from' => $february['from'],

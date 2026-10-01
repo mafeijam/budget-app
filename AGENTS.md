@@ -158,10 +158,16 @@ then currency). The cost is a larger response, so build each view from one share
 - **The URL is for what the server needs to compute.** The Forecast's horizon (`?months=`)
   changes how many days are projected, so it stays a query. Filters on a list
   (Transactions) stay in the URL too, because a link to a filtered list is the point.
-- **A preference on a list is not a filter.** Transactions' "Hide transfers" is remembered
-  like Totals, so Clear all leaves it and `active` does not count it. The server cannot see
-  storage, so a remembered yes asks for the list again on arrival (one extra request); a
-  link that names it applies for that visit without changing the choice.
+- **A preference the server must act on goes in a cookie, not storage.** Transactions'
+  "Hide transfers" and "Totals" change what the first request queries, and from storage the
+  page loaded, then asked again — a second wasted. So they are cookies
+  (`TransactionController::HIDE_TRANSFERS_COOKIE`, `TOTALS_COOKIE`), written by the page
+  with `writeCookie()`, read by the controller, and listed in `encryptCookies(except:)` in
+  `bootstrap/app.php` — an encrypted cookie the browser wrote reads as nothing, silently.
+  Totals closed means the totals query does not run at all. Hide transfers is a preference,
+  not a filter: Clear all leaves it, `active` does not count it, the echoed `params.filter`
+  leaves out the cookie's addition, and a link that names it wins for that visit only.
+  Tests set them with `withUnencryptedCookie()`; the totals tests need it to get totals.
 - **Detail too big to ship is fetched when asked, from a small JSON endpoint built on the
   same query as the figure.** Cash flow's quick view (`GET cash-flow/transactions`, opened
   by the eye on a breakdown tile) lists the rows behind one category in one month. It uses

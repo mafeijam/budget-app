@@ -213,8 +213,8 @@ const totalStrips = computed(() => {
   ]
 })
 
-// Off by default, and remembered per browser, as the filter panel is; the toggle is in it.
-const showTotals = useStorage('transactions.totalsOpen', false)
+// Off by default, and kept in a cookie: see useShowTotals().
+const showTotals = useShowTotals()
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))

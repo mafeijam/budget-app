@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\TransactionController;
 use App\Http\Middleware\ForgetsTheHomeCache;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -18,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Last in the web group, after the session and bindings it reads.
         $middleware->web(append: [HandleInertiaRequests::class, ForgetsTheHomeCache::class]);
+
+        // Written by the page in the browser, so they cannot carry the server's encryption.
+        // Preferences read on the first request, never anything trusted.
+        $middleware->encryptCookies(except: [
+            TransactionController::HIDE_TRANSFERS_COOKIE,
+            TransactionController::TOTALS_COOKIE,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // A request-forgery failure goes back to the page it came from, with the banner

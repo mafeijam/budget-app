@@ -278,6 +278,7 @@
     "useScrollLock": true,
     "useSessionStorage": true,
     "useShare": true,
+    "useShowTotals": true,
     "useSlots": true,
     "useSorted": true,
     "useSpeechRecognition": true,
@@ -340,6 +341,7 @@
     "watchThrottled": true,
     "watchTriggerable": true,
     "watchWithFilter": true,
-    "whenever": true
+    "whenever": true,
+    "writeCookie": true
   }
 }

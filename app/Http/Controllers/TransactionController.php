@@ -50,8 +50,25 @@ class TransactionController extends Controller
      */
     public const NO_CATEGORY = 'none';
 
+    /** Unencrypted, as bootstrap/app.php says: the page writes these, not the server. */
+    public const HIDE_TRANSFERS_COOKIE = 'transactions_hide_transfers';
+
+    public const TOTALS_COOKIE = 'transactions_totals';
+
     public function index(Request $r)
     {
+        // Hide transfers is a choice about the page, kept in a cookie so the first request
+        // can honour it: kept in the browser's storage, a page that remembered it loaded the
+        // whole list and then asked again, and was a second slower for it. A link that names
+        // it wins for that visit. Read before the query builder reads the filter.
+        $filter = (array) $r->query('filter', []);
+
+        if (! array_key_exists('hide_transfers', $filter) && $r->cookie(self::HIDE_TRANSFERS_COOKIE) === '1') {
+            $r->query->set('filter', [...$filter, 'hide_transfers' => '1']);
+        }
+
+        $hideTransfers = in_array((string) ($r->query('filter')['hide_transfers'] ?? ''), ['1', 'true'], true);
+
         // Seeded here, not in a watcher: useWatchTarget() overwrites it when editing.
         // today() is Hong Kong's day, not the browser's.
         $formEmpty = TransactionData::empty([
@@ -278,7 +295,13 @@ class TransactionController extends Controller
         // Unfiltered too, so the card under the table never disappears when the last filter
         // is cleared: gone, it shortened the page under a reader scrolled down to it, and the
         // browser threw them back up the list.
-        $totals = $this->totals(clone $transactions->getEloquentBuilder());
+        //
+        // Only with the panel open, which the page says in a cookie: closed, it is a grouped
+        // query over every matching row for figures nobody is shown.
+        $showTotals = $r->cookie(self::TOTALS_COOKIE) === '1';
+        $totals = $showTotals
+            ? $this->totals(clone $transactions->getEloquentBuilder())
+            : ['currencies' => [], 'base' => null, 'unconverted' => []];
         $unconverted = $totals['unconverted'];
         $baseTotals = $totals['base'];
         $totals = $totals['currencies'];
@@ -535,7 +558,15 @@ class TransactionController extends Controller
 
         $templates = [...$templates, ...$rules];
 
+        // The filter as the request named it, not as the cookie filled it in: the page echoes
+        // this back as what it asked for, and the cookie is not something it asked for.
         $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
+
+        if ($filter === []) {
+            unset($params['filter']);
+        } else {
+            $params['filter'] = $filter;
+        }
 
         // The order AppTable leaves out of the URL, since the server applies it unasked.
         $meta = [
@@ -553,6 +584,7 @@ class TransactionController extends Controller
             'formEmpty',
             'data',
             'params',
+            'hideTransfers',
             'meta',
             'options',
             'statements',
@@ -567,6 +599,7 @@ class TransactionController extends Controller
             'totals',
             'baseTotals',
             'unconverted',
+            'showTotals',
             'base',
             'filterOptions',
             'typeOptions',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\TransactionController;
 use App\Models\Account;
 use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +32,9 @@ class TransactionTotalsTest extends TestCase
         parent::setUp();
 
         $this->setUpCard();
+
+        // The panel open, which is when the server works them out.
+        $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1');
     }
 
     public function test_a_foreign_charge_is_totalled_at_the_figure_its_card_states(): void
