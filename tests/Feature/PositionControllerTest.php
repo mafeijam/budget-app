@@ -148,6 +148,50 @@ class PositionControllerTest extends TestCase
         );
     }
 
+    public function test_the_moves_are_what_is_held_now_at_its_closes_then(): void
+    {
+        $this->travelTo(Carbon::parse('2026-03-06 12:00', 'Asia/Hong_Kong'));
+
+        // Ten more bought two days ago: valued at the old close too, so the money put in is
+        // no part of the move.
+        $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');
+        $this->trade('buy', '2026-03-04', 'NVDA', '10', '100');
+        // Bought this week, so it has no close a week or a month back.
+        $this->trade('buy', '2026-03-02', 'TSLA', '1', '50');
+
+        foreach (['2025-12-01' => '50', '2026-02-05' => '80', '2026-02-27' => '90', '2026-03-04' => '100', '2026-03-05' => '110'] as $date => $close) {
+            Price::create(['symbol' => 'NVDA', 'date' => $date, 'close' => $close, 'ccy' => 'USD', 'source' => 'yahoo']);
+        }
+
+        Price::create(['symbol' => 'TSLA', 'date' => '2026-03-02', 'close' => '50', 'ccy' => 'USD', 'source' => 'yahoo']);
+        Price::create(['symbol' => 'TSLA', 'date' => '2026-03-05', 'close' => '55', 'ccy' => 'USD', 'source' => 'yahoo']);
+
+        $move = fn (string $then, string $now, string $change, ?string $percent, int $leftOut) => [
+            'then' => $then, 'now' => $now, 'change' => $change, 'percent' => $percent, 'left_out' => $leftOut,
+        ];
+
+        $expected = [
+            // Each holding against its own close before its latest.
+            'day' => $move('2050.0000', '2255.0000', '205.0000', '10.00', 0),
+            // TSLA out of both ends, and counted.
+            'week' => $move('1800.0000', '2200.0000', '400.0000', '22.22', 1),
+            'month' => $move('1600.0000', '2200.0000', '600.0000', '37.50', 1),
+            'quarter' => $move('1000.0000', '2200.0000', '1200.0000', '120.00', 1),
+            // Nothing that far back: out of both ends, so no percentage at all.
+            'half' => $move('0.0000', '0.0000', '0.0000', null, 2),
+            'year' => $move('0.0000', '0.0000', '0.0000', null, 2),
+        ];
+
+        $this->get('/positions')->assertInertia(fn (Assert $page) => $page
+            ->where("moves.brokers.{$this->broker->id}", $expected)
+            ->where('moves.currencies.USD', $expected)
+            ->where('moves.since', [
+                'week' => '2026-02-27', 'month' => '2026-02-06', 'quarter' => '2025-12-06',
+                'half' => '2025-09-06', 'year' => '2025-03-06',
+            ])
+        );
+    }
+
     public function test_a_price_in_another_currency_is_not_used(): void
     {
         $this->trade('buy', '2026-01-05', 'NVDA', '10', '100');

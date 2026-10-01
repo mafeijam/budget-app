@@ -187,10 +187,15 @@ class PositionController extends Controller
 
         $symbols = $brokerages->flatMap(fn (array $b) => array_column($b['positions'], 'symbol'))->unique()->values()->all();
         $names = Symbol::namesFor($symbols);
-        $trends = $this->trends($brokerages, $at);
+        // One read of the closes for the lines and for the day's move, which wants each
+        // holding's close before its latest.
+        $open = $brokerages->flatMap(fn (array $b) => collect($b['positions'])->where('open', true)->pluck('symbol'))->unique()->values()->all();
+        $series = Price::seriesFor($open, Carbon::parse($at)->subDays(30)->toDateString(), $at);
+        $trends = $this->trends($brokerages, $at, $series);
+        $moves = $this->moves($brokerages, $at, $series, $open);
 
         return inertia('position', [
-            ...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt', 'names', 'trends'),
+            ...compact('brokerages', 'totals', 'combined', 'pricesUpdatedAt', 'names', 'trends', 'moves'),
             'base' => Fx::BASE->value,
             'at' => $at === $today->toDateString() ? null : $at,
             'today' => $today->toDateString(),
@@ -290,13 +295,12 @@ class PositionController extends Controller
      * symbol's close is only its price where the currency matches the brokerage's.
      *
      * @param  Collection<int, array<string, mixed>>  $brokerages
+     * @param  array<string, array<string, array{close: string, ccy: string}>>  $series  Price::seriesFor()
      * @return array<int, array<string, list<array{date: string, close: string}>>>
      */
-    private function trends($brokerages, string $at): array
+    private function trends($brokerages, string $at, array $series): array
     {
         $from = Carbon::parse($at)->subDays(30)->toDateString();
-        $open = $brokerages->flatMap(fn (array $b) => collect($b['positions'])->where('open', true)->pluck('symbol'))->unique()->values()->all();
-        $series = Price::seriesFor($open, $from, $at);
         $trends = [];
 
         foreach ($brokerages as $broker) {
@@ -322,6 +326,156 @@ class PositionController extends Controller
         }
 
         return $trends;
+    }
+
+    /**
+     * How what is held moved since the last close before this one, and a week, a month,
+     * three, six and twelve months back: each open holding's quantity today at its close today and at its close then, so
+     * the figure is the prices' move and not a buy or a sell -- money put in is not a gain.
+     * Per brokerage in its own money, per currency, and all of it in the base currency at
+     * $at's rate for both ends, so the rate's own move is not counted as the holdings'.
+     *
+     * The day is each holding's own previous close, so a Monday is against Friday. A holding
+     * with no close that far back is left out of both ends of that period, and counted, so a
+     * figure missing something says so.
+     *
+     * @param  Collection<int, array<string, mixed>>  $brokerages
+     * @param  array<string, array<string, array{close: string, ccy: string}>>  $series  Price::seriesFor()
+     * @param  list<string>  $open  every symbol held
+     * @return array{brokers: array<int, array<string, array<string, mixed>>>, currencies: array<string, array<string, array<string, mixed>>>, combined: array<string, array<string, mixed>>|null}
+     */
+    private function moves($brokerages, string $at, array $series, array $open): array
+    {
+        $on = Carbon::parse($at);
+        $days = [
+            'week' => $on->copy()->subDays(7)->toDateString(),
+            'month' => $on->copy()->subMonthNoOverflow()->toDateString(),
+            'quarter' => $on->copy()->subMonthsNoOverflow(3)->toDateString(),
+            'half' => $on->copy()->subMonthsNoOverflow(6)->toDateString(),
+            'year' => $on->copy()->subYearNoOverflow()->toDateString(),
+        ];
+        $periods = ['day', ...array_keys($days)];
+
+        // A lookup a symbol a day off the index, rather than a year of closes to walk for
+        // five of them.
+        $back = array_map(fn (string $day) => Price::latestFor($open, $day), $days);
+        $zero = ['then' => BigDecimal::zero(), 'now' => BigDecimal::zero(), 'left_out' => 0];
+        $brokers = [];
+        $currencies = [];
+
+        foreach ($brokerages as $broker) {
+            $sums = array_fill_keys($periods, $zero);
+
+            foreach ($broker['positions'] as $position) {
+                if (! $position['open'] || $position['price'] === null) {
+                    continue;
+                }
+
+                $closes = array_filter($series[$position['symbol']] ?? [], fn (array $close) => $close['ccy'] === $broker['ccy']);
+                $then = ['day' => $this->lastClose($closes, fn (string $date) => $date < $position['price_date'])];
+
+                foreach ($back as $period => $prices) {
+                    $price = $prices[$position['symbol']] ?? null;
+                    $then[$period] = $price?->ccy === $broker['ccy'] ? (string) $price->close : null;
+                }
+
+                foreach ($periods as $period) {
+                    if ($then[$period] === null) {
+                        $sums[$period]['left_out']++;
+
+                        continue;
+                    }
+
+                    $sums[$period]['then'] = $sums[$period]['then']->plus(BigDecimal::of($position['quantity'])->multipliedBy($then[$period]));
+                    $sums[$period]['now'] = $sums[$period]['now']->plus($position['market_value']);
+                }
+            }
+
+            $brokers[$broker['id']] = array_map(self::move(...), $sums);
+
+            foreach ($periods as $period) {
+                $into = $currencies[$broker['ccy']][$period] ?? $zero;
+                $currencies[$broker['ccy']][$period] = [
+                    'then' => $into['then']->plus($sums[$period]['then']),
+                    'now' => $into['now']->plus($sums[$period]['now']),
+                    'left_out' => $into['left_out'] + $sums[$period]['left_out'],
+                ];
+            }
+        }
+
+        // Only where there is more than one currency, as the page's combined figures are.
+        $combined = null;
+
+        if (array_diff(array_keys($currencies), [Fx::BASE->value]) !== [] && count($currencies) > 0) {
+            $fx = Fx::for(array_keys($currencies));
+            $combined = array_fill_keys($periods, $zero);
+
+            foreach ($currencies as $ccy => $sums) {
+                foreach ($periods as $period) {
+                    $then = $fx->toBase((string) $sums[$period]['then'], $ccy, $at);
+                    $now = $fx->toBase((string) $sums[$period]['now'], $ccy, $at);
+
+                    // No rate: the currency's holdings are out of both ends, and counted.
+                    if ($then === null || $now === null) {
+                        $combined[$period]['left_out'] += $sums[$period]['left_out'];
+
+                        continue;
+                    }
+
+                    $combined[$period]['then'] = $combined[$period]['then']->plus($then);
+                    $combined[$period]['now'] = $combined[$period]['now']->plus($now);
+                    $combined[$period]['left_out'] += $sums[$period]['left_out'];
+                }
+            }
+
+            $combined = array_map(self::move(...), $combined);
+        }
+
+        return [
+            'brokers' => $brokers,
+            'currencies' => array_map(fn (array $sums) => array_map(self::move(...), $sums), $currencies),
+            'combined' => $combined,
+            'since' => $days,
+        ];
+    }
+
+    /**
+     * The close of the latest day $before accepts, walking a series kept in date order.
+     *
+     * @param  array<string, array{close: string, ccy: string}>  $closes
+     */
+    private function lastClose(array $closes, callable $before): ?string
+    {
+        $found = null;
+
+        foreach ($closes as $date => $close) {
+            if (! $before($date)) {
+                break;
+            }
+
+            $found = $close['close'];
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array{then: BigDecimal, now: BigDecimal, left_out: int}  $sums
+     * @return array{then: string, now: string, change: string, percent: ?string, left_out: int}
+     */
+    private static function move(array $sums): array
+    {
+        $change = $sums['now']->minus($sums['then']);
+
+        return [
+            'then' => (string) $sums['then']->toScale(4, RoundingMode::HalfUp),
+            'now' => (string) $sums['now']->toScale(4, RoundingMode::HalfUp),
+            'change' => (string) $change->toScale(4, RoundingMode::HalfUp),
+            'percent' => $sums['then']->isPositive()
+                ? (string) $change->dividedBy($sums['then'], 12, RoundingMode::HalfUp)->multipliedBy(100)->toScale(2, RoundingMode::HalfUp)
+                : null,
+            'left_out' => $sums['left_out'],
+        ];
     }
 
     /** Marked manual, so the next fetch leaves it alone. Blank puts the fetched one back. */

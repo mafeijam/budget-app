@@ -138,6 +138,28 @@
         <q-badge v-for="ccy in view.currencies" :key="ccy" outline color="grey-7" :label="ccy" />
         <div v-if="view.caption" class="text-caption text-grey-7">{{ view.caption }}</div>
         <q-space />
+        <!-- How what is held moved, its prices only so a buy or a sell is not a gain: a pill a
+             period, and on hover its money and each currency's. -->
+        <div v-if="viewMoves.length" class="row items-center no-wrap q-gutter-x-xs">
+          <q-badge
+            v-for="move in viewMoves[0].periods"
+            :key="move.key"
+            class="app-change"
+            :class="moveTint(move)"
+          >
+            <span class="text-weight-medium q-mr-xs">{{ move.short }}</span>
+            <span class="money">
+              {{ move.percent === null ? '—' : `${signed(move.percent)}%` }}
+            </span>
+            <q-tooltip :delay="300" :offset="[0, 6]">
+              <div class="text-weight-bold">{{ move.label }}, {{ move.note }}</div>
+              <div class="money">{{ signed(move.change) }} {{ viewMoves[0].ccy }}</div>
+              <div v-for="row in viewMoves.slice(1)" :key="row.ccy" class="money">
+                {{ row.ccy }} {{ percentOf(row, move.key) }} ({{ changeOf(row, move.key) }})
+              </div>
+            </q-tooltip>
+          </q-badge>
+        </div>
         <q-btn
           v-if="view.fold"
           flat
@@ -483,6 +505,8 @@ const props = defineProps({
   names: { type: Object, default: () => ({}) },
   // Brokerage id => symbol => its closes over the last 30 days, oldest first.
   trends: { type: Object, default: () => ({}) },
+  // What is held, at its prices then and now: per brokerage, per currency, and combined.
+  moves: { type: Object, default: () => ({ brokers: {}, currencies: {}, combined: null }) },
 })
 
 const dayMenu = ref(null)
@@ -665,6 +689,60 @@ const view = computed(() => {
 const payments = count => `${count} payment${count === 1 ? '' : 's'}`
 
 const shown = broker => broker.positions.filter(position => position.open || showClosed.value)
+
+// The view's moves, first the figure it leads with -- the brokerage's, or all of them in the
+// base currency -- then each currency under it, as the headline figures are laid out.
+const movePeriods = sums => {
+  const since = props.moves.since ?? {}
+  const left = move => (move.left_out ? ` · ${move.left_out} left out, no close then` : '')
+
+  return [
+    { key: 'day', short: '1D', label: 'Since yesterday', note: 'against the last close' },
+    { key: 'week', short: '1W', label: 'Past week', note: `since ${formatDate(since.week)}` },
+    { key: 'month', short: '1M', label: 'Past month', note: `since ${formatDate(since.month)}` },
+    {
+      key: 'quarter',
+      short: '3M',
+      label: 'Past 3 months',
+      note: `since ${formatDate(since.quarter)}`,
+    },
+    { key: 'half', short: '6M', label: 'Past 6 months', note: `since ${formatDate(since.half)}` },
+    { key: 'year', short: '1Y', label: 'Past year', note: `since ${formatDate(since.year)}` },
+  ].map(period => ({ ...period, ...sums[period.key], note: period.note + left(sums[period.key]) }))
+}
+
+const viewMoves = computed(() => {
+  if (!view.value) return []
+
+  if (!view.value.all) {
+    const sums = props.moves.brokers?.[view.value.key]
+
+    return sums ? [{ ccy: broker.value.ccy, periods: movePeriods(sums) }] : []
+  }
+
+  const currencies = Object.entries(props.moves.currencies ?? {}).map(([ccy, sums]) => ({
+    ccy,
+    periods: movePeriods(sums),
+  }))
+
+  return props.moves.combined
+    ? [{ ccy: props.base, periods: movePeriods(props.moves.combined) }, ...currencies]
+    : currencies
+})
+
+const periodOf = (row, key) => row.periods.find(period => period.key === key)
+const percentOf = (row, key) => {
+  const move = periodOf(row, key)
+
+  return move.percent === null ? '—' : `${signed(move.percent)}%`
+}
+const changeOf = (row, key) => signed(periodOf(row, key).change)
+const moveTint = move =>
+  move.percent === null || !/[1-9]/.test(move.change)
+    ? 'app-tint app-tint--muted'
+    : String(move.change).startsWith('-')
+      ? 'app-tint app-tint--negative'
+      : 'app-tint app-tint--positive'
 
 const $q = useQuasar()
 
