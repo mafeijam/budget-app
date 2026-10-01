@@ -240,6 +240,8 @@ class Forecast
         $allowance = BigDecimal::zero();
         $oneOffs = BigDecimal::zero();
         $earned = BigDecimal::zero();
+        // Of $earned, the part spread day by day; the rest is the estimates on their dates.
+        $spread = BigDecimal::zero();
         $lowestTotal = null;
         $zero = BigDecimal::zero();
 
@@ -265,6 +267,7 @@ class Forecast
                 $allowance = $allowance->plus($daily);
                 $oneOffs = $oneOffs->plus($dailyOneOffs);
                 $earned = $earned->plus($dailyIncome);
+                $spread = $spread->plus($dailyIncome);
                 // In the month's typical spending, and its own figure of it as well.
                 $monthsAhead[$month]['typical'] = $monthsAhead[$month]['typical']->plus($daily)->plus($dailyOneOffs);
                 $monthsAhead[$month]['one_offs'] = $monthsAhead[$month]['one_offs']->plus($dailyOneOffs);
@@ -390,6 +393,9 @@ class Forecast
                 'median' => self::money($incomeMedian),
                 'recurring' => self::money($incomeCovered),
                 'dividends' => self::money($incomeDividends),
+                // The monthly figure over the horizon, from tomorrow: with the dividends, the
+                // bonus and the double pay below it is everything the typical line earns.
+                'spread' => self::money($spread),
             ],
             // What the holdings are expected to pay over the whole horizon, on the typical line.
             'expected_dividends' => self::money(collect($events)

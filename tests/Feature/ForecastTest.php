@@ -8,6 +8,7 @@ use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Support\CardStatementCycle;
 use App\Support\Forecast;
+use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -298,7 +299,8 @@ class ForecastTest extends TestCase
         // because the 2600 lands in a single month of the twelve.
         $this->assertSame('150.0000', $section['typical_income']);
         $this->assertSame('150.0000', $section['typical_income_basis']['median']);
-        $this->assertSame(['average' => '445.8333', 'median' => '150.0000', 'recurring' => '100.0000', 'dividends' => '0.0000'], $section['typical_income_basis']);
+        // And spread over the horizon from tomorrow: 150 a month is 4.9315 a day, for 90 days.
+        $this->assertSame(['average' => '445.8333', 'median' => '150.0000', 'recurring' => '100.0000', 'dividends' => '0.0000', 'spread' => '443.8350'], $section['typical_income_basis']);
         // Earned from tomorrow, and on the typical line only.
         $this->assertSame('0.0000', $points['2026-01-20']['earned']);
         $this->assertTrue((float) $points['2026-02-20']['typical'] > (float) $points['2026-02-20']['known']);
@@ -379,6 +381,17 @@ class ForecastTest extends TestCase
         // On the first of June a year on, in June's typical income and its own column of it,
         // and on no other month.
         $this->assertSame('2000.0000', $months['2026-06']['bonuses']);
+
+        // The page's income box adds up to what the typical line earns: the monthly figure
+        // spread over the horizon and the estimates on their dates, nothing else.
+        $this->assertSame(
+            end($section['points'])['earned'],
+            (string) BigDecimal::of($section['typical_income_basis']['spread'])
+                ->plus($section['expected_dividends'])
+                ->plus($section['expected_bonuses'])
+                ->plus($section['expected_double_pay'])
+                ->toScale(4),
+        );
         $this->assertSame('0.0000', $months['2026-07']['bonuses']);
         $this->assertGreaterThan(
             (float) $months['2026-07']['typical_in'],

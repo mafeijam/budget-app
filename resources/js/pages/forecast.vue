@@ -206,56 +206,67 @@
           v-if="withTypical && section.typical_basis && !isZero(section.typical_monthly)"
           class="row q-col-gutter-lg q-mt-xs text-caption"
         >
+          <!-- A month, because that is the unit the estimate is made in: it adds up, with the
+               rules, to the last twelve months' average. -->
           <div class="col-12 col-md-6">
             <div class="app-basis">
-              <div class="app-basis__title">Typical spending</div>
+              <div class="app-basis__title">Typical spending, a month</div>
               <div class="app-basis__row">
-                <span>Cash, from tomorrow</span>
+                <span>Cash, spread from tomorrow</span>
                 <span class="money">{{ money(section.typical_basis.cash) }}</span>
               </div>
               <div class="app-basis__row">
-                <span>Cards, on each card's statement due dates</span>
+                <span>Cards, paid on each card's due dates</span>
                 <span class="money">{{ money(section.typical_basis.card) }}</span>
               </div>
               <div class="app-basis__row">
-                <span>One-offs, from tomorrow</span>
+                <span>One-offs, spread from tomorrow</span>
                 <span class="money">{{ money(section.typical_basis.one_offs ?? '0') }}</span>
               </div>
               <div class="app-basis__row app-basis__row--total">
-                <span>A month</span>
+                <span>Typical</span>
                 <span class="money app-text-estimate">{{ money(typicalTotal(section)) }}</span>
               </div>
+              <div class="app-basis__row">
+                <span>Recurring rules, on the chart as their own payments</span>
+                <span class="money">{{ money(section.typical_basis.recurring) }}</span>
+              </div>
+              <div class="app-basis__row app-basis__row--total">
+                <span>With the rules</span>
+                <span class="money">{{ money(spendingInAll(section)) }}</span>
+              </div>
               <div class="app-basis__note">
-                Cash and cards are the median month of the last 12, less the recurring rules the
-                chart already has as their own payments, so one large month does not set them. The
-                one-offs are what the year spent beyond that, so the three and the rules come to its
-                average, {{ money(section.typical_basis.average) }} a month.
+                Cash and cards are each the median month of the last 12 complete months, so one
+                large month does not set them, and the one-offs are what those months spent beyond
+                that. They averaged {{ money(section.typical_basis.average) }} a month.
               </div>
             </div>
           </div>
+          <!-- Over the horizon, because most of it lands on dates rather than by the month: it
+               adds up to what the typical line earns, which is the month chart's bars too. -->
           <div class="col-12 col-md-6">
             <div class="app-basis">
-              <div class="app-basis__title">Typical income</div>
+              <div class="app-basis__title">Typical income, over the {{ months }} months</div>
               <div class="app-basis__row">
-                <span>Last 12 months' median month</span>
-                <span class="money">{{ money(section.typical_income_basis.median) }}</span>
+                <span>Everyday, {{ money(section.typical_income) }} a month from tomorrow</span>
+                <span class="money">{{ money(section.typical_income_basis.spread) }}</span>
               </div>
-              <div class="app-basis__row">
-                <span>Less what the recurring rules bring</span>
-                <span class="money">−{{ money(section.typical_income_basis.recurring) }}</span>
+              <div v-for="row in incomeEstimates(section)" :key="row.label" class="app-basis__row">
+                <span>{{ row.label }}</span>
+                <span class="money">{{ money(row.value) }}</span>
               </div>
               <div class="app-basis__row app-basis__row--total">
-                <span>A month, from tomorrow</span>
-                <span class="money app-text-estimate">{{ money(section.typical_income) }}</span>
+                <span>Typical</span>
+                <span class="money app-text-estimate">{{ money(incomeTotal(section)) }}</span>
+              </div>
+              <div class="app-basis__row">
+                <span>Recurring income, on the chart as its own payments</span>
+                <span class="money">{{ money(section.points.at(-1).recurring_in) }}</span>
               </div>
               <div class="app-basis__note">
-                The median month of the last 12, less the recurring rules the chart already has as
-                their own payments, so a bonus or a refund month does not set it. For comparison,
-                income averaged {{ money(section.typical_income_basis.average) }} a month. Dividends
-                are each holding's last year of payments a year on,
-                {{ money(section.expected_dividends) }} over the {{ months }} months. A bonus is
-                placed on the date it was paid, {{ money(section.expected_bonuses) }}, and a month's
-                double pay on the date it was doubled, {{ money(section.expected_double_pay) }}.
+                Everyday is the median month of the last 12 complete months, less what the recurring
+                rules paid in each, so a bonus or a refund month does not set it. Those months
+                brought {{ money(section.typical_income_basis.average) }} a month in all.
               </div>
             </div>
           </div>
@@ -647,12 +658,30 @@ const soon = computed(() => {
   )
 })
 
+// A box's total, of its rows as they are shown: each rounded to the cent first, or four-place
+// parts summed and then rounded print a total a cent off the rows above it.
+const addsUp = values =>
+  values.map(value => money(value ?? '0').replaceAll(',', '')).reduce(plus, '0')
+
+// The month the spending box adds up to: the ordinary month and the one-offs, and those
+// with the rules.
+const typicalTotal = section =>
+  addsUp([section.typical_basis.cash, section.typical_basis.card, section.typical_basis.one_offs])
+const spendingInAll = section => addsUp([typicalTotal(section), section.typical_basis.recurring])
+const incomeTotal = section =>
+  addsUp([section.typical_income_basis.spread, ...incomeEstimates(section).map(row => row.value)])
+
+// The estimates on their dates, each a row of the income box where there is one: a bonus row
+// of nothing on a horizon no bonus falls in says there is a bonus to expect.
+const incomeEstimates = section =>
+  [
+    { label: 'Dividends, on the dates they paid a year ago', value: section.expected_dividends },
+    { label: 'Bonus, on the date it was paid', value: section.expected_bonuses },
+    { label: 'Double pay, on the date it was paid', value: section.expected_double_pay },
+  ].filter(row => !isZero(row.value))
+
 // The month the forecast starts in, left off when nothing is left of it: on its last day
 // it is an empty column labelled "rest of".
-// The month the box adds up to: the ordinary month and the one-offs.
-const typicalTotal = section =>
-  plus(section.typical_monthly, section.typical_basis?.one_offs ?? '0')
-
 const monthsShown = section =>
   section.months.filter(
     (month, i) => i > 0 || [month.in, month.out, month.typical].some(value => !isZero(value)),
