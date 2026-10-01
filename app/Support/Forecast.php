@@ -80,7 +80,13 @@ class Forecast
 
     private Fx $fx;
 
-    public function __construct(private Carbon $today, private Carbon $end, bool $onlyDividends = false)
+    /**
+     * $statements is CardStatement::forAccounts() of every card, from a caller that has
+     * read it already: the query reads every card row ever written.
+     *
+     * @param  array<int, Collection<int, CardStatement>>|null  $statements
+     */
+    public function __construct(private Carbon $today, private Carbon $end, bool $onlyDividends = false, private ?array $statements = null)
     {
         $this->cash = Account::query()
             ->where('type', AccountType::Cash->value)
@@ -109,9 +115,10 @@ class Forecast
         usort($this->events, fn (array $a, array $b) => [$a['date'], $a['description']] <=> [$b['date'], $b['description']]);
     }
 
-    public static function for(Carbon $today, int $months): self
+    /** @param  array<int, Collection<int, CardStatement>>|null  $statements  as the constructor's */
+    public static function for(Carbon $today, int $months, ?array $statements = null): self
     {
-        return new self($today->copy()->startOfDay(), $today->copy()->startOfDay()->addMonthsNoOverflow($months));
+        return new self($today->copy()->startOfDay(), $today->copy()->startOfDay()->addMonthsNoOverflow($months), statements: $statements);
     }
 
     /**
@@ -847,7 +854,7 @@ class Forecast
     private function statements(): void
     {
         $cards = Account::query()->where('type', AccountType::Card->value)->with('meta')->orderBy('name')->get();
-        $periods = CardStatement::forAccounts($cards);
+        $periods = $this->statements ?? CardStatement::forAccounts($cards);
 
         foreach ($cards as $card) {
             $bank = $card->settlementAccount();

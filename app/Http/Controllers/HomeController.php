@@ -57,6 +57,9 @@ class HomeController extends Controller
 
     private ?Collection $upcoming = null;
 
+    /** @var array<int, Collection<int, CardStatement>>|null every card's, for the forecast to reuse */
+    private ?array $periods = null;
+
     public function index(Request $request)
     {
         // A partial reload for the deferred line still comes through here, and Inertia
@@ -119,7 +122,7 @@ class HomeController extends Controller
             ->orderBy('name')
             ->get();
 
-        $periods = CardStatement::forAccounts($cards);
+        $periods = $this->periods = CardStatement::forAccounts($cards);
 
         $statements = $cards->flatMap(fn (Account $card) => ($periods[$card->id] ?? collect())
             ->reject->isSettled()
@@ -257,7 +260,7 @@ class HomeController extends Controller
 
     private function forecast(Carbon $today): Forecast
     {
-        return $this->forecast ??= Forecast::for($today, self::FORECAST_MONTHS);
+        return $this->forecast ??= Forecast::for($today, self::FORECAST_MONTHS, $this->periods);
     }
 
     /**
