@@ -1079,131 +1079,122 @@ class TransactionController extends Controller
         // the table above must keep showing the rows the reader is looking at.
         $query = $query->whereIn('status', TransactionStatus::countingTowardBalance());
 
-        // The bag is a morphOne, so the key is on meta and only this row's own id is
-        // needed here: the morph type is added to the eager load's own where clause.
-        $rows = $query->setEagerLoads([])
-            ->with('account:id,type,ccy', 'meta')
-            ->get(['id', 'account_id', 'type', 'amount', 'ccy']);
+        // Summed in the database, a group to each currency, direction and kind of figure,
+        // not row by row in PHP: the list is every row matching the filter, which on the
+        // whole ledger is nine thousand models with their accounts and bags hydrated to add
+        // up, and that took two of the page's two and a half seconds. The filter is the
+        // list's own query, as a set of ids, so every filter applies without being restated.
+        $groups = DB::table('transactions')
+            ->leftJoin('accounts', 'accounts.id', '=', 'transactions.account_id')
+            ->leftJoin('meta', fn ($join) => $join
+                ->on('meta.model_id', '=', 'transactions.id')
+                ->where('meta.model_type', Transaction::class))
+            ->whereIn('transactions.id', $query->setEagerLoads([])->toBase()->select('transactions.id'))
+            ->selectRaw('transactions.ccy AS ccy')
+            ->selectRaw(self::signSql().' AS sign')
+            ->selectRaw('accounts.type AS account_type, accounts.ccy AS account_ccy')
+            ->selectRaw(self::statedSql().' IS NOT NULL AS stated')
+            ->selectRaw('COUNT(*) AS n, SUM(transactions.amount) AS amount')
+            ->selectRaw('SUM('.self::statedSql().') AS card_amount')
+            ->groupBy('ccy', 'sign', 'account_type', 'account_ccy', 'stated')
+            ->get();
 
-        $currencies = $rows
-            ->groupBy('ccy')
-            ->sortKeys()
-            ->map(function (Collection $group, string $ccy) {
-                $in = $out = $trades = BigDecimal::zero();
+        $zero = fn () => ['count' => 0, 'in' => BigDecimal::zero(), 'out' => BigDecimal::zero(), 'trades' => BigDecimal::zero()];
+        $add = function (array $into, int $sign, int $count, string $amount) {
+            $key = match ($sign) {
+                1 => 'in',
+                -1 => 'out',
+                default => 'trades',
+            };
+            $into[$key] = $into[$key]->plus($amount);
+            $into['count'] += $count;
 
-                foreach ($group as $row) {
-                    $sign = $this->signOf($row);
+            return $into;
+        };
+        $shown = fn (array $sums) => [
+            'count' => $sums['count'],
+            'in' => (string) $sums['in']->toScale(4),
+            'out' => (string) $sums['out']->toScale(4),
+            'net' => (string) $sums['in']->minus($sums['out'])->toScale(4),
+            'trades' => (string) $sums['trades']->toScale(4),
+        ];
 
-                    match ($sign) {
-                        1 => $in = $in->plus($row->amount),
-                        -1 => $out = $out->plus($row->amount),
-                        default => $trades = $trades->plus($row->amount),
-                    };
-                }
+        $base = Currency::Hkd->value;
+        $byCurrency = [];
+        $inBase = $zero();
+        $unconverted = [];
 
-                return [
-                    'ccy' => $ccy,
-                    'count' => $group->count(),
-                    'in' => (string) $in->toScale(4),
-                    'out' => (string) $out->toScale(4),
-                    'net' => (string) $in->minus($out)->toScale(4),
-                    'trades' => (string) $trades->toScale(4),
-                ];
-            })
-            ->values()
-            ->all();
+        foreach ($groups as $group) {
+            $sign = (int) $group->sign;
+            $count = (int) $group->n;
 
-        $base = $this->baseTotals($rows);
+            $byCurrency[$group->ccy] = $add($byCurrency[$group->ccy] ?? $zero(), $sign, $count, (string) $group->amount);
+
+            // The base figure, as AGENTS.md says a card row is read: a base row's own amount, and a foreign
+            // charge on a base card at what the card states. Any other foreign row has no
+            // figure, and is named rather than counted at one-for-one.
+            $figure = match (true) {
+                $group->ccy === $base => (string) $group->amount,
+                $group->account_type === AccountType::Card->value && $group->account_ccy === $base && (bool) $group->stated => (string) $group->card_amount,
+                default => null,
+            };
+
+            if ($figure === null) {
+                $unconverted[$group->ccy] = true;
+
+                continue;
+            }
+
+            $inBase = $add($inBase, $sign, $count, $figure);
+        }
+
+        ksort($byCurrency);
+
+        $currencies = array_map(
+            fn (string $ccy, array $sums) => ['ccy' => $ccy, ...$shown($sums)],
+            array_keys($byCurrency),
+            $byCurrency,
+        );
 
         // Null unless something here is not already the base currency, and something
         // converted. The second test is what stops a list of wholly unconvertible rows
         // showing a total of 0.00 over an account that plainly holds money: a figure of
         // nothing is a claim, and this one would be false.
-        $worthConverting = $rows->contains(fn (Transaction $row) => $row->ccy !== Currency::Hkd->value);
+        $worthConverting = array_keys($byCurrency) !== [] && array_keys($byCurrency) !== [$base];
 
         return [
             'currencies' => $currencies,
-            'base' => $worthConverting && $base['total']['count'] > 0 ? $base['total'] : null,
-            'unconverted' => $base['unconverted'],
-        ];
-    }
-
-    /**
-     * The same figures in the base currency, and the currencies left out of them.
-     *
-     * @param  Collection<int, Transaction>  $rows
-     * @return array{total: array{count: int, in: string, out: string, net: string, trades: string}, unconverted: list<string>}
-     */
-    private function baseTotals(Collection $rows): array
-    {
-        $base = Currency::Hkd->value;
-        $in = $out = $trades = BigDecimal::zero();
-        $count = 0;
-        $unconverted = [];
-
-        foreach ($rows as $row) {
-            $figure = $this->baseFigure($row, $base);
-
-            if ($figure === null) {
-                $unconverted[$row->ccy] = true;
-
-                continue;
-            }
-
-            $count++;
-
-            match ($this->signOf($row)) {
-                1 => $in = $in->plus($figure),
-                -1 => $out = $out->plus($figure),
-                default => $trades = $trades->plus($figure),
-            };
-        }
-
-        return [
-            'total' => [
-                'count' => $count,
-                'in' => (string) $in->toScale(4),
-                'out' => (string) $out->toScale(4),
-                'net' => (string) $in->minus($out)->toScale(4),
-                'trades' => (string) $trades->toScale(4),
-            ],
+            'base' => $worthConverting && $inBase['count'] > 0 ? $shown($inBase) : null,
             'unconverted' => array_keys($unconverted),
         ];
     }
 
     /**
-     * What this row is worth in the base currency, or null when it says nowhere.
-     *
-     * A foreign charge states the card's own currency in card_amount, and that is the
-     * figure AccountBalance sums. It is the card's currency and not the base's, so the
-     * account is asked which: reading it as a base figure regardless would put a US
-     * card's dollars into a total labelled HKD, and that total would be wrong with
-     * nothing to show for it.
-     *
-     * Every other foreign row has no figure to offer. A rate is the only thing that
-     * could make one, and a row counted at one-for-one would put a yen row into the
-     * total as that many dollars, so it is left out and its currency named instead.
+     * 1, -1 or 0, as the row's Amount column shows it, in SQL: built from movesBalanceOn() so it
+     * cannot drift from it. A row whose account is gone moves nothing.
      */
-    private function baseFigure(Transaction $row, string $base): ?BigDecimal
+    private static function signSql(): string
     {
-        if ($row->ccy === $base) {
-            return BigDecimal::of($row->amount);
+        $cases = [];
+
+        foreach (TransactionType::cases() as $type) {
+            foreach ($type->accountTypes() as $accountType) {
+                $sign = $type->movesBalanceOn($accountType);
+
+                if ($sign !== 0) {
+                    $cases[] = sprintf("WHEN transactions.type = '%s' AND accounts.type = '%s' THEN %d", $type->value, $accountType->value, $sign);
+                }
+            }
         }
 
-        if ($row->account?->type !== AccountType::Card->value || $row->account->ccy !== $base) {
-            return null;
-        }
-
-        $stated = $row->meta?->meta['card_amount'] ?? null;
-
-        return $stated === null ? null : BigDecimal::of($stated);
+        return 'CASE '.implode(' ', $cases).' ELSE 0 END';
     }
 
-    /** 1, -1 or 0, as the row's Amount column shows it. */
-    private function signOf(Transaction $row): int
+    /** A row's card_amount as a number, or null where the bag states none. */
+    private static function statedSql(): string
     {
-        return $row->account === null ? 0 : TransactionType::from($row->type)
-            ->movesBalanceOn(AccountType::from($row->account->type));
+        return "CASE WHEN JSON_TYPE(JSON_EXTRACT(meta.meta, '$.card_amount')) IN ('STRING', 'INTEGER', 'DECIMAL', 'DOUBLE') "
+            ."THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(meta.meta, '$.card_amount')) AS DECIMAL(24, 4)) END";
     }
 
     /**
