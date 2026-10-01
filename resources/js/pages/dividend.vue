@@ -18,13 +18,14 @@
           options-dense
         >
           <template #prepend>
-            <q-icon name="account_balance" size="xs" color="grey-7" />
+            <q-icon name="show_chart" size="xs" color="grey-7" />
           </template>
+          <!-- The Positions page's options: the figure on a caption under the name. -->
           <template #option="scope">
             <q-item v-bind="scope.itemProps">
-              <q-item-section>{{ scope.opt.label }}</q-item-section>
-              <q-item-section v-if="scope.opt.total" side class="money text-caption">
-                {{ scope.opt.total }}
+              <q-item-section>
+                {{ scope.opt.label }}
+                <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
               </q-item-section>
             </q-item>
           </template>
@@ -400,9 +401,18 @@ const symbolOptions = computed(() => [
 const choose = year =>
   router.get('/dividends', { year }, { preserveScroll: true, preserveState: true })
 
+// What each has paid in all, in the base currency every figure here is converted to.
 const brokerOptions = computed(() => [
-  { label: 'All brokerages', value: 0, total: null },
-  ...props.brokers.map(b => ({ label: b.name, value: b.id, total: money(b.total) })),
+  {
+    label: 'All brokerages',
+    value: 0,
+    caption: `${money(props.brokers.reduce((sum, b) => plus(sum, b.total), '0'))} ${props.base} in all`,
+  },
+  ...props.brokers.map(b => ({
+    label: b.name,
+    value: b.id,
+    caption: `${money(b.total)} ${props.base}`,
+  })),
 ])
 
 const yearOptions = computed(() =>
