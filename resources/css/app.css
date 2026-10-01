@@ -1634,44 +1634,92 @@ body {
 }
 
 /* Forecast months: the chart at its own width, the months as figures in what is left. */
-.app-months {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 16px 32px;
+/* Forecast months: one row each, the bars and the figures in columns that line up. */
+.app-month-table__head,
+.app-month-table__row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(160px, 2.2fr) repeat(4, minmax(100px, 0.8fr));
+  gap: 16px;
+  align-items: center;
+  padding: 8px 12px;
 }
 
-.app-months__chart {
-  flex-grow: 0;
-  flex-shrink: 0;
-  min-width: min(100%, 420px);
+/* Out into the section's padding, so the text lines up with the account rows below while a
+   row's hover still has room around it. */
+.app-month-table {
+  margin: 0 -12px;
 }
 
-.app-months__list {
-  flex: 1 1 260px;
-  border-left: 1px solid var(--app-border);
-  padding-left: 24px;
+.app-month-table__head {
+  border-bottom: 1px solid var(--app-border);
 }
 
-.app-months__row {
-  padding: 10px 12px;
+.app-month-table__row {
   border-radius: 8px;
 }
 
-.app-months__row + .app-months__row {
+.app-month-table__row + .app-month-table__row {
   border-top: 1px solid var(--app-border);
 }
 
-.app-months__row--on {
-  background: #f1f5f9;
+.app-month-table__row:hover {
+  background: #f8fafc;
 }
 
-/* Forecast accounts: name, its line, today and the horizon, in one grid so columns line up. */
+.app-month-table__legend {
+  display: flex;
+  gap: 12px;
+}
+
+.app-month-table__typical-swatch {
+  background: linear-gradient(90deg, #6ee7b7 50%, #fca5a5 50%);
+}
+
+.app-month-table__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-month-table__track {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.app-month-table__bar {
+  height: 100%;
+}
+
+.app-month-table__tip {
+  min-width: 240px;
+}
+
+@media (max-width: 599px) {
+  .app-month-table__head,
+  .app-month-table__row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .app-month-table__head > :nth-child(2),
+  .app-month-table__head > :nth-child(3),
+  .app-month-table__head > :nth-child(4),
+  .app-month-table__row > :nth-child(2),
+  .app-month-table__row > :nth-child(3),
+  .app-month-table__row > :nth-child(4) {
+    display: none;
+  }
+}
+
+/* Forecast accounts: name, its line, today, the change and the horizon, in one grid so
+   columns line up. */
 .app-runway-accounts__head,
 .app-runway-group,
 .app-runway-account {
   display: grid;
-  grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 2fr) minmax(110px, 0.8fr) minmax(130px, 0.9fr);
+  grid-template-columns: minmax(160px, 1.6fr) 200px repeat(3, minmax(110px, 0.8fr));
   gap: 16px;
   align-items: center;
   padding: 10px 16px;
@@ -1707,8 +1755,11 @@ body {
   }
 
   .app-runway-accounts__head > :nth-child(2),
+  .app-runway-accounts__head > :nth-child(4),
   .app-runway-group > :nth-child(2),
-  .app-runway-account__bar {
+  .app-runway-group > :nth-child(4),
+  .app-runway-account__bar,
+  .app-runway-account__change {
     display: none;
   }
 }

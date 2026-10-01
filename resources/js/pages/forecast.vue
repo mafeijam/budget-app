@@ -292,7 +292,7 @@
       <q-separator />
 
       <q-card-section>
-        <div class="text-subtitle2 text-weight-medium q-mb-xs">Month by month</div>
+        <div class="text-subtitle2 text-weight-medium q-mb-sm">Month by month</div>
         <ForecastMonths
           :months="monthsShown(section)"
           :current="section.months[0]?.month"
@@ -310,6 +310,7 @@
           <span>Account</span>
           <span>Month ends</span>
           <span class="text-right">Today</span>
+          <span class="text-right">Change</span>
           <span class="text-right">In {{ months }} months</span>
         </div>
         <template v-for="group in accountGroups(section)" :key="group.ccy">
@@ -317,6 +318,7 @@
             <div class="text-weight-medium text-grey-8">{{ group.ccy }}</div>
             <div />
             <div class="text-right money text-grey-7">{{ group.opening }}</div>
+            <div />
             <div class="text-right money text-grey-7">{{ group.closing }}</div>
           </div>
           <div v-for="account in group.accounts" :key="account.id" class="app-runway-account">
@@ -353,11 +355,15 @@
               </div>
             </div>
 
+            <div
+              class="text-right money app-runway-account__change"
+              :class="isZero(change(account)) ? 'text-grey-6' : signClass(change(account))"
+            >
+              {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
+            </div>
+
             <div class="text-right money">
               <div class="text-weight-bold text-grey-9">{{ money(closingOf(account)) }}</div>
-              <div class="text-caption" :class="signClass(change(account))">
-                {{ isZero(change(account)) ? 'no change' : signed(change(account)) }}
-              </div>
               <template v-if="withTypical">
                 <div
                   v-for="kind in expectedKinds(account)"
