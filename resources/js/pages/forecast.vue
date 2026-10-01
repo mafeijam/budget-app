@@ -47,6 +47,95 @@
 
     <div v-if="!projection.length" class="text-grey-6">No cash accounts to forecast.</div>
 
+    <!-- What the projection leaves free: the lowest the balance gets on the horizon, less a
+         reserve of months of spending, is cash that could go elsewhere and never take the
+         balance under the reserve. -->
+    <q-card v-for="spare in spares" :key="spare.ccy" flat bordered>
+      <!-- The runway card's header: its title on the left and its toolbar on the right. To the
+           top, not the middle: this toolbar is twice the runway's height for its slider, and
+           centred on it the title sat twenty pixels lower than the runway's does. -->
+      <q-card-section class="row items-start q-gutter-y-sm">
+        <div class="row items-center no-wrap">
+          <q-icon name="savings" size="sm" color="grey-6" class="q-mr-sm" />
+          <div>
+            <div class="text-subtitle1 text-weight-medium">
+              {{ spare.short ? 'Short of the reserve' : 'Spare cash' }}
+            </div>
+            <div class="text-caption text-grey-7">
+              What could be moved out today and leave the reserve untouched, in {{ spare.ccy }}.
+            </div>
+          </div>
+        </div>
+        <q-space />
+
+        <div class="col-auto app-toolbar app-toolbar--slider row items-center">
+          <q-icon name="shield" size="xs" color="grey-6" class="q-mx-sm">
+            <q-tooltip :delay="500" :offset="[0, 6]">The reserve, in months of spending</q-tooltip>
+          </q-icon>
+          <!-- From nothing to a year in half months, wide enough to land on a half: each month
+               marked above the track and the one picked under the thumb, as Quasar's own
+               marker-labels example lays them out. -->
+          <div class="q-px-md app-toolbar__slider app-toolbar__slider--labelled">
+            <q-slider
+              v-model="reserveMonths"
+              :min="0"
+              :max="12"
+              :step="0.5"
+              :markers="1"
+              marker-labels
+              marker-labels-class="text-caption text-grey-7"
+              switch-marker-labels-side
+              label-always
+              switch-label-side
+              :label-value="monthsLabel(reserveMonths)"
+              color="primary"
+            />
+          </div>
+        </div>
+      </q-card-section>
+
+      <!-- The sum itself, each part named where it stands, rather than a sentence to unpick. -->
+      <q-card-section class="q-pt-none">
+        <div class="app-spare">
+          <div>
+            <div class="text-caption text-grey-7">Lowest ahead</div>
+            <div class="text-h6 text-weight-medium money text-grey-9">
+              {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.lowest) }}
+            </div>
+            <div class="text-caption text-grey-6">{{ spare.lowNote }}</div>
+          </div>
+          <div class="app-spare__op text-h6 text-grey-5">−</div>
+          <div>
+            <div class="text-caption text-grey-7">Reserve</div>
+            <div class="text-h6 text-weight-medium money text-grey-9">
+              {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.reserve) }}
+            </div>
+            <div class="text-caption text-grey-6">{{ monthsLabel(reserveMonths) }} of spending</div>
+          </div>
+          <div class="app-spare__op text-h6 text-grey-5">=</div>
+          <div>
+            <div class="text-caption text-grey-7">{{ spare.short ? 'Short by' : 'Spare' }}</div>
+            <div
+              class="text-h4 text-weight-bold money"
+              :class="spare.short ? 'text-negative' : 'text-positive'"
+            >
+              {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.amount) }}
+            </div>
+            <div class="text-caption text-grey-6">
+              {{ spare.short ? 'more is needed to keep the reserve' : 'could be moved out today' }}
+            </div>
+          </div>
+        </div>
+        <div class="text-caption text-grey-7 q-mt-sm">
+          {{
+            spare.short
+              ? 'The balance would fall below the reserve on the lowest day ahead.'
+              : 'Moved out today, the balance would still never fall below the reserve.'
+          }}
+        </div>
+      </q-card-section>
+    </q-card>
+
     <q-card v-for="section in projection" :key="section.ccy" flat bordered>
       <q-card-section class="row items-center q-gutter-y-sm">
         <q-icon name="query_stats" size="sm" color="grey-6" class="q-mr-sm" />
@@ -454,6 +543,10 @@ const showBasis = useLocalStorage('forecast.basis', true)
 // The what-if is remembered with the rest of the toolbar, so the page opens as it was left.
 // It is not in the URL: a link carries the horizon and the currency, which the server needs,
 // and the chart redraws the rest itself.
+// The reserve Spare cash keeps back, in months of spending, remembered as the other controls are.
+const reserveMonths = useLocalStorage('forecast.reserveMonths', 3)
+const monthsLabel = n => `${n} month${n === 1 ? '' : 's'}`
+
 const spendingChange = useLocalStorage('forecast.spendingChange', 0)
 const noIncome = useLocalStorage('forecast.noIncome', false)
 const irregular = useLocalStorage('forecast.irregular', true)
@@ -468,6 +561,82 @@ const resetWhatIf = () => {
   noIncome.value = false
   irregular.value = true
 }
+
+// Per currency shown: the lowest the balance gets on the horizon, on the path the runway's
+// figures use, less the reserve -- a month's spending, typical and the rules' together, as
+// the spending box adds it up -- times the months kept. Untouched by the what-if, both are
+// the server's decimals, added and multiplied as money. With the what-if on, the low is
+// found on the line the chart draws, by the chart's own arithmetic, and a month of reserve
+// is scaled as that line's spending is: an estimate of an estimate, so whole units and
+// marked as one, as the runway's What if figure is. Nothing to say without a typical month.
+const spares = computed(() =>
+  projection.value.flatMap(section => {
+    if (!section.typical_basis || isZero(section.typical_monthly)) return []
+
+    const typical = withTypical.value
+    const months = reserveMonths.value
+    const spare = (lowest, date, reserve, left, estimate) => {
+      const short = negative(left)
+      const amount = short ? String(left).slice(1) : String(left)
+      const how = [typical && 'typical spending', estimate && 'the what-if'].filter(Boolean)
+
+      return {
+        ccy: section.ccy,
+        estimate,
+        short,
+        amount,
+        lowest,
+        reserve,
+        lowNote: [formatDate(date), how.length ? `with ${how.join(' and ')}` : 'known only'].join(
+          ' · ',
+        ),
+      }
+    }
+
+    if (!whatIfOn.value) {
+      const low = section.lowest_ahead?.[typical ? 'typical' : 'known']
+
+      if (!low) return []
+
+      // Half months as whole units of a half, so the reserve is still decimal money.
+      const reserve = fromUnits(
+        (scaled(spendingInAll(section)) * BigInt(Math.round(months * 2))) / 2n,
+      )
+
+      return [spare(low.amount, low.date, reserve, minus(low.amount, reserve), false)]
+    }
+
+    const { factor } = whatIf.value
+    const lineOf = point => {
+      const known = Number(point.known) - (noIncome.value ? Number(point.recurring_in) : 0)
+
+      if (!typical) return known
+
+      const earned = noIncome.value ? 0 : Number(point.earned)
+      const spent = Number(point.allowance) + (irregular.value ? Number(point.irregular ?? 0) : 0)
+
+      return known - spent * factor + earned
+    }
+
+    // After today, as the server's lowest ahead is.
+    const low = section.points.slice(1).reduce((best, point) => {
+      const value = lineOf(point)
+
+      return best && best.value <= value ? best : { value, date: point.date }
+    }, null)
+
+    if (!low) return []
+
+    const basis = section.typical_basis
+    const scaledSpending =
+      (Number(basis.cash) + Number(basis.card) + (irregular.value ? Number(basis.irregular) : 0)) *
+      (typical ? factor : 1)
+    const reserve = Math.round((scaledSpending + Number(basis.recurring)) * months)
+    const lowest = Math.round(low.value)
+
+    return [spare(String(lowest), low.date, String(reserve), String(lowest - reserve), true)]
+  }),
+)
 
 // The events the projection placed within the list's reach, with the balance each leaves.
 const soon = computed(() => {

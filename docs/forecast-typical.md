@@ -221,6 +221,9 @@ The everyday figure is 1,189.04 a month spread by day, so it reads 1,094 in Febr
 
 ## 3. Reading it in the page
 
+The *Spare cash* card at the top of the page reads the typical line's lowest day against a
+reserve of months of spending; it has its own page, [forecast-spare-cash.md](forecast-spare-cash.md).
+
 ### The chart's lines
 
 Each day ahead, from tomorrow:

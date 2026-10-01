@@ -631,6 +631,19 @@ body {
   width: 190px;
 }
 
+/* A toolbar holding one: room under the track for the value it always shows, which
+   otherwise hangs out of the box. */
+.app-toolbar--slider {
+  padding-bottom: 30px;
+}
+
+/* One with its marks labelled and its value always shown: wide enough that every half step
+   is a target of its own. */
+.app-toolbar__slider--labelled {
+  width: 420px;
+  max-width: 100%;
+}
+
 .app-toolbar__label {
   line-height: 1.1;
 }
@@ -1649,6 +1662,18 @@ body {
 }
 
 /* Forecast months: the chart at its own width, the months as figures in what is left. */
+/* Spare cash as its sum: lowest ahead, minus the reserve, equals the spare. */
+.app-spare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+
+.app-spare__op {
+  line-height: 1;
+}
+
 /* Forecast months: one row each, the bars and the figures in columns that line up. */
 .app-month-table__head,
 .app-month-table__row {
