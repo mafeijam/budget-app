@@ -107,7 +107,7 @@ class DividendController extends Controller
         if ($year === $today->year) {
             $endOfYear = $today->copy()->endOfYear()->toDateString();
 
-            foreach (Forecast::for($today, 12)->expectedDividendList() as $dividend) {
+            foreach (Forecast::expectedDividendsFor($today, 12) as $dividend) {
                 $base = $dividend['date'] <= $endOfYear ? $fx->toBase($dividend['amount'], $dividend['ccy'], $today->toDateString()) : null;
 
                 if ($base !== null) {
@@ -144,8 +144,9 @@ class DividendController extends Controller
             // And of each brokerage alone, all sent: the choice is the browser's, kept there
             // as the Positions page keeps its own, and switching it is no request. Narrowing
             // here rather than there because these figures are sums over rows the page does
-            // not carry, by symbol and by month.
-            'byBroker' => $brokers->mapWithKeys(fn (array $b) => [$b['id'] => $this->view($b['id'], $context)])->all(),
+            // not carry, by symbol and by month. An object, as the forecast's views are: see
+            // ForecastController.
+            'byBroker' => (object) $brokers->mapWithKeys(fn (array $b) => [$b['id'] => $this->view($b['id'], $context)])->all(),
         ]);
     }
 

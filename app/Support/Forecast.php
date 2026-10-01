@@ -80,13 +80,22 @@ class Forecast
 
     private Fx $fx;
 
-    public function __construct(private Carbon $today, private Carbon $end)
+    public function __construct(private Carbon $today, private Carbon $end, bool $onlyDividends = false)
     {
         $this->cash = Account::query()
             ->where('type', AccountType::Cash->value)
             ->orderBy('name')
             ->get()
             ->keyBy('id');
+
+        // The dividends page wants the expected dividends and nothing else, and they read
+        // only the cash accounts: the statements, rules and rows are most of a forecast's
+        // cost, for figures that page never shows.
+        if ($onlyDividends) {
+            $this->expectedDividends();
+
+            return;
+        }
 
         $this->fx = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
 
@@ -103,6 +112,17 @@ class Forecast
     public static function for(Carbon $today, int $months): self
     {
         return new self($today->copy()->startOfDay(), $today->copy()->startOfDay()->addMonthsNoOverflow($months));
+    }
+
+    /**
+     * expectedDividendList() of for(), without the rest of the forecast built to get there.
+     *
+     * @return list<array{date: string, account_id: int, broker: int|null, ccy: string, symbol: string, amount: string, paid: string}>
+     */
+    public static function expectedDividendsFor(Carbon $today, int $months): array
+    {
+        return (new self($today->copy()->startOfDay(), $today->copy()->startOfDay()->addMonthsNoOverflow($months), onlyDividends: true))
+            ->expectedDividendList();
     }
 
     /**
