@@ -33,7 +33,7 @@ class FetchPrices extends Command
     protected $signature = 'prices:fetch
         {--days=7 : How many days back to fetch}
         {--history : Every symbol ever traded, from its first trade, and FX from the first transaction}
-        {--symbol=* : Only these symbols, rather than every one held}
+        {--symbol=* : Only these symbols or FX pairs, rather than every one held}
         {--at= : Fetch up to this past day (Y-m-d), for what was held then}';
 
     protected $description = 'Fetch closing prices and FX rates from Yahoo';
@@ -52,12 +52,12 @@ class FetchPrices extends Command
         $recent = Carbon::parse($to)->subDays((int) $this->option('days'))->toDateString();
         $history = (bool) $this->option('history');
 
-        $targets = $this->stockTargets($history, $recent, $to);
+        $targets = $this->stockTargets($history, $recent, $to) + $this->fxTargets($history, $recent);
 
+        // From both lists, so an FX pair can be named too: a currency's first account needs its
+        // rate's history, and fetching it alone beats every symbol ever traded from its first.
         if ($only = $this->option('symbol')) {
             $targets = array_intersect_key($targets, array_flip(array_map('strtoupper', $only)));
-        } else {
-            $targets += $this->fxTargets($history, $recent);
         }
 
         if ($targets === []) {
@@ -171,7 +171,10 @@ class FetchPrices extends Command
                 continue;
             }
 
-            $targets[Fx::pair($ccy)] = [Fx::BASE->value, $history ? $first : $recent];
+            // A week before the first row: a rate is the last close on or before a day, and the
+            // first row is often dated on a holiday with none -- an opening balance on 1 January
+            // had no rate at all, and its currency was left out of every total that day.
+            $targets[Fx::pair($ccy)] = [Fx::BASE->value, $history ? Carbon::parse($first)->subDays(7)->toDateString() : $recent];
         }
 
         return $targets;
