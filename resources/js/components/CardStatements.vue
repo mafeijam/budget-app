@@ -5,22 +5,18 @@
       <div class="text-h6 text-weight-medium">Card statements</div>
       <div class="text-caption text-grey-6 q-ml-sm">{{ tiles.length }} still owing</div>
       <q-space />
-      <!-- The tiles cut to what is paid from them, remembered per browser. -->
+      <!-- The tiles cut to what is paid from them, remembered per browser. The Positions
+           page's fold button, so the two read as one control. -->
       <q-btn
         flat
         dense
         no-caps
         color="grey-8"
-        :icon="compact ? 'unfold_more' : 'unfold_less'"
-        :label="compact ? 'Expand' : 'Compact'"
+        class="text-caption q-px-sm"
+        :icon-right="compact ? 'expand_more' : 'expand_less'"
+        :label="compact ? 'Show each in full' : 'Show less'"
         @click="compact = !compact"
-      >
-        <q-tooltip :delay="500" :offset="[0, 6]">
-          {{
-            compact ? 'Show each statement in full' : 'Only the card, when, how much, and Settle'
-          }}
-        </q-tooltip>
-      </q-btn>
+      />
     </q-card-section>
 
     <!-- A tile per statement still owing, across every card, soonest due first. -->
