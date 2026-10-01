@@ -34,12 +34,7 @@ class RecurringTransactionController extends Controller
 
     public function index(Request $r)
     {
-        // today() is Hong Kong's day, not the browser's.
-        $formEmpty = RecurringTransactionData::empty([
-            'frequency' => Frequency::Monthly->value,
-            'start_date' => today()->toDateString(),
-            'active' => true,
-        ]);
+        $form = self::formProps();
 
         $sort = in_array($r->input('sort'), self::SORTABLE, true) ? $r->input('sort') : self::DEFAULT_SORT;
         $dir = $r->input('dir') === 'desc' ? 'desc' : 'asc';
@@ -62,6 +57,43 @@ class RecurringTransactionController extends Controller
             ->all();
 
         $data = RecurringTransactionData::collect($rules, PaginatedDataCollection::class);
+
+        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
+
+        $meta = [...$form['meta'], 'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'asc']];
+
+        return inertia('recurring', [
+            ...$form,
+            ...compact(
+                'data',
+                'params',
+                'meta',
+                'nextDates',
+                'costs',
+                'health',
+                'base',
+            ),
+            // Only after a find, and only for the one request it flashes into: the dialog
+            // opens on what the scan found, and every other visit has none to show.
+            'findings' => $r->session()->get('findings'),
+        ]);
+    }
+
+    /**
+     * What FormRecurring needs, and nothing of the list's: the recurring page sends it with the list, and
+     * the Add menu asks for it alone (FormContextController) to open the form over any other
+     * page. One method, so the dialog there cannot drift from the one here.
+     *
+     * @return array<string, mixed>
+     */
+    public static function formProps(): array
+    {
+        // today() is Hong Kong's day, not the browser's.
+        $formEmpty = RecurringTransactionData::empty([
+            'frequency' => Frequency::Monthly->value,
+            'start_date' => today()->toDateString(),
+            'active' => true,
+        ]);
 
         // Per account type, and only the types that can repeat, so a brokerage gets none.
         $typeOptions = collect(AccountType::cases())
@@ -108,34 +140,9 @@ class RecurringTransactionController extends Controller
 
         $options = compact('accounts', 'categories');
 
-        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
+        $meta = ['form' => 'recurring-form', 'path' => '/recurring'];
 
-        $meta = [
-            'form' => 'recurring-form',
-            'path' => '/recurring',
-            'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'asc'],
-        ];
-
-        return inertia('recurring', [
-            ...compact(
-                'formEmpty',
-                'data',
-                'params',
-                'meta',
-                'options',
-                'nextDates',
-                'costs',
-                'health',
-                'base',
-                'typeOptions',
-                'typeDefaults',
-                'currencyOptions',
-                'frequencyOptions',
-            ),
-            // Only after a find, and only for the one request it flashes into: the dialog
-            // opens on what the scan found, and every other visit has none to show.
-            'findings' => $r->session()->get('findings'),
-        ]);
+        return compact('formEmpty', 'meta', 'options', 'typeOptions', 'typeDefaults', 'currencyOptions', 'frequencyOptions');
     }
 
     /**

@@ -5,6 +5,7 @@ use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DividendController;
 use App\Http\Controllers\ForecastController;
+use App\Http\Controllers\FormContextController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NetWorthController;
 use App\Http\Controllers\PositionController;
@@ -33,6 +34,8 @@ Route::get('cash-flow', [CashFlowController::class, 'index'])->name('cash-flow')
 Route::get('cash-flow/transactions', [CashFlowController::class, 'transactions'])->name('cash-flow.transactions');
 Route::get('net-worth', [NetWorthController::class, 'index'])->name('net-worth');
 Route::get('forecast', [ForecastController::class, 'index'])->name('forecast');
+// A form's props alone, for the Add menu to open it over any page.
+Route::get('forms/{form}', [FormContextController::class, 'show'])->name('forms.show');
 Route::get('positions', [PositionController::class, 'index'])->name('positions.index');
 // JSON for the page's quick view of the dividends one line has received.
 Route::get('positions/dividends', [PositionController::class, 'dividends'])->name('positions.dividends');

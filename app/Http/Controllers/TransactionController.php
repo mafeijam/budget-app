@@ -69,30 +69,9 @@ class TransactionController extends Controller
 
         $hideTransfers = in_array((string) ($r->query('filter')['hide_transfers'] ?? ''), ['1', 'true'], true);
 
-        // Seeded here, not in a watcher: useWatchTarget() overwrites it when editing.
-        // today() is Hong Kong's day, not the browser's.
-        $formEmpty = TransactionData::empty([
-            'date' => today()->toDateString(),
-            'status' => TransactionStatus::Posted->value,
-        ]);
-
-        // Not the paginated set: a card on page two must stay selectable.
-        $accounts = Account::query()
-            ->with('meta')
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (Account $account) => [
-                'label' => $account->name,
-                'value' => $account->id,
-                'type' => $account->type,
-                'ccy' => $account->ccy,
-            ]);
-
-        $categories = Category::all()->map(fn ($category) => [
-            'label' => $category->name,
-            'value' => $category->id,
-        ]);
+        // What the form needs, which the dialog on any other page asks for too: see formProps().
+        $form = self::formProps();
+        $categories = $form['options']['categories'];
 
         // The filter gets a list of its own, because the two forms choose a category from the
         // plain one and neither may offer a row with none: NO_CATEGORY is a filter, not a
@@ -350,7 +329,7 @@ class TransactionController extends Controller
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
-        $options = compact('accounts', 'categories') + ['filterCategories' => $filterCategories];
+        $options = $form['options'] + ['filterCategories' => $filterCategories];
 
         // No window, unlike the hints: a ticker does not go stale. 'null' is what a present
         // null key unquotes to.
@@ -412,6 +391,117 @@ class TransactionController extends Controller
             'symbols' => $symbols,
         ];
 
+        $statements = $cards
+            ->map(fn (Account $card) => [
+                'card' => [
+                    'id' => $card->id,
+                    'name' => $card->name,
+                    'ccy' => $card->ccy,
+                ],
+                // values(): gaps in the keys would reach Vue as an object, not a list.
+                'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
+                    ->map(fn (CardStatement $statement) => $statement->toArray())
+                    ->all(),
+            ])
+            ->filter(fn (array $group) => $group['periods'] !== [])
+            ->values();
+
+        // A card with no bank is absent, which tells the dialog to offer a choice.
+        $cardBanks = $cards
+            ->filter(fn (Account $card) => $card->settlementAccount() !== null)
+            ->mapWithKeys(fn (Account $card) => [
+                $card->id => [
+                    'id' => $card->settlementAccount()->id,
+                    'name' => $card->settlementAccount()->name,
+                ],
+            ])
+            ->all();
+
+        $settlementOptions = Account::settlementOptions();
+
+        // A currency with no bank gets an empty list, so "none" differs from "unknown".
+        $settlementOptionsByCcy = $cards
+            ->pluck('ccy')
+            ->unique()
+            ->mapWithKeys(fn (string $ccy) => [$ccy => Account::settlementOptions($ccy)->all()])
+            ->all();
+
+        // The filter as the request named it, not as the cookie filled it in: the page echoes
+        // this back as what it asked for, and the cookie is not something it asked for.
+        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
+
+        if ($filter === []) {
+            unset($params['filter']);
+        } else {
+            $params['filter'] = $filter;
+        }
+
+        // The order AppTable leaves out of the URL, since the server applies it unasked.
+        $meta = [...$form['meta'], 'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'desc']];
+
+        // The one pending row the action column's post button leaves out, named from the enum
+        // so the frontend does not restate it: posting a payment settles a statement, which is
+        // what the settle dialog and the statement's own refusals are for.
+        $settleType = TransactionType::Payment->value;
+
+        return inertia('transaction', [...$form, ...compact(
+            'data',
+            'params',
+            'hideTransfers',
+            'meta',
+            'options',
+            'statements',
+            'cardBanks',
+            'settlementOptions',
+            'settlementOptionsByCcy',
+            'linked',
+            'refusals',
+            'editLocks',
+            'directions',
+            'settleType',
+            'totals',
+            'baseTotals',
+            'unconverted',
+            'showTotals',
+            'base',
+            'filterOptions',
+        )]);
+    }
+
+    /**
+     * What FormTransaction needs, and nothing of the list's: the transactions page sends it
+     * with the list, and the Add menu asks for it alone (FormContextController) to open the
+     * form over any other page. One method, so the dialog there cannot drift from the one here.
+     *
+     * @return array<string, mixed>
+     */
+    public static function formProps(): array
+    {
+        // Seeded here, not in a watcher: useWatchTarget() overwrites it when editing.
+        // today() is Hong Kong's day, not the browser's.
+        $formEmpty = TransactionData::empty([
+            'date' => today()->toDateString(),
+            'status' => TransactionStatus::Posted->value,
+        ]);
+
+        // Not the paginated set: a card on page two must stay selectable.
+        $accounts = Account::query()
+            ->with('meta')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Account $account) => [
+                'label' => $account->name,
+                'value' => $account->id,
+                'type' => $account->type,
+                'ccy' => $account->ccy,
+            ]);
+
+        $categories = Category::all()->map(fn ($category) => [
+            'label' => $category->name,
+            'value' => $category->id,
+        ]);
+
         // Per account type: a flat list would offer "buy" on savings only to refuse it.
         $typeOptions = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
@@ -468,41 +558,6 @@ class TransactionController extends Controller
                 'value' => $currency->value,
             ])
             ->values();
-
-        $statements = $cards
-            ->map(fn (Account $card) => [
-                'card' => [
-                    'id' => $card->id,
-                    'name' => $card->name,
-                    'ccy' => $card->ccy,
-                ],
-                // values(): gaps in the keys would reach Vue as an object, not a list.
-                'periods' => $cardPeriods[$card->id]->reject->isSettled()->values()
-                    ->map(fn (CardStatement $statement) => $statement->toArray())
-                    ->all(),
-            ])
-            ->filter(fn (array $group) => $group['periods'] !== [])
-            ->values();
-
-        // A card with no bank is absent, which tells the dialog to offer a choice.
-        $cardBanks = $cards
-            ->filter(fn (Account $card) => $card->settlementAccount() !== null)
-            ->mapWithKeys(fn (Account $card) => [
-                $card->id => [
-                    'id' => $card->settlementAccount()->id,
-                    'name' => $card->settlementAccount()->name,
-                ],
-            ])
-            ->all();
-
-        $settlementOptions = Account::settlementOptions();
-
-        // A currency with no bank gets an empty list, so "none" differs from "unknown".
-        $settlementOptionsByCcy = $cards
-            ->pluck('ccy')
-            ->unique()
-            ->mapWithKeys(fn (string $ccy) => [$ccy => Account::settlementOptions($ccy)->all()])
-            ->all();
 
         // Raw because `date` is a MySQL keyword the grammar does not quote inside MAX().
         // Across every account on purpose: a hint is not per account.
@@ -570,50 +625,13 @@ class TransactionController extends Controller
 
         $templates = [...$templates, ...$rules];
 
-        // The filter as the request named it, not as the cookie filled it in: the page echoes
-        // this back as what it asked for, and the cookie is not something it asked for.
-        $params = array_merge($r->query(), ['sort' => $sort, 'dir' => $dir]);
+        $meta = ['form' => 'transaction-form', 'path' => '/transactions'];
+        $options = compact('accounts', 'categories');
 
-        if ($filter === []) {
-            unset($params['filter']);
-        } else {
-            $params['filter'] = $filter;
-        }
-
-        // The order AppTable leaves out of the URL, since the server applies it unasked.
-        $meta = [
-            'form' => 'transaction-form',
-            'path' => '/transactions',
-            'sort' => ['by' => self::DEFAULT_SORT, 'dir' => 'desc'],
-        ];
-
-        // The one pending row the action column's post button leaves out, named from the enum
-        // so the frontend does not restate it: posting a payment settles a statement, which is
-        // what the settle dialog and the statement's own refusals are for.
-        $settleType = TransactionType::Payment->value;
-
-        return inertia('transaction', compact(
+        return compact(
             'formEmpty',
-            'data',
-            'params',
-            'hideTransfers',
             'meta',
             'options',
-            'statements',
-            'cardBanks',
-            'settlementOptions',
-            'settlementOptionsByCcy',
-            'linked',
-            'refusals',
-            'editLocks',
-            'directions',
-            'settleType',
-            'totals',
-            'baseTotals',
-            'unconverted',
-            'showTotals',
-            'base',
-            'filterOptions',
             'typeOptions',
             'typeDefaults',
             'derivesAmountTypes',
@@ -624,7 +642,7 @@ class TransactionController extends Controller
             'currencyOptions',
             'templates',
             'descriptionHints',
-        ));
+        );
     }
 
     private static function isDay(mixed $value): bool

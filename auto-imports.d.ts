@@ -202,6 +202,7 @@ declare global {
   const useFocus: typeof import('@vueuse/core').useFocus
   const useFocusWithin: typeof import('@vueuse/core').useFocusWithin
   const useForm: typeof import('@inertiajs/vue3').useForm
+  const useFormContext: typeof import('./resources/js/composables/form-context.js').useFormContext
   const useFormEmpty: typeof import('./resources/js/composables/form-helpers.js').useFormEmpty
   const useFps: typeof import('@vueuse/core').useFps
   const useFullscreen: typeof import('@vueuse/core').useFullscreen

@@ -26,9 +26,7 @@ class AccountController extends Controller
 {
     public function index(Request $r)
     {
-        $formEmpty = AccountData::empty([
-            'status' => 'active',
-        ]);
+        $form = self::formProps();
 
         // Every account on one page, grouped by type on screen: a household has a dozen, and
         // paged by ten the second page hid cards whose statements were due. Still a paginator,
@@ -68,6 +66,35 @@ class AccountController extends Controller
             ->pluck('last_date', 'account_id');
         $base = Fx::BASE->value;
 
+        $params = ['sort' => 'name', 'dir' => 'asc'];
+
+        return inertia('account', [...$form, ...compact(
+            'data',
+            'params',
+            'balances',
+            'marketValues',
+            'summary',
+            'trends',
+            'statements',
+            'lastUsed',
+            'base',
+            'refusals',
+        )]);
+    }
+
+    /**
+     * What FormAccount needs, and nothing of the list's: the accounts page sends it with the list, and
+     * the Add menu asks for it alone (FormContextController) to open the form over any other
+     * page. One method, so the dialog there cannot drift from the one here.
+     *
+     * @return array<string, mixed>
+     */
+    public static function formProps(): array
+    {
+        $formEmpty = AccountData::empty([
+            'status' => 'active',
+        ]);
+
         $settlementOptions = Account::settlementOptions();
 
         $currencyOptions = collect(Currency::cases())
@@ -81,31 +108,12 @@ class AccountController extends Controller
 
         $statusOptions = array_column(AccountStatus::cases(), 'value');
 
-        $params = ['sort' => 'name', 'dir' => 'asc'];
-
         $meta = [
             'form' => 'account-form',
             'path' => '/accounts',
         ];
 
-        return inertia('account', compact(
-            'formEmpty',
-            'data',
-            'params',
-            'meta',
-            'balances',
-            'marketValues',
-            'summary',
-            'trends',
-            'statements',
-            'lastUsed',
-            'base',
-            'refusals',
-            'settlementOptions',
-            'currencyOptions',
-            'typeOptions',
-            'statusOptions',
-        ));
+        return compact('formEmpty', 'meta', 'settlementOptions', 'currencyOptions', 'typeOptions', 'statusOptions');
     }
 
     public function store(AccountData $data)

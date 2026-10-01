@@ -1,6 +1,6 @@
 <template>
-  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
-    <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
+  <FormDialog :name="ctx.meta.form" :title="title" @hide-form="resetEdit">
+    <q-form :id="ctx.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
       <q-input
         v-model="form.name"
         class="col-12 col-sm-8"
@@ -145,6 +145,9 @@
 </template>
 
 <script setup>
+// Its own page's props, or the Add menu's for it: see useFormContext().
+const ctx = useFormContext()
+
 const pagination = inject('pagination')
 
 const { schema, form } = useFormEmpty()
@@ -152,13 +155,13 @@ const { target, resetEdit } = useEdit(form)
 const submit = useSubmit(form, pagination)
 
 // settlementOptions comes from props because the table paginates.
-const settlementOptions = computed(() => usePage().props.settlementOptions ?? [])
+const settlementOptions = computed(() => ctx.settlementOptions ?? [])
 
-const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
+const currencyOptions = computed(() => ctx.currencyOptions ?? [])
 
-const typeOptions = computed(() => usePage().props.typeOptions ?? [])
+const typeOptions = computed(() => ctx.typeOptions ?? [])
 
-const statusOptions = computed(() => usePage().props.statusOptions ?? [])
+const statusOptions = computed(() => ctx.statusOptions ?? [])
 
 const title = computed(() => {
   return target.value ? 'Edit account' : 'Create new account'

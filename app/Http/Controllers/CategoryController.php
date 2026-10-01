@@ -18,7 +18,7 @@ class CategoryController extends Controller
 {
     public function index(Request $r)
     {
-        $formEmpty = CategoryData::empty();
+        $form = self::formProps();
 
         // Every category on one page, ranked on screen by what was spent under it. Still a
         // paginator, because saving and deleting reload through it.
@@ -48,15 +48,29 @@ class CategoryController extends Controller
             'to' => ($combined['report']['months'] ?? []) === [] ? null : end($combined['report']['months'])['to'],
         ];
 
+        return inertia('category', [...$form, ...compact(
+            'data', 'params', 'refusals',
+            'spending', 'usage', 'base', 'unconverted', 'months', 'window',
+        )]);
+    }
+
+    /**
+     * What FormCategory needs, and nothing of the list's: the categories page sends it with the list, and
+     * the Add menu asks for it alone (FormContextController) to open the form over any other
+     * page. One method, so the dialog there cannot drift from the one here.
+     *
+     * @return array<string, mixed>
+     */
+    public static function formProps(): array
+    {
+        $formEmpty = CategoryData::empty();
+
         $meta = [
             'form' => 'category-form',
             'path' => '/categories',
         ];
 
-        return inertia('category', compact(
-            'formEmpty', 'data', 'params', 'meta', 'refusals',
-            'spending', 'usage', 'base', 'unconverted', 'months', 'window',
-        ));
+        return compact('formEmpty', 'meta');
     }
 
     public function store(CategoryData $data)

@@ -7,7 +7,7 @@ import DeleteDialog from '../components/DeleteDialog.vue'
 const editing = ref(new Map())
 
 export function useEdit(form) {
-  const meta = usePage().props.meta
+  const meta = useFormContext().meta
   const target = computed(() => editing.value.get(meta.form))
 
   function setEdit(val) {
@@ -30,7 +30,7 @@ export function useEdit(form) {
 }
 
 export function useSubmit(form, pagination) {
-  const meta = usePage().props.meta
+  const meta = useFormContext().meta
 
   return function (target) {
     const [method, targetUrl] = target ? ['put', `${meta.path}/${target.id}`] : ['post', meta.path]
@@ -42,7 +42,9 @@ export function useSubmit(form, pagination) {
       onBefore: () => form.clearErrors(),
       onSuccess: resp => {
         notifySuccess()
-        syncPagination(pagination, resp)
+        // Only over its own list: opened from the Add menu, the page it lands back on has
+        // no table to page, and syncPagination() would throw after the row was saved.
+        if (pagination && resp.props.data?.meta) syncPagination(pagination, resp)
         eventBus.formDialog.emit(meta.form, { hide: true })
         form.reset()
         form.clearErrors()
@@ -201,8 +203,7 @@ export function usePost(pagination) {
 }
 
 export function useFormEmpty() {
-  const page = usePage()
-  const schema = useCloneForm(page.props.formEmpty)
+  const schema = useCloneForm(useFormContext().formEmpty)
   const form = useForm(schema)
   return {
     schema,

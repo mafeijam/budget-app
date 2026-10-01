@@ -1,6 +1,6 @@
 <template>
-  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
-    <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
+  <FormDialog :name="ctx.meta.form" :title="title" @hide-form="resetEdit">
+    <q-form :id="ctx.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
       <q-select
         v-model="form.account_id"
         :options="accountOptionList"
@@ -247,6 +247,9 @@
 </template>
 
 <script setup>
+// Its own page's props, or the Add menu's for it: see useFormContext().
+const ctx = useFormContext()
+
 const props = defineProps({
   options: { type: Object, default: Object },
 })
@@ -280,10 +283,10 @@ const target = computed(() =>
 )
 const submit = useSubmit(form, pagination)
 
-const typeOptionsByAccountType = computed(() => usePage().props.typeOptions ?? {})
-const typeDefaults = computed(() => usePage().props.typeDefaults ?? {})
-const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
-const frequencyOptions = computed(() => usePage().props.frequencyOptions ?? [])
+const typeOptionsByAccountType = computed(() => ctx.typeOptions ?? {})
+const typeDefaults = computed(() => ctx.typeDefaults ?? {})
+const currencyOptions = computed(() => ctx.currencyOptions ?? [])
+const frequencyOptions = computed(() => ctx.frequencyOptions ?? [])
 const categoryOptions = computed(() => props.options?.categories ?? [])
 
 // A closed account is offered only to the rule already on it.

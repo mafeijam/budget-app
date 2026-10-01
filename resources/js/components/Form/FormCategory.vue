@@ -1,6 +1,6 @@
 <template>
-  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="resetEdit">
-    <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
+  <FormDialog :name="ctx.meta.form" :title="title" @hide-form="resetEdit">
+    <q-form :id="ctx.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
       <q-input
         v-model="form.name"
         class="col-12"
@@ -19,6 +19,9 @@
 </template>
 
 <script setup>
+// Its own page's props, or the Add menu's for it: see useFormContext().
+const ctx = useFormContext()
+
 const pagination = inject('pagination')
 
 const { schema, form } = useFormEmpty()

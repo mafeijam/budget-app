@@ -58,7 +58,7 @@
                 icon="check"
                 label="Submit"
                 :loading="form.processing"
-                :form="$page.props.meta.form"
+                :form="ctx.meta.form"
               />
             </div>
           </div>
@@ -69,6 +69,9 @@
 </template>
 
 <script setup>
+// Its own page's props, or the Add menu's for it: see useFormContext().
+const ctx = useFormContext()
+
 const props = defineProps({
   name: {
     type: String,

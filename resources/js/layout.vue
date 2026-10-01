@@ -7,6 +7,8 @@
         <q-toolbar-title class="app-wordmark"
           >Ledger<span class="app-wordmark__stop">.</span></q-toolbar-title
         >
+        <!-- Every form, from any page: it opens over the page and leaves you on it. -->
+        <AddMenu />
       </q-toolbar>
     </q-header>
 

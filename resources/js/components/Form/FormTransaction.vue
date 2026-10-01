@@ -1,5 +1,5 @@
 <template>
-  <FormDialog :name="$page.props.meta.form" :title="title" @hide-form="closeForm">
+  <FormDialog :name="ctx.meta.form" :title="title" @hide-form="closeForm">
     <!-- Out of the form body: a template fills the fields, it is not one of them. -->
     <template #header>
       <q-btn
@@ -146,7 +146,7 @@
       />
     </template>
 
-    <q-form :id="$page.props.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
+    <q-form :id="ctx.meta.form" class="row q-col-gutter-md" @submit="submit(target)">
       <!-- Wrapped, or the gutter offsets the tinted banner from the fields. -->
       <div v-if="lock" class="col-12">
         <q-banner rounded dense class="app-tint app-tint--warning">
@@ -581,6 +581,9 @@
 </template>
 
 <script setup>
+// Its own page's props, or the Add menu's for it: see useFormContext().
+const ctx = useFormContext()
+
 // Imported: handed to Dialog.create(), which auto-registration cannot see.
 import { Dialog } from 'quasar'
 import DeleteDialog from '../DeleteDialog.vue'
@@ -623,19 +626,17 @@ const target = computed(() => {
   }
 })
 
-const lock = computed(() =>
-  target.value ? (usePage().props.editLocks?.[target.value.id] ?? null) : null,
-)
+const lock = computed(() => (target.value ? (ctx.editLocks?.[target.value.id] ?? null) : null))
 const locked = field => lock.value?.fields.includes(field) ?? false
 
-const typeOptionsByAccountType = computed(() => usePage().props.typeOptions ?? {})
-const typeDefaults = computed(() => usePage().props.typeDefaults ?? {})
-const statusOptions = computed(() => usePage().props.statusOptions ?? [])
-const currencyOptions = computed(() => usePage().props.currencyOptions ?? [])
+const typeOptionsByAccountType = computed(() => ctx.typeOptions ?? {})
+const typeDefaults = computed(() => ctx.typeDefaults ?? {})
+const statusOptions = computed(() => ctx.statusOptions ?? [])
+const currencyOptions = computed(() => ctx.currencyOptions ?? [])
 
 const accountOptions = computed(() => props.options?.accounts ?? [])
 
-const descriptionHints = computed(() => usePage().props.descriptionHints ?? [])
+const descriptionHints = computed(() => ctx.descriptionHints ?? [])
 
 const accountTypeOrder = computed(() => Object.keys(typeOptionsByAccountType.value))
 
@@ -658,19 +659,17 @@ const filterCategories = filterInto(shownCategories, categoryOptions, (category,
   category.label.toLowerCase().includes(needle),
 )
 
-const derivesAmount = computed(() => (usePage().props.derivesAmountTypes ?? []).includes(form.type))
+const derivesAmount = computed(() => (ctx.derivesAmountTypes ?? []).includes(form.type))
 
-const showsSymbol = computed(() => (usePage().props.symbolTypes ?? []).includes(form.type))
+const showsSymbol = computed(() => (ctx.symbolTypes ?? []).includes(form.type))
 
 const isDividend = computed(() => showsSymbol.value && !derivesAmount.value)
 
 const chosenAccount = computed(() => accountOptions.value.find(a => a.value === form.account_id))
 
-const heldSymbols = computed(() => usePage().props.heldSymbols ?? {})
+const heldSymbols = computed(() => ctx.heldSymbols ?? {})
 
-const brokerageOptions = computed(
-  () => (usePage().props.dividendBrokerages ?? {})[form.account_id] ?? [],
-)
+const brokerageOptions = computed(() => (ctx.dividendBrokerages ?? {})[form.account_id] ?? [])
 
 const symbolOptions = computed(() =>
   (heldSymbols.value[form.meta_data.brokerage_account_id] ?? []).map(symbol => ({
@@ -734,7 +733,7 @@ const title = computed(() => {
   return target.value ? 'Edit transaction' : 'Create new transaction'
 })
 
-const templates = computed(() => usePage().props.templates ?? [])
+const templates = computed(() => ctx.templates ?? [])
 
 const templateSearch = ref('')
 
@@ -958,9 +957,16 @@ const saveTemplate = () => {
     router.post('/transaction-templates', templateBody(name.trim()), {
       preserveScroll: true,
       preserveState: true,
-      onSuccess: () => notifySuccess(),
+      onSuccess: templatesSaved,
     })
   })
+}
+
+// Over its own page the reload the save redirects to brings the templates with it; over
+// any other, that page has none, so the form asks for its own props again.
+const templatesSaved = () => {
+  notifySuccess()
+  ctx.refresh?.()
 }
 
 // The rule's day in the month the date is in, or for a yearly rule its month and day in the
@@ -1013,7 +1019,7 @@ const updateTemplate = () =>
     {
       preserveScroll: true,
       preserveState: true,
-      onSuccess: () => notifySuccess(),
+      onSuccess: templatesSaved,
     },
   )
 
@@ -1030,7 +1036,7 @@ const destroyTemplate = template => {
     router.delete(`/transaction-templates/${template.id}`, {
       preserveScroll: true,
       preserveState: true,
-      onSuccess: () => notifySuccess(),
+      onSuccess: templatesSaved,
     })
   })
 }

@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AddMenu: typeof import('./resources/js/components/AddMenu.vue')['default']
     AppLogo: typeof import('./resources/js/components/AppLogo.vue')['default']
     AppTable: typeof import('./resources/js/components/AppTable.vue')['default']
     AppTableActions: typeof import('./resources/js/components/AppTableActions.vue')['default']
@@ -24,6 +25,7 @@ declare module 'vue' {
     ForecastMonths: typeof import('./resources/js/components/ForecastMonths.vue')['default']
     FormAccount: typeof import('./resources/js/components/Form/FormAccount.vue')['default']
     FormCategory: typeof import('./resources/js/components/Form/FormCategory.vue')['default']
+    FormContextHost: typeof import('./resources/js/components/FormContextHost.vue')['default']
     FormDialog: typeof import('./resources/js/components/Form/FormDialog.vue')['default']
     FormRecurring: typeof import('./resources/js/components/Form/FormRecurring.vue')['default']
     FormTransaction: typeof import('./resources/js/components/Form/FormTransaction.vue')['default']

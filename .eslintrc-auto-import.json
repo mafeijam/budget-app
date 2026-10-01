@@ -211,6 +211,7 @@
     "useFocus": true,
     "useFocusWithin": true,
     "useForm": true,
+    "useFormContext": true,
     "useFormEmpty": true,
     "useFps": true,
     "useFullscreen": true,
