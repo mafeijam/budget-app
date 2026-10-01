@@ -25,8 +25,11 @@ class ForecastController extends Controller
             $views[$code] = $code;
         }
 
+        // An object, not an array, so Inertia hands it to json_encode as it is. Given an
+        // array it walks every leaf looking for a lazy prop -- tens of thousands of them in
+        // a year's daily points, and most of a second of the response, for none.
         return inertia('forecast', [
-            'views' => array_map(fn (?string $only) => [
+            'views' => (object) array_map(fn (?string $only) => [
                 'projection' => $forecast->projection($only),
                 'upcoming' => $forecast->upcoming($only),
                 'outlook' => $forecast->monthOutlook($only),
