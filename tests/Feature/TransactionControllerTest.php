@@ -1061,6 +1061,26 @@ class TransactionControllerTest extends TestCase
         );
     }
 
+    public function test_a_description_carrying_its_own_figure_is_not_offered_unless_it_is_a_habit(): void
+    {
+        // A bank's per-row text, an amount and its currency, used once; a trade's price; a
+        // name with digits in it that is not a figure; and a figure used often enough to be
+        // typed again.
+        foreach (['SYDNEY 130.29 AUD', 'BUY 2,500 SHARES 2800 @ 23.02', 'DIVIDEND 0939 CCB', '3.3 CAFE'] as $i => $description) {
+            $this->post('/transactions', $this->expense(['description' => $description, 'date' => '2026-01-0'.($i + 1)]))
+                ->assertSessionHasNoErrors();
+        }
+
+        foreach (['2026-01-10', '2026-01-11', '2026-01-12'] as $date) {
+            $this->post('/transactions', $this->expense(['description' => 'SUICA 3,000 YEN', 'date' => $date]))
+                ->assertSessionHasNoErrors();
+        }
+
+        $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
+            ->where('descriptionHints', ['SUICA 3,000 YEN', '3.3 CAFE', 'DIVIDEND 0939 CCB'])
+        );
+    }
+
     public function test_a_description_already_in_the_list_is_offered_once(): void
     {
         // The column's collation makes these one description as far as the database is

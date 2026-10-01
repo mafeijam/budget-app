@@ -43,6 +43,9 @@ class TransactionController extends Controller
 
     private const HINT_YEARS = 2;
 
+    /** Used this often, a description with a figure in it is a habit and still a hint. */
+    private const HINT_FIGURE_USES = 3;
+
     /**
      * What the category filter carries for "no category". It cannot be null, which is what an
      * unfiltered select holds. Mirrored by NO_CATEGORY in resources/js/composables/filter.js,
@@ -561,11 +564,23 @@ class TransactionController extends Controller
 
         // Raw because `date` is a MySQL keyword the grammar does not quote inside MAX().
         // Across every account on purpose: a hint is not per account.
+        //
+        // Not one that carries its own figure -- an amount and its currency, "SYDNEY 130.29
+        // AUD", or a trade's "@ 17.94" -- unless it is used again and again: the bank writes
+        // these per row, so each is a hint nobody will take, and a third of the list was
+        // them. The currency is one Currency names, or YEN as the bank spells it, so "0939
+        // CCB" and "3.3 CAFE" are names and stay.
+        $currencies = implode('|', [...array_column(Currency::cases(), 'value'), 'YEN']);
+        $figure = '/\d[\d,.]*\s*('.$currencies.')\b|@\s*[\d.,]+/u';
+
         $descriptionHints = Transaction::query()
             ->where('date', '>=', today()->subYears(self::HINT_YEARS)->toDateString())
             ->groupBy('description')
             ->orderByRaw('MAX(`date`) DESC')
             ->orderBy('description')
+            ->selectRaw('description, COUNT(*) AS uses')
+            ->get()
+            ->reject(fn ($hint) => $hint->uses < self::HINT_FIGURE_USES && preg_match($figure, $hint->description))
             ->pluck('description')
             ->values();
 
