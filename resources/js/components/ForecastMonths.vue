@@ -168,9 +168,8 @@ const props = defineProps({
   months: { type: Array, default: () => [] },
   ccy: { type: String, default: '' },
   typical: { type: Boolean, default: true },
-  // The month today falls in, as YYYY-MM, and the horizon's last day.
+  // The month today falls in, as YYYY-MM.
   current: { type: String, default: '' },
-  end: { type: String, default: '' },
 })
 
 const money = useMoney()
@@ -212,25 +211,8 @@ const monthLabel = new Intl.DateTimeFormat('en', {
   timeZone: 'UTC',
 })
 
-// The month today is in is only its days still to come; the page may have left it off.
-const partial = month => month.month === props.current
-
-// And the horizon's last month only its days up to the end, which on a horizon counted from
-// the first is a single day: one salary and nothing spent, a bar that read as the best month
-// of the year with nothing to say it was a day.
-const endDay = computed(() => {
-  if (!props.end) return null
-
-  const [year, month, day] = props.end.split('-').map(Number)
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate()
-
-  return day === last ? null : day
-})
-
-const cut = month => endDay.value !== null && month.month === props.end.slice(0, 7)
-
-const ordinal = n =>
-  `${n}${[11, 12, 13].includes(n % 100) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th')}`
+// The month today is in is only its days still to come, unless the page has given it whole.
+const partial = month => month.month === props.current && !month.whole
 
 // Numbers only for geometry: every figure shown is formatted from the server's string.
 const bars = computed(() =>
@@ -246,14 +228,8 @@ const bars = computed(() =>
       typicalIn: Number(month.typical_in),
       net: Number(props.typical ? month.net_typical : month.net_known),
       short: monthName.format(day),
-      caption: partial(month)
-        ? 'rest of'
-        : cut(month)
-          ? `to the ${ordinal(endDay.value)}`
-          : number === 1
-            ? String(year)
-            : '',
-      label: `${monthLabel.format(day)}${partial(month) ? ', from tomorrow' : cut(month) ? `, to the ${ordinal(endDay.value)}` : ''}`,
+      caption: partial(month) ? 'rest of' : number === 1 ? String(year) : '',
+      label: `${monthLabel.format(day)}${partial(month) ? ', from tomorrow' : ''}`,
     }
   }),
 )

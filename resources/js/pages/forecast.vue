@@ -281,7 +281,6 @@
         <ForecastMonths
           :months="monthsShown(section)"
           :current="section.months[0]?.month"
-          :end="section.points.at(-1)?.date"
           :ccy="section.ccy"
           :typical="withTypical && !isZero(section.typical_monthly)"
         />
@@ -682,12 +681,38 @@ const incomeEstimates = section =>
     { label: 'Double pay, on the date it was paid', value: section.expected_double_pay },
   ].filter(row => !isZero(row.value))
 
-// The month the forecast starts in, left off when nothing is left of it: on its last day
-// it is an empty column labelled "rest of".
-const monthsShown = section =>
-  section.months.filter(
-    (month, i) => i > 0 || [month.in, month.out, month.typical].some(value => !isZero(value)),
+// The month the forecast starts in, as the whole month: the outlook's figures, what has
+// happened since the first and what is still to come. From tomorrow alone it left out a
+// salary paid on the first and kept that month's card statements, and drew a month the
+// outlook above it called a good one as a loss of 26,000.
+const wholeMonth = (month, row) => ({
+  ...month,
+  whole: true,
+  in: plus(row.so_far.income, row.to_come.income),
+  out: plus(row.so_far.spending, row.to_come.spending),
+  typical_in: row.typical_income_rest,
+  typical: row.typical_rest,
+  net_known: row.likely_known,
+  net_typical: row.likely_net,
+})
+
+// And the horizon's last month left off when it is part of one: counted from the first it is
+// a single day, a salary and nothing spent. The day is still in the balances and the line.
+const endsAMonth = day => {
+  const [year, month, date] = day.split('-').map(Number)
+
+  return new Date(Date.UTC(year, month, 0)).getUTCDate() === date
+}
+
+const monthsShown = section => {
+  const row = props.outlook.find(o => o.ccy === section.ccy)
+  const months = section.months.map((month, i) =>
+    i === 0 && row?.month === month.month ? wholeMonth(month, row) : month,
   )
+  const end = section.points.at(-1)?.date
+
+  return !end || endsAMonth(end) ? months : months.slice(0, -1)
+}
 
 // The what-if's end of horizon: an estimate of an estimate, so whole units, never a
 // figure to the cent -- the same arithmetic the chart draws its line with.
