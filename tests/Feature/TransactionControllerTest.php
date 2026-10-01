@@ -802,7 +802,7 @@ class TransactionControllerTest extends TestCase
         // user tried to record the type and found it missing from the dropdown.
         $expected = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => collect(TransactionType::cases())
+                $accountType->value => collect(TransactionType::offeredOrder())
                     ->filter(fn (TransactionType $type) => $type->isAllowedFor($accountType))
                     ->map(fn (TransactionType $type) => $type->value)
                     ->values()

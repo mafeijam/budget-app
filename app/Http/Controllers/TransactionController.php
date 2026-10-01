@@ -386,7 +386,7 @@ class TransactionController extends Controller
                 ->pluck('month')
                 ->filter(fn (?string $month) => $month !== null && preg_match('/^\d{4}-\d{2}$/', $month))
                 ->values(),
-            'types' => array_column(TransactionType::filterOrder(), 'value'),
+            'types' => array_column(TransactionType::offeredOrder(), 'value'),
             'accountTypes' => array_column(AccountType::cases(), 'value'),
             'symbols' => $symbols,
         ];
@@ -505,7 +505,7 @@ class TransactionController extends Controller
         // Per account type: a flat list would offer "buy" on savings only to refuse it.
         $typeOptions = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => collect(TransactionType::cases())
+                $accountType->value => collect(TransactionType::offeredOrder())
                     ->filter(fn (TransactionType $type) => $type->isAllowedFor($accountType))
                     ->map(fn (TransactionType $type) => $type->value)
                     ->values()

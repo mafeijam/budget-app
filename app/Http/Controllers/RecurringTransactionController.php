@@ -98,7 +98,7 @@ class RecurringTransactionController extends Controller
         // Per account type, and only the types that can repeat, so a brokerage gets none.
         $typeOptions = collect(AccountType::cases())
             ->mapWithKeys(fn (AccountType $accountType) => [
-                $accountType->value => collect(TransactionType::cases())
+                $accountType->value => collect(TransactionType::offeredOrder())
                     ->filter(fn (TransactionType $type) => $type->canRecur() && $type->isAllowedFor($accountType))
                     ->map(fn (TransactionType $type) => $type->value)
                     ->values()

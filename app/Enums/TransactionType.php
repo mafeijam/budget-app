@@ -63,9 +63,12 @@ enum TransactionType: string
     }
 
     /**
+     * The order types are offered in, wherever they are: the form's type buttons and the
+     * list's filter. Deposit first, as money arrives before it is spent; the rest as declared.
+     *
      * @return array<int, self>
      */
-    public static function filterOrder(): array
+    public static function offeredOrder(): array
     {
         return [self::Deposit, ...array_filter(self::cases(), fn (self $type) => $type !== self::Deposit)];
     }

@@ -247,7 +247,7 @@ class RecurringTransactionTest extends TestCase
 
         $this->get('/recurring')->assertInertia(fn (Assert $page) => $page
             ->component('recurring')
-            ->where('typeOptions', ['cash' => ['withdraw', 'deposit'], 'card' => ['charge', 'payment']])
+            ->where('typeOptions', ['cash' => ['deposit', 'withdraw'], 'card' => ['charge', 'payment']])
             ->where('options.accounts', fn ($accounts) => collect($accounts)->pluck('type')->unique()->sort()->values()->all() === ['card', 'cash'])
             ->where('formEmpty.start_date', '2026-03-15')
             ->where('nextDates', fn ($dates) => array_values((array) $dates->all()) === ['2026-04-10'])

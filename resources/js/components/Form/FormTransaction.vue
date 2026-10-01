@@ -691,9 +691,16 @@ const typeOptions = computed(() => {
   return type ? (typeOptionsByAccountType.value[type] ?? []) : []
 })
 
-// A label for a type the map has not met yet, rather than a blank button.
+// A label for a type the map has not met yet, rather than a blank button. A payment entered
+// here is money back on the card -- a refund, a fee reversed -- since paying a statement is
+// Settle's, so it is named for that; the one Settle wrote, opened to edit, is still a payment.
+const typeLabel = type =>
+  type === 'payment' && !row.value?.meta_data?.paired_transaction_id
+    ? 'Refund'
+    : (typeLabels[type] ?? type)
+
 const typeButtons = computed(() =>
-  typeOptions.value.map(type => ({ label: typeLabels[type] ?? type, value: type })),
+  typeOptions.value.map(type => ({ label: typeLabel(type), value: type })),
 )
 
 const statusButtons = computed(() =>
