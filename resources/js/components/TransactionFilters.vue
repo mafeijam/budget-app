@@ -50,6 +50,17 @@
           dense
           class="q-px-sm"
         />
+        <!-- The rows marked one-off, which the forecast leaves out of its typical figures. In
+             the bar, as unpaid is, so it needs no chip to be seen while the panel is shut. -->
+        <q-toggle
+          v-model="filters.one_off"
+          true-value="1"
+          false-value=""
+          label="One-off only"
+          color="primary"
+          dense
+          class="q-px-sm"
+        />
         <q-separator vertical inset class="q-mx-sm" />
         <q-toggle
           v-model="hideTransfers"
@@ -523,6 +534,7 @@ const parse = filter => ({
   due_month: list(filter.due_month),
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
   unpaid: filter.unpaid ?? '',
+  one_off: filter.one_off === '1' ? '1' : '',
 })
 
 const filters = reactive(parse(seeded))
@@ -742,6 +754,7 @@ const clear = () => {
     counted_from: null,
     counted_to: null,
     spending: '',
+    one_off: '',
     due_date: null,
     month: [],
     due_month: [],

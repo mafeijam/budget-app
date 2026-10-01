@@ -158,6 +158,11 @@ class TransactionController extends Controller
                 // an uncategorised month also holds uncategorised income, and a card payment
                 // is a withdrawal and looks like any other. Off unless asked, as `unpaid` is,
                 // so a stale filter[spending]=0 empties nothing.
+                // The rows marked one-off. The flag is a JSON true in the bag; a value that
+                // does not say yes filters nothing, as spending's does.
+                AllowedFilter::callback('one_off', fn (Builder $q, $value) => in_array((string) $value, ['1', 'true'], true)
+                    ? $q->whereHas('meta', fn (Builder $bag) => $bag->where('meta->one_off', true))
+                    : $q),
                 AllowedFilter::callback('spending', function (Builder $q, $value) {
                     if (! in_array((string) $value, ['1', 'true'], true)) {
                         return $q;

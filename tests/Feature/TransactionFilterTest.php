@@ -566,6 +566,24 @@ class TransactionFilterTest extends TestCase
         }
     }
 
+    public function test_it_filters_to_the_rows_marked_one_off(): void
+    {
+        $rent = Transaction::where('description', 'Rent')->firstOrFail();
+        $rent->meta
+            ? $rent->meta->update(['meta' => [...$rent->meta->meta->getArrayCopy(), 'one_off' => true]])
+            : $rent->meta()->create(['meta' => ['one_off' => true]]);
+
+        // A row marked not one-off is not one.
+        $books = Transaction::where('description', 'Books')->firstOrFail();
+        $books->meta->update(['meta' => [...$books->meta->meta->getArrayCopy(), 'one_off' => false]]);
+
+        $this->assertListed(['filter' => ['one_off' => '1']], ['Rent']);
+
+        foreach (['0', 'no', ''] as $value) {
+            $this->assertListed(['filter' => ['one_off' => $value]], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
+        }
+    }
+
     public function test_a_value_that_does_not_say_yes_filters_nothing(): void
     {
         $this->assertListed(['filter' => ['unpaid' => '0']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);
