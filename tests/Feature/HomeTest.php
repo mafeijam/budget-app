@@ -64,6 +64,32 @@ class HomeTest extends TestCase
         );
     }
 
+    public function test_a_cash_accounts_balance_is_read_as_of_today(): void
+    {
+        // A card is its figure and the rows that make it up, and the figure is the net worth
+        // page's snapshot for today. Read every row instead, a payment dated next week is
+        // already out of a savings balance here while the figure above has not left it, and
+        // the two stop adding up by an amount nothing on the page names.
+        $this->travelTo(Carbon::parse('2026-02-15 12:00', 'Asia/Hong_Kong'));
+
+        $this->deposit('2026-02-10', '1000.0000');
+
+        $this->post('/transactions', [
+            'account_id' => $this->bank->id,
+            'date' => '2026-02-20',
+            'type' => 'withdraw',
+            'description' => 'Next week',
+            'amount' => '250.0000',
+            'ccy' => 'HKD',
+            'category_id' => $this->category,
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('cash.0.balance', '1000.0000')
+            ->where('headline.cash', '1000.0000')
+        );
+    }
+
     public function test_it_lists_the_statements_still_owing_soonest_first(): void
     {
         $this->travelTo(Carbon::parse('2026-02-01 12:00', 'Asia/Hong_Kong'));

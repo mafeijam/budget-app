@@ -66,6 +66,9 @@ class HomeController extends Controller
             return inertia('index', ['trend' => $this->trend()]);
         }
 
+        $today = today();
+        $day = $today->toDateString();
+
         // A closed account still holding money stays, or the total could not be
         // accounted for.
         $cashAccounts = Account::query()
@@ -73,13 +76,17 @@ class HomeController extends Controller
             ->orderBy('name')
             ->get();
 
-        $balances = AccountBalance::forAccounts($cashAccounts);
+        // Read as of today, the day the card's own figure is the net worth page's snapshot
+        // for. Left open it reads every row, so a card payment dated next week is already
+        // out of a savings balance here while the figure above has not left it -- and a card
+        // is its figure and the rows that make it up, so the two have to be one day.
+        $balances = AccountBalance::forAccounts($cashAccounts, $day);
 
         // Today's rate for every currency here, so a row held in another shows its base too.
         $rates = Fx::for(Account::query()->distinct()->pluck('ccy')->all());
         $inBase = fn (string $amount, string $ccy) => $ccy === Fx::BASE->value
             ? null
-            : $rates->toBase($amount, $ccy, today()->toDateString())?->__toString();
+            : $rates->toBase($amount, $ccy, $day)?->__toString();
 
         $cash = $cashAccounts
             ->filter(fn (Account $account) => $account->status === 'active'
@@ -132,9 +139,6 @@ class HomeController extends Controller
             })
             ->filter(fn (array $broker) => $broker['status'] === 'active' || $broker['open'] > 0)
             ->values();
-
-        $today = today();
-        $day = $today->toDateString();
 
         // The net worth page's figures for today, and its change since last month's end.
         // Asked for together, since the page wants both and each was a full aggregate.
