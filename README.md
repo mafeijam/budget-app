@@ -102,6 +102,27 @@ Two commands run from the scheduler, which does nothing unless something calls
   that day. A missed run catches up on the next one, and saving a rule records
   whatever is already due, so the page works without cron and only goes stale.
 
+### Tidying the ledger
+
+Two commands pair rows the reports would otherwise misread. Both only report
+unless given `--apply`, and a second run finds nothing left to do:
+
+```bash
+php artisan transfers:pair            # report; --apply to write, --fetch for rates
+php artisan trades:link-cash          # report; --apply to write
+```
+
+- `transfers:pair` pairs money that only moved between the cash accounts but
+  was entered so the cash flow cannot tell: an `EXCHANGE HKD TO YEN 160,000`
+  becomes a deposit on the yen account, made if there is none, and a
+  `TRANSFER TO FUTU` whose deposit landed on another day is paired with it. A
+  same-day transfer is found without it. It then runs `trades:link-cash`.
+- `trades:link-cash` links a trade entered with no cash side to the bank row
+  that paid for it, so that row counts as invested rather than spent.
+
+A currency account the first one makes needs its rates, or every total leaves
+it out: `--fetch`, or `prices:fetch --history --symbol=JPYHKD=X`.
+
 ### Tests and checks
 
 ```bash
