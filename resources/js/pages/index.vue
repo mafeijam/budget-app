@@ -38,7 +38,7 @@
           </Deferred>
 
           <!-- What the figure is made of: the accounts, statements or brokerages behind it. -->
-          <div v-if="figure.items.length" class="app-home-list">
+          <div v-if="!compact && figure.items.length" class="app-home-list">
             <!--
               A template for every card's rows, so the grouping below cannot become a second
               copy of a row that has to be kept in step with this one. A card with no grouping
@@ -144,15 +144,30 @@
             </div>
           </div>
           <div
-            v-else-if="figure.empty"
+            v-else-if="!compact && figure.empty"
             class="app-home-list app-home-list__more text-caption text-grey-6"
           >
             {{ figure.empty }}
           </div>
         </q-card>
       </div>
-      <div v-if="headline.unconverted.length" class="text-caption text-grey-7 q-mt-sm">
-        {{ headline.unconverted.join(', ') }} left out: no rate to {{ base }} yet.
+      <div class="row items-center q-mt-xs">
+        <div v-if="headline.unconverted.length" class="text-caption text-grey-7">
+          {{ headline.unconverted.join(', ') }} left out: no rate to {{ base }} yet.
+        </div>
+        <q-space />
+        <!-- The cards cut to their figures and lines, remembered per browser: the Positions
+             page's fold button, under what it folds. -->
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="grey-8"
+          class="text-caption q-px-sm"
+          :icon-right="compact ? 'expand_more' : 'expand_less'"
+          :label="compact ? 'Show what each is made of' : 'Show less'"
+          @click="compact = !compact"
+        />
       </div>
     </div>
 
@@ -406,6 +421,9 @@ const props = defineProps({
 })
 
 const money = useMoney()
+
+// The headline cards without what each is made of, remembered per browser.
+const compact = useStorage('home.compact', false)
 const formatDate = useCalendarDay()
 
 // A rate to four places, since a rate is not a sum of money and its fourth place is the one
