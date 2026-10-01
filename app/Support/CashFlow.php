@@ -13,6 +13,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -347,20 +348,40 @@ class CashFlow
      */
     public static function whereSpends(Builder $q): Builder
     {
-        $settles = DB::table('meta')
-            ->select('model_id')
-            ->where('model_type', Transaction::class)
-            ->whereIn('meta->paired_transaction_id', DB::table('transactions')
-                ->join('accounts', 'accounts.id', '=', 'transactions.account_id')
-                ->select('transactions.id')
-                ->where('transactions.type', TransactionType::Payment->value)
-                ->where('accounts.type', AccountType::Card->value));
-
         return $q->where(fn (Builder $either) => $either
             ->where('type', TransactionType::Charge->value)
             ->orWhere(fn (Builder $bank) => $bank
                 ->where('type', TransactionType::Withdraw->value)
-                ->whereNotIn('id', $settles)));
+                ->whereNotIn('id', self::whereSettlesACard(DB::table('transactions')))));
+    }
+
+    /**
+     * The ids of the bank-side rows that settle a card: a withdraw paired, in its bag, to a
+     * payment on a card, which is the pair settle() writes.
+     *
+     * Its own method because the rule is wanted in two places for two reasons, and a
+     * settlement's bank half is money that has already moved however far ahead its date
+     * sits. Cash flow leaves it out so a purchase is not counted as spending twice; the
+     * forecast leaves it out of what is coming up, where the same money already appears as
+     * the statement event. Neither can restate it without the other drifting.
+     *
+     * Read off the bag rather than the type, because a settlement's bank row is a plain
+     * withdraw and nothing about it says card. A payment only ever exists on a card, so
+     * pairing to one is the same statement as joining its account for the type.
+     *
+     * @param  QueryBuilder<int, object>  $q
+     * @return QueryBuilder<int, object>
+     */
+    public static function whereSettlesACard(QueryBuilder $q): QueryBuilder
+    {
+        return DB::table('meta')
+            ->select('model_id')
+            ->where('model_type', Transaction::class)
+            ->whereIn('meta->paired_transaction_id', $q
+                ->join('accounts', 'accounts.id', '=', 'transactions.account_id')
+                ->select('transactions.id')
+                ->where('transactions.type', TransactionType::Payment->value)
+                ->where('accounts.type', AccountType::Card->value));
     }
 
     /**

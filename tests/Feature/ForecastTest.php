@@ -457,6 +457,104 @@ class ForecastTest extends TestCase
         ]);
     }
 
+    public function test_a_settlement_is_not_listed_as_coming_up(): void
+    {
+        // The bank half of a card payment is a plain withdraw and nothing about the row says
+        // card, so it arrived in Coming up as "Card payment [NAME]" dated ahead -- money that
+        // has already moved, and the same money the panel already carries as the statement
+        // event. Written the way settle() writes it, both halves and the pairing.
+        $this->settled('2026-02-09', '175.0000');
+
+        $upcoming = collect(Forecast::for(today(), 3)->upcoming());
+
+        $this->assertSame([], $upcoming->where('description', 'Card payment [Card]')->all());
+        $this->assertSame(
+            [],
+            $upcoming->where('kind', 'scheduled')->all(),
+            'Nothing else was dated ahead, so nothing should be listed.'
+        );
+    }
+
+    public function test_a_settlement_dated_ahead_is_still_left_out(): void
+    {
+        // Posted on a day this panel looks at, which is how a settlement lands in Coming up
+        // at all. The panel is about what has not happened yet.
+        $this->settled('2026-02-09', '175.0000', '2026-02-09');
+
+        $this->assertSame(
+            [],
+            collect(Forecast::for(today(), 3)->upcoming())
+                ->where('description', 'Card payment [Card]')->all()
+        );
+    }
+
+    public function test_an_ordinary_withdrawal_is_still_listed(): void
+    {
+        // The exclusion is the settlement and nothing wider: a withdraw that settles no card
+        // is ordinary spending and the panel's whole reason to exist.
+        $this->row('withdraw', '2026-02-03', '300', 'posted', 'Rent');
+
+        $event = collect(Forecast::for(today(), 3)->upcoming())->firstWhere('description', 'Rent');
+
+        $this->assertSame('2026-02-03', $event['date']);
+        $this->assertSame('-300.0000', $event['amount']);
+        $this->assertSame('scheduled', $event['kind']);
+    }
+
+    public function test_a_listed_row_carries_the_date_a_filter_can_find_it_by(): void
+    {
+        // A pending row is listed under today whatever its own date, so the date a click
+        // filters on has to be the row's own -- filtering on the listed day finds nothing.
+        $this->row('withdraw', '2026-01-10', '100', 'pending', 'Coffee');
+
+        $event = collect(Forecast::for(today(), 3)->upcoming())->firstWhere('description', 'Coffee');
+
+        $this->assertSame('2026-01-20', $event['date'], 'Listed under today.');
+        $this->assertSame('2026-01-10', $event['link']['date'], 'But linked by the row own date.');
+        $this->assertNotNull($event['link']['transaction']);
+    }
+
+    /**
+     * A card statement settled from the bank, written the way settle() writes it: a payment
+     * on the card, a withdraw on the bank, and the two paired in the card row's bag.
+     */
+    private function settled(string $dueDate, string $amount, string $paidOn = '2026-01-25'): void
+    {
+        $this->charge('2026-01-05', $amount);
+
+        $payment = Transaction::create([
+            'account_id' => $this->card->id,
+            'category_id' => null,
+            'date' => $paidOn,
+            'type' => 'payment',
+            'description' => "Statement {$dueDate}",
+            'amount' => $amount,
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $transfer = Transaction::create([
+            'account_id' => $this->bank->id,
+            'category_id' => null,
+            'date' => $paidOn,
+            'type' => 'withdraw',
+            'description' => 'Card payment [Card]',
+            'amount' => $amount,
+            'ccy' => 'HKD',
+            'status' => 'posted',
+        ]);
+
+        $payment->meta()->create([
+            'meta' => ['due_date' => $dueDate, 'paired_transaction_id' => $transfer->id],
+        ]);
+
+        // Both directions, as settle() writes them: the bank row's bag is what pairs it to
+        // a card payment, and without it the bank row is an ordinary withdraw.
+        $transfer->meta()->create([
+            'meta' => ['paired_transaction_id' => $payment->id],
+        ]);
+    }
+
     private function rule(array $overrides): void
     {
         RecurringTransaction::create([

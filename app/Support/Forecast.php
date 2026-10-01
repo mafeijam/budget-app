@@ -14,6 +14,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Each cash account's balance, day by day from today, from what is already known to be
@@ -663,7 +664,18 @@ class Forecast
     // What is known to be coming
     // ---------------------------------------------------------------------
 
-    /** Rows on a cash account dated after today, and pending ones, which post today at the earliest. */
+    /**
+     * Rows on a cash account dated after today, and pending ones, which post today at the
+     * earliest.
+     *
+     * A settlement's bank half is not one of them, and that exclusion is the half a type
+     * list cannot express: a card payment is a withdraw on the bank and looks like any
+     * other. It is the money leaving for a statement this page already carries as a
+     * statement event, and a settlement already made is not coming up at all. Same rule
+     * and the same reason as CashFlow::whereSpends(), reached through that one place so
+     * the two cannot drift -- a second copy of "is this settling a card" is exactly the
+     * kind of restatement that outlives the reason for it.
+     */
     private function knownRows(): void
     {
         $rows = Transaction::query()
@@ -672,6 +684,7 @@ class Forecast
             ->where(fn ($q) => $q
                 ->where('date', '>', $this->today->toDateString())
                 ->orWhere('status', TransactionStatus::Pending->value))
+            ->whereNotIn('id', CashFlow::whereSettlesACard(DB::table('transactions')))
             ->get();
 
         foreach ($rows as $row) {
@@ -682,7 +695,11 @@ class Forecast
                 (string) $row->amount,
                 $row->description,
                 $row->status === TransactionStatus::Pending->value ? 'pending' : 'scheduled',
-                ['transaction' => $row->id]
+                // The row's own date, not the one it is listed under: a pending row from an
+                // earlier day is listed under today, and a filter on the listed day would
+                // find nothing. The transaction id is here for the same reason -- a click
+                // that cannot address the one row it was about.
+                ['transaction' => $row->id, 'date' => $row->date]
             );
         }
     }

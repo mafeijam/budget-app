@@ -779,9 +779,21 @@ const open = event => {
     })
   }
 
-  // By description, not date: a pending row from an earlier day is listed under today.
+  // The row's own day as well as the description, which is a substring match and is not
+  // always unique -- every settlement for one card reads "Card payment [NAME]", so without
+  // the day this lands on that card's whole payment history rather than the event clicked.
+  // link.date is the row's own date, not the day the panel lists it under, because a
+  // pending row from an earlier day is listed under today and filtering on that finds
+  // nothing. Without it this degrades to the description alone, as it always did.
   return router.visit('/transactions', {
-    data: { filter: { account_id: event.account_id, description: event.description } },
+    data: {
+      filter: {
+        account_id: event.account_id,
+        description: event.description,
+        date_from: event.link.date,
+        date_to: event.link.date,
+      },
+    },
   })
 }
 </script>

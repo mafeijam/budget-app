@@ -720,8 +720,21 @@ const openEvent = event => {
     })
   }
 
+  // The row's own day as well as the description, which is a substring match and is not
+  // always unique -- every settlement for one card reads "Card payment [NAME]", so without
+  // the day this lands on that card's whole payment history rather than the event clicked.
+  // link.date is the row's own date rather than the day it is listed under, since a
+  // pending row from an earlier day is listed under today; without it this degrades to the
+  // description alone, which is what this always did.
   return router.visit('/transactions', {
-    data: { filter: { account_id: event.account_id, description: event.description } },
+    data: {
+      filter: {
+        account_id: event.account_id,
+        description: event.description,
+        date_from: event.link.date,
+        date_to: event.link.date,
+      },
+    },
   })
 }
 
