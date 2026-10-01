@@ -183,16 +183,29 @@
               <q-icon name="show_chart" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Stocks</div>
               <q-space />
-              <q-badge
-                v-if="unrealisedPct"
-                class="q-mr-sm"
-                :class="
-                  up(current.unrealised)
-                    ? 'app-tint app-tint--positive'
-                    : 'app-tint app-tint--negative'
-                "
-                :label="unrealisedPct"
-              />
+              <!-- The same pill as the net worth card's changes, with the label that card's
+                   carry after theirs: a bare percentage beside the figure did not say what it
+                   was a percentage of. -->
+              <div v-if="unrealisedPct" class="row items-center no-wrap q-mr-lg">
+                <q-badge
+                  class="app-change q-mr-sm"
+                  :class="
+                    up(current.unrealised)
+                      ? 'app-tint app-tint--positive'
+                      : 'app-tint app-tint--negative'
+                  "
+                >
+                  <q-icon
+                    :name="up(current.unrealised) ? 'trending_up' : 'trending_down'"
+                    size="14px"
+                  />
+                  <span class="money">
+                    {{ up(current.unrealised) ? '+' : '' }}{{ money(current.unrealised) }}
+                  </span>
+                  <span class="app-change__pct">{{ unrealisedPct }}</span>
+                </q-badge>
+                <span class="text-caption text-grey-7">unrealised</span>
+              </div>
               <div class="money text-weight-bold text-primary">{{ figure(current.value) }}</div>
             </q-card-section>
             <q-separator />
