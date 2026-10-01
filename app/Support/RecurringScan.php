@@ -7,6 +7,7 @@ use App\Enums\TransactionType;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Reads the history a recurring rule can be spotted in. The only one of the three that
@@ -48,8 +49,9 @@ class RecurringScan
             ->map(fn (TransactionType $type) => $type->value)
             ->all();
 
-        return Transaction::query()
-            ->with(['account', 'meta'])
+        // Plain rows and their bags, as the cash flow reads its year: two years of models, each
+        // with its account and bag, was most of the recurring page's second for nine fields.
+        $rows = Transaction::query()
             ->where('date', '>=', today()->subMonthsNoOverflow($months)->toDateString())
             ->whereIn('type', $types)
             ->whereHas('account', fn (Builder $query) => $query->whereIn('type', [
@@ -57,20 +59,26 @@ class RecurringScan
                 AccountType::Card->value,
             ]))
             ->orderBy('date')
-            ->get()
+            ->toBase()
+            ->get(['id', 'account_id', 'type', 'description', 'ccy', 'date', 'amount', 'category_id']);
+
+        $bags = CashFlow::bagsOf($rows->pluck('id')->all());
+        $accounts = DB::table('accounts')->pluck('name', 'id');
+
+        return $rows
             // In PHP and not in the query: the bag is a row on another table, and a JSON path
             // cannot be indexed, so this is a pass over what has been read either way.
-            ->reject(fn (Transaction $row) => isset($row->meta?->meta['paired_transaction_id']))
-            ->map(fn (Transaction $row) => [
+            ->reject(fn (object $row) => isset($bags[$row->id]['paired_transaction_id']))
+            ->map(fn (object $row) => [
                 'account_id' => $row->account_id,
-                'account' => $row->account->name,
+                'account' => $accounts[$row->account_id],
                 'type' => $row->type,
                 'description' => $row->description,
                 'ccy' => $row->ccy,
                 'date' => $row->date,
                 'amount' => $row->amount,
                 // What a card owes for a charge in another currency, for a rule written from it.
-                'card_amount' => $row->meta?->meta['card_amount'] ?? null,
+                'card_amount' => $bags[$row->id]['card_amount'] ?? null,
                 'category_id' => $row->category_id,
             ])
             ->values()
