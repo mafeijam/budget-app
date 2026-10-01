@@ -81,45 +81,112 @@
     from dense: dense sizes the field, not its menu.
   -->
   <div v-if="rowOpen" class="app-filter-panel row q-col-gutter-sm items-center">
-    <!-- The mask goes on the q-date: a q-input mask is a different parser. -->
+    <!-- A field for each end, so a range can be open: everything since a day, or everything up
+         to one. The mask goes on the q-date: a q-input mask is a different parser. -->
     <q-input
-      :model-value="rangeLabel"
-      class="col-12 col-sm-6 col-md-3"
-      :label="counted ? 'Counted' : 'Date'"
+      v-for="end in rangeEnds"
+      :key="end.key"
+      :model-value="edge[end.key]"
+      class="col-12 col-sm-6 col-md-3 app-date-field"
+      :label="counted ? `Counted ${end.key}` : end.label"
       dense
       outlined
       bg-color="white"
       readonly
-      clearable
-      @clear="range = null"
     >
       <template #append>
+        <!-- Quasar draws its own clear icon only on a field that can be typed in, so on a
+             readonly one `clearable` is accepted and never shown. -->
+        <q-icon
+          v-if="edge[end.key]"
+          name="cancel"
+          class="q-field__focusable-action"
+          tabindex="0"
+          role="button"
+          aria-label="Clear"
+          @click="edge[end.key] = null"
+          @keyup.enter="edge[end.key] = null"
+        />
         <q-btn flat dense round icon="event">
-          <q-menu ref="rangeMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
-            <!-- The ranges asked for most, beside the calendar for any other. -->
-            <div class="row no-wrap">
-              <q-list dense class="app-range-shortcuts">
-                <q-item-label header class="q-pb-xs">Quick</q-item-label>
-                <q-item
-                  v-for="shortcut in rangeShortcuts"
-                  :key="shortcut.label"
-                  clickable
-                  :active="isRange(shortcut)"
-                  active-class="app-range-shortcuts--on"
-                  @click="pickRange(shortcut)"
-                >
-                  <q-item-section>
-                    <q-item-label>{{ shortcut.label }}</q-item-label>
-                    <q-item-label caption>{{ shortcut.from }} – {{ shortcut.to }}</q-item-label>
-                  </q-item-section>
-                </q-item>
-              </q-list>
-              <q-date v-model="range" range mask="YYYY-MM-DD" minimal color="primary" />
-            </div>
+          <q-menu
+            v-model="menus[end.key]"
+            :offset="[10, 15]"
+            anchor="bottom right"
+            self="top right"
+          >
+            <!-- no-unset: a click on the day already picked would clear the filter, and the
+                 field's own clear button is the way to do that. The options keep the ends in
+                 order, so a From after the To is not one that can be picked. -->
+            <q-date
+              v-model="edge[end.key]"
+              mask="YYYY-MM-DD"
+              minimal
+              no-unset
+              color="primary"
+              :options="end.options"
+              @update:model-value="menus[end.key] = false"
+            />
           </q-menu>
         </q-btn>
       </template>
     </q-input>
+
+    <!-- A cash account's month by the row's own date, as the bank's statement shows it;
+         beside the cards' statement month, which goes by when a charge is paid. -->
+    <q-select
+      v-model="filters.month"
+      :options="shownMonths"
+      class="col-12 col-sm-6 col-md-3"
+      label="Cash month"
+      outlined
+      bg-color="white"
+      dense
+      options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="0"
+      multiple
+      clearable
+      :display-value="shown(filters.month)"
+      @filter="filterMonths"
+    >
+      <template #prepend>
+        <q-icon name="calendar_month" size="xs" color="grey-6" />
+      </template>
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey">Nothing matches</q-item-section>
+        </q-item>
+      </template>
+    </q-select>
+
+    <!-- Every card's statements due in the months picked, from every month there has been one. -->
+    <q-select
+      v-model="filters.due_month"
+      :options="shownDueMonths"
+      class="col-12 col-sm-6 col-md-3"
+      label="Statement month"
+      outlined
+      bg-color="white"
+      dense
+      options-dense
+      autocomplete="off"
+      use-input
+      input-debounce="0"
+      multiple
+      clearable
+      :display-value="shown(filters.due_month)"
+      @filter="filterDueMonths"
+    >
+      <template #prepend>
+        <q-icon name="event_note" size="xs" color="grey-6" />
+      </template>
+      <template #no-option>
+        <q-item dense>
+          <q-item-section class="text-grey">Nothing matches</q-item-section>
+        </q-item>
+      </template>
+    </q-select>
 
     <q-select
       v-model="filters.account_id"
@@ -301,63 +368,6 @@
         </q-item>
       </template>
     </q-select>
-
-    <!-- A cash account's month by the row's own date, as the bank's statement shows it;
-         beside the cards' statement month, which goes by when a charge is paid. -->
-    <q-select
-      v-model="filters.month"
-      :options="shownMonths"
-      class="col-12 col-sm-6 col-md-3"
-      label="Cash month"
-      outlined
-      bg-color="white"
-      dense
-      options-dense
-      autocomplete="off"
-      use-input
-      input-debounce="0"
-      multiple
-      clearable
-      :display-value="shown(filters.month)"
-      @filter="filterMonths"
-    >
-      <template #prepend>
-        <q-icon name="calendar_month" size="xs" color="grey-6" />
-      </template>
-      <template #no-option>
-        <q-item dense>
-          <q-item-section class="text-grey">Nothing matches</q-item-section>
-        </q-item>
-      </template>
-    </q-select>
-
-    <!-- Every card's statements due in the months picked, from every month there has been one. -->
-    <q-select
-      v-model="filters.due_month"
-      :options="shownDueMonths"
-      class="col-12 col-sm-6 col-md-3"
-      label="Statement month"
-      outlined
-      bg-color="white"
-      dense
-      options-dense
-      autocomplete="off"
-      use-input
-      input-debounce="0"
-      multiple
-      clearable
-      :display-value="shown(filters.due_month)"
-      @filter="filterDueMonths"
-    >
-      <template #prepend>
-        <q-icon name="event_note" size="xs" color="grey-6" />
-      </template>
-      <template #no-option>
-        <q-item dense>
-          <q-item-section class="text-grey">Nothing matches</q-item-section>
-        </q-item>
-      </template>
-    </q-select>
   </div>
 
   <!-- Below the bar rather than in it, so nothing there moves when a filter is set. -->
@@ -490,90 +500,52 @@ const filters = reactive(parse(seeded))
 // jumped up under the old rows before they were replaced.
 const applied = computed(() => parse(page.props.params?.filter ?? {}))
 
-// Today in the app's time zone, which the server's dates are in; the browser's day differs
-// from Hong Kong's for hours of every day.
-const todayHere = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: page.props.tz ?? 'Asia/Hong_Kong' }).format(
-    new Date(),
-  )
+const menus = reactive({ from: false, to: false })
 
-// A month's first and last day, `back` months before today's, as YYYY-MM-DD.
-const monthBounds = back => {
-  const [year, month] = todayHere().split('-').map(Number)
-  const first = new Date(Date.UTC(year, month - 1 - back, 1))
-  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0))
-
-  return [first, last].map(day => day.toISOString().slice(0, 10))
-}
-
-const rangeShortcuts = computed(() => {
-  const [thisFrom] = monthBounds(0)
-  const [lastFrom, lastTo] = monthBounds(1)
-  const [threeFrom] = monthBounds(2)
-  const today = todayHere()
-
-  return [
-    { label: 'This month', from: thisFrom, to: today },
-    { label: 'Last month', from: lastFrom, to: lastTo },
-    { label: 'Last 3 months', from: threeFrom, to: today },
-  ]
-})
-
-const rangeMenu = ref(null)
-
-// Which range the Date field is talking about. A link from the cash flow page arrives asking
-// for a counted one, and the field has to be talking about the same range the rows are: a
-// month of statements due, where a card charge is dated by its due date, would show empty
+// Which range the From and To fields are talking about. A link from the cash flow page arrives
+// asking for a counted one, and the fields have to be talking about the same range the rows are:
+// a month of statements due, where a card charge is dated by its due date, would show empty
 // beside seven rows, and picking a day in it would quietly switch the question to the row's
-// own date and bring the month's income back with it.
-const counted = computed(() => !filters.date_from && !!filters.counted_from)
+// own date and bring the month's income back with it. Either end alone is enough to be a
+// counted range, so clearing one end of it does not hand the other to the row's date.
+const counted = computed(
+  () => !filters.date_from && !filters.date_to && (!!filters.counted_from || !!filters.counted_to),
+)
 
-const isRange = shortcut => {
-  const [from, to] = counted.value
-    ? [filters.counted_from, filters.counted_to]
-    : [filters.date_from, filters.date_to]
+const rangeKeys = computed(() =>
+  counted.value ? ['counted_from', 'counted_to'] : ['date_from', 'date_to'],
+)
 
-  return from === shortcut.from && to === shortcut.to
+// One end of whichever range is on. Writing one leaves the other range empty on both ends: a
+// hand-made URL can carry both and the server ANDs them, which is a list of nothing; and a
+// field that kept the other would be showing a month the rows are not from.
+const endOf = index =>
+  computed({
+    get: () => filters[rangeKeys.value[index]],
+    set: value => {
+      const keys = rangeKeys.value
+      const other = ['date_from', 'date_to', 'counted_from', 'counted_to'].filter(
+        key => !keys.includes(key),
+      )
+
+      other.forEach(key => (filters[key] = null))
+      filters[keys[index]] = value || null
+    },
+  })
+
+const edge = reactive({ from: endOf(0), to: endOf(1) })
+
+// A q-date hands its days to `options` as YYYY/MM/DD whatever the mask says.
+const dashed = day => day.replaceAll('/', '-')
+
+const rangeEnds = [
+  { key: 'from', label: 'From', options: day => !edge.to || dashed(day) <= edge.to },
+  { key: 'to', label: 'To', options: day => !edge.from || dashed(day) >= edge.from },
+]
+
+const clearRange = () => {
+  Object.assign(filters, { date_from: null, date_to: null, counted_from: null, counted_to: null })
 }
-
-const pickRange = shortcut => {
-  range.value = { from: shortcut.from, to: shortcut.to }
-  rangeMenu.value?.hide()
-}
-
-const range = computed({
-  get: () => {
-    const [from, to] = counted.value
-      ? [filters.counted_from, filters.counted_to]
-      : [filters.date_from, filters.date_to]
-
-    if (!from) return null
-
-    return from === to ? from : { from, to }
-  },
-  set: value => {
-    const from = typeof value === 'string' ? value : (value?.from ?? null)
-    const to = typeof value === 'string' ? value : (value?.to ?? null)
-
-    // One range at a time. A hand-made URL can carry both and the server ANDs them, which is
-    // a list of nothing; and a field that kept the other would be showing a month the rows
-    // are not from.
-    filters.date_from = counted.value ? null : from
-    filters.date_to = counted.value ? null : to
-    filters.counted_from = counted.value ? from : null
-    filters.counted_to = counted.value ? to : null
-  },
-})
-
-const rangeLabel = computed(() => {
-  const [from, to] = counted.value
-    ? [filters.counted_from, filters.counted_to]
-    : [filters.date_from, filters.date_to]
-
-  if (!from) return ''
-
-  return from === to ? from : `${from} – ${to}`
-})
 
 const query = () =>
   Object.fromEntries(
@@ -624,27 +596,31 @@ const chips = computed(() => {
       ]
     : []
 
-  const stated = (from, to) => (from === to ? from : `${from} – ${to}`)
+  // Either end may be open, and an open one says so rather than printing a dash with nothing
+  // after it.
+  const stated = (from, to) =>
+    from && to ? (from === to ? from : `${from} – ${to}`) : from ? `from ${from}` : `until ${to}`
 
   // One chip for whichever range is on, named for it. A counted range is not the row's day
   // and a chip reading "Date" over a month of statements due would be the wrong name for it.
-  const dated = on.date_from
-    ? [
-        {
-          key: 'date',
-          label: `Date: ${stated(on.date_from, on.date_to)}`,
-          remove: () => (range.value = null),
-        },
-      ]
-    : on.counted_from
+  const dated =
+    on.date_from || on.date_to
       ? [
           {
             key: 'date',
-            label: `Counted: ${stated(on.counted_from, on.counted_to)}`,
-            remove: () => (range.value = null),
+            label: `Date: ${stated(on.date_from, on.date_to)}`,
+            remove: clearRange,
           },
         ]
-      : []
+      : on.counted_from || on.counted_to
+        ? [
+            {
+              key: 'date',
+              label: `Counted: ${stated(on.counted_from, on.counted_to)}`,
+              remove: clearRange,
+            },
+          ]
+        : []
 
   // A value that does not say yes is no filter, so an off spending is no chip either.
   const spending =

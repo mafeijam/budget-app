@@ -1893,13 +1893,9 @@ body {
   padding: 8px 12px;
 }
 
-/* The date filter's quick ranges, a column beside its calendar. */
-.app-range-shortcuts {
-  min-width: 180px;
-  border-right: 1px solid var(--app-border);
-}
-
-.app-range-shortcuts--on {
-  background: var(--app-btn-tint);
-  color: var(--app-primary-ink);
+/* The date filter's fields are readonly, which Quasar draws with a dashed outline to say they
+   cannot be typed in. They are pickers and stand beside selects that draw solid, so a dashed
+   pair reads as disabled. */
+.q-field--outlined.q-field--readonly.app-date-field .q-field__control:before {
+  border-style: solid;
 }
