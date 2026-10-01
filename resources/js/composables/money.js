@@ -90,18 +90,21 @@ export const byAmountDescending = (a, b) => {
  * currency first, since it is the currency the card's own figure is in, then the others in
  * the order they arrive.
  *
- * A group is headed only where a heading does work: the card must hold more than one
- * currency, and the group must have more than one row. A group of one has nothing to be
- * separated from and its total is the row's own figure, already on screen.
+ * A group says one thing about money: what its rows add up to *in the currency it names*.
+ * `own` is that figure, `total` is the same money worth the card's currency, and the two are
+ * never the same number where a rate was applied -- so a heading takes `own` and a row's
+ * bold figure takes `total`, and neither has to explain itself.
  *
- * The base total is the sum of the figures already on the rows, all of which are in the base
- * currency -- a USD account's bold figure is its HKD worth and the dollars sit beside it as
- * the native. So it is what adds up to the card's own figure, and it leads the heading for
- * that reason. The native beside it answers the other question, how much there is in
- * dollars, and only where every row of the group has one: a partial native total is not a
- * subtotal of anything.
+ * Every group is headed once the card holds more than one currency, a group of one included:
+ * the single USD row among HKD ones is the row that most needs saying what it is. Its heading
+ * carries that one row's own money and the row beneath carries its worth in the card's
+ * currency, so nothing is printed twice.
  *
- * @param list<{ccy: string, total: string, nativeTotal: ?string}> items
+ * `converted` is the gap between the card's own figure and the base group's: the rows in
+ * another currency, already worth the card's currency. Without it the two figures on the card
+ * differ by an amount nothing names, and no heading reaches the card's figure on its own.
+ *
+ * @param list<{ccy: string, total: string, own: string, converted: bool}> items
  * @param string base
  */
 export function groupedByCurrency(items, base) {
@@ -114,28 +117,48 @@ export function groupedByCurrency(items, base) {
     if (existing) {
       existing.items.push(item)
       existing.total = plus(existing.total, item.total)
-      existing.native = item.nativeTotal ? plus(existing.native, item.nativeTotal) : null
-      existing.allNative = existing.allNative && item.nativeTotal !== null
+      existing.own = plus(existing.own, item.own)
       continue
     }
 
     const group = {
       ccy: item.ccy,
+      base: item.ccy === base,
       total: item.total,
-      native: item.nativeTotal,
-      allNative: item.nativeTotal !== null,
+      own: item.own,
       items: [item],
     }
+
     byCcy.set(item.ccy, group)
     groups.push(group)
   }
 
-  const sorted = groups.sort((a, b) => (a.ccy === base ? -1 : b.ccy === base ? 1 : 0))
+  const sorted = groups.sort((a, b) => (a.base ? -1 : b.base ? 1 : 0))
 
   for (const group of sorted) {
-    group.headed = sorted.length > 1 && group.items.length > 1
-    group.native = group.allNative ? group.native : null
+    group.headed = sorted.length > 1
+
+    // Whether the heading carries a figure. A run of one has no sum to state: its own money
+    // is on the row beneath it, and a heading that repeats it puts the same figure on screen
+    // twice a few pixels apart. The run in the card's own currency is the exception, since
+    // its figure is the one the card's figure is reconciled with.
+    group.ownShown = group.base || group.items.length > 1
+
+    // Whether `total` is a sum in the card's currency at all. A run in another currency with
+    // no rate has no base figure, so its total is its own money under the wrong column's
+    // name, and a column of figures meant to add up cannot print one.
+    group.inBase = group.base || group.items.every(item => item.converted)
   }
 
-  return sorted
+  const foreign = sorted.filter(group => !group.base && group.inBase)
+
+  return {
+    groups: sorted,
+    converted: foreign.length
+      ? {
+          total: foreign.reduce((sum, group) => plus(sum, group.total), '0'),
+          from: foreign.map(group => group.ccy),
+        }
+      : null,
+  }
 }

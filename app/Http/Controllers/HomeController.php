@@ -88,6 +88,17 @@ class HomeController extends Controller
             ? null
             : $rates->toBase($amount, $ccy, $day)?->__toString();
 
+        // The rate each currency went at today, so a card row held in another can quote what
+        // converted its figure rather than only that it was converted -- the only place a
+        // rate is ever stated rather than applied. Read off the rates already in hand, and
+        // left out where there is none: a row with no base figure was converted at nothing,
+        // and a nearby close would be a claim about a day nobody asked for.
+        $ratesFor = fn (array $ccys) => collect($ccys)->unique()
+            ->reject(fn (string $ccy) => $ccy === Fx::BASE->value)
+            ->mapWithKeys(fn (string $ccy) => [$ccy => $rates->rate($ccy, $day)])
+            ->filter()
+            ->all();
+
         $cash = $cashAccounts
             ->filter(fn (Account $account) => $account->status === 'active'
                 || ! BigDecimal::of($balances[$account->id])->isZero())
@@ -163,6 +174,11 @@ class HomeController extends Controller
             'brokerages' => $brokerages,
             'statements' => $statements,
             'base' => Fx::BASE->value,
+
+            // The rate each currency with money on this page went at today, for a row held in
+            // another to quote beside its own money.
+            'rates' => $ratesFor($cash->pluck('ccy')->merge($brokerages->pluck('ccy'))->all()),
+
             'headline' => [
                 ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
 

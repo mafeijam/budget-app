@@ -52,6 +52,10 @@ class NetWorthController extends Controller
         return inertia('net-worth', [
             'base' => Fx::BASE->value,
             'current' => $current,
+            // What each currency went at on the day the cards show, so a row held in another
+            // can say what converted it. That day, not today: a snapshot picked on the chart
+            // was built at that day's rate and a rate from today would not be the one.
+            'rates' => $worth->ratesOn($at->toDateString()),
             'lastMonth' => $against($at->copy()->startOfMonth()->subDay()->toDateString()),
             'since' => $first === null ? null : $against(Carbon::parse($first)->endOfMonth()->toDateString()),
             'history' => $worth->history($months, $today),

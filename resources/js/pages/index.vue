@@ -48,18 +48,42 @@
               v-for="group in figure.groups ?? [{ ccy: null, items: figure.items }]"
               :key="group.ccy ?? 'all'"
             >
+              <!-- Currency, what the run is made of, and what it comes to in the currency
+                   named: the money as held, which is not the figure the card sums. The count
+                   under the code is what stops a row of a figure reading as an account of
+                   its own. -->
               <div v-if="group.headed" class="app-home-list__group">
-                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
-                <span class="row items-baseline no-wrap">
-                  <!-- How much there is in this currency, beside what it is worth: the rows
-                       beneath carry the same pair, so a heading reads like its rows. -->
-                  <span v-if="group.native" class="text-caption text-grey-6 money q-mr-sm">
-                    {{ money(group.native) }}
-                  </span>
-                  <span class="text-caption text-weight-medium text-grey-8 money">
-                    {{ money(group.total) }}
+                <span class="app-home-list__group-label">
+                  <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                  <span class="app-home-list__group-count">
+                    {{ counted(group.items.length, figure.noun) }}
                   </span>
                 </span>
+                <div class="app-home-list__group-figures text-right">
+                  <!-- What the run comes to in the currency the heading names. A run of one
+                       has no sum to state: its own money is on the row beneath it, and two
+                       figures a few pixels apart is one figure read twice. The run in the
+                       card's own currency is the exception, since its figure is what the note
+                       under it reconciles with the card's. -->
+                  <div
+                    v-if="group.ownShown"
+                    class="text-caption text-weight-medium text-grey-8 money"
+                  >
+                    {{ money(group.own) }}
+                    <!-- The rate on a run held in another currency, where nothing else on the
+                         card states it: a run of one has no row figure to put it on. -->
+                    <q-tooltip v-if="rateFor(group)" :delay="500" :offset="[0, 6]">
+                      1 {{ group.ccy }} = {{ rateFor(group) }} {{ base }}
+                    </q-tooltip>
+                  </div>
+                  <!-- Only on the run in the card's own currency, and only where something
+                       converted: this is what turns the figure above into the card's figure,
+                       which the base run's money alone falls short of by exactly this. -->
+                  <div v-if="group.base && figure.converted" class="app-home-list__group-note">
+                    +{{ money(figure.converted.total) }} converted from
+                    {{ figure.converted.from.join(', ') }}
+                  </div>
+                </div>
               </div>
 
               <div
@@ -89,32 +113,33 @@
                   </div>
                 </div>
                 <div class="app-home-list__figures text-right">
-                  <!-- Held in another currency: that money beside the base figure the card sums,
-                       on its line, so a foreign row is no taller than the rest -- or under it
-                       when the row has a line of its own, whose name would lose the width. -->
-                  <div class="row items-baseline no-wrap justify-end">
-                    <span
-                      v-if="item.native && !item.lines?.length"
-                      class="text-caption text-grey-6 money q-mr-sm"
-                    >
-                      {{ item.ccy }} {{ item.native }}
-                    </span>
-                    <span class="text-body2 text-weight-bold money" :class="item.valueClass">
-                      {{ item.value }}
-                    </span>
-                  </div>
-                  <div
-                    v-if="item.native && item.lines?.length"
-                    class="text-caption text-grey-6 money"
+                  <!-- Held in another currency: what the account holds takes the figure slot,
+                       since that is the money it is worth mentioning, and what that comes to
+                       in the card's currency goes under it in the same light grey as every
+                       other small text here. A card holding one currency has no heading to
+                       name it, so there the own money carries its code. -->
+                  <span
+                    v-if="item.converted"
+                    class="text-body2 text-weight-bold money"
+                    :class="item.valueClass"
                   >
-                    {{ item.ccy }} {{ item.native }}
+                    {{ group.headed ? money(item.own) : `${item.ccy} ${money(item.own)}` }}
+                    <q-tooltip v-if="rateFor(item)" :delay="500" :offset="[0, 6]">
+                      1 {{ item.ccy }} = {{ rateFor(item) }} {{ base }}
+                    </q-tooltip>
+                  </span>
+                  <span v-else class="text-body2 text-weight-bold money" :class="item.valueClass">
+                    {{ item.value }}
+                  </span>
+
+                  <div v-if="item.converted" class="text-caption text-grey-6 money">
+                    {{ base }} {{ item.value }}
                   </div>
-                  <!-- Only when it is not the base: then the figure is not the card's
-                       currency. A header over this row's own group already says it, so the
-                       label is for a group with no header -- which is every group of one,
-                       where the row is the only thing naming its currency. -->
+                  <!-- A card holding one currency throughout has no heading over its rows,
+                       so a row nothing could convert is a figure in its own currency with
+                       nothing saying that. -->
                   <div
-                    v-if="!group.headed && !item.native && item.ccy && item.ccy !== base"
+                    v-if="!group.headed && !item.converted && item.ccy && item.ccy !== base"
                     class="text-caption text-grey-6"
                   >
                     {{ item.ccy }}
@@ -366,6 +391,8 @@ const props = defineProps({
   brokerages: { type: Array, default: Array },
   statements: { type: Array, default: Array },
   base: { type: String, default: 'HKD' },
+  // What each currency went at today, so a row held in another can say what converted it.
+  rates: { type: Object, default: () => ({}) },
   headline: { type: Object, default: () => ({ unconverted: [] }) },
   trend: { type: Array, default: Array },
   attention: { type: Array, default: Array },
@@ -379,6 +406,15 @@ const props = defineProps({
 
 const money = useMoney()
 const formatDate = useCalendarDay()
+
+// A rate to four places, since a rate is not a sum of money and its fourth place is the one
+// that decides what a converted figure comes to.
+const rate = useMoney(4)
+
+const rateFor = item => (props.rates?.[item.ccy] ? rate(props.rates[item.ccy]) : null)
+
+/* Zero plural, because the count and the word are put together here and nowhere else. */
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`
 
 // The trend is deferred, so it is empty until it arrives. The caption counts the points
 // it has, which read "last -1 months" before any have; a fixed wording waits instead.
@@ -419,6 +455,14 @@ const percent = (part, whole) =>
 // The net worth chart's colours, so a line here is the same line there.
 const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value: '#2563eb' }
 
+const heldCash = computed(() => cashItems.value.filter(item => !item.empty))
+const openBrokers = computed(() => brokerItems.value.filter(item => !item.empty))
+
+// Grouped once, and the heading and the note that bridges it to the card's figure both come
+// off the same answer: the second is the sum of the first's runs outside the base currency.
+const cashGroups = computed(() => groupedByCurrency(heldCash.value, props.base))
+const brokerGroups = computed(() => groupedByCurrency(openBrokers.value, props.base))
+
 const headlineFigures = computed(() => {
   const h = props.headline
 
@@ -435,8 +479,7 @@ const headlineFigures = computed(() => {
     }
   }
 
-  const held = cashItems.value.filter(item => !item.empty)
-  const emptyCash = cashItems.value.length - held.length
+  const emptyCash = cashItems.value.length - heldCash.value.length
 
   return [
     {
@@ -455,8 +498,10 @@ const headlineFigures = computed(() => {
       value: h.cash,
       class: negative(h.cash) ? 'text-negative' : 'text-positive',
       ...onLastMonth('cash'),
-      items: held,
-      groups: groupedByCurrency(held, props.base),
+      noun: 'account',
+      items: heldCash.value,
+      groups: cashGroups.value.groups,
+      converted: cashGroups.value.converted,
       more: emptyCash ? `+${emptyCash} empty` : null,
       empty: 'No cash account yet.',
     },
@@ -468,11 +513,10 @@ const headlineFigures = computed(() => {
       class: 'text-primary',
       // The same note as the others: the unrealised gain is on each brokerage's row.
       ...onLastMonth('value'),
-      items: brokerItems.value.filter(item => !item.empty),
-      groups: groupedByCurrency(
-        brokerItems.value.filter(item => !item.empty),
-        props.base,
-      ),
+      noun: 'brokerage',
+      items: openBrokers.value,
+      groups: brokerGroups.value.groups,
+      converted: brokerGroups.value.converted,
     },
     {
       label: 'Cards owe',
@@ -760,13 +804,16 @@ const cashItems = computed(() =>
       key: account.id,
       name: account.name,
       ccy: account.ccy,
-      // The figure as it is shown, and the native behind it, both as decimal strings: the
-      // group's totals are added from these, and a formatted figure carries its thousands
-      // separators into the sum.
+      // The figure the card sums, in the card's currency, and the money as held, both as
+      // decimal strings: a group's figures are added from these, and a formatted figure
+      // carries its thousands separators into the sum.
       total: account.base ?? account.balance,
-      nativeTotal: account.base ? account.balance : null,
+      own: account.balance,
+      // Whether a rate converted it. The base currency is never converted, and a currency
+      // with no rate yet is not either -- and there the figure the card would have shown is
+      // the row's own money, which is why this is asked separately of the figure itself.
+      converted: account.base !== null && account.ccy !== props.base,
       value: money(account.base ?? account.balance),
-      native: account.base ? money(account.balance) : null,
       valueClass: negative(account.balance) ? 'text-negative' : 'text-grey-9',
       empty: isZero(account.balance),
       lines:
@@ -788,11 +835,11 @@ const brokerItems = computed(() =>
       key: broker.id,
       name: broker.name,
       ccy: broker.ccy,
-      // As shown, and the native behind it, as decimal strings for the group's totals.
+      // As shown, and the money as held, as decimal strings for the group's figures.
       total: broker.market_value_base ?? broker.market_value,
-      nativeTotal: broker.market_value_base ? broker.market_value : null,
+      own: broker.market_value,
+      converted: broker.market_value_base !== null && broker.ccy !== props.base,
       value: money(broker.market_value_base ?? broker.market_value),
-      native: broker.market_value_base ? money(broker.market_value) : null,
       valueClass: 'text-grey-9',
       empty: broker.open === 0 && isZero(broker.market_value),
       lines: [

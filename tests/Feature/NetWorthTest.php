@@ -172,6 +172,26 @@ class NetWorthTest extends TestCase
         }
     }
 
+    public function test_the_page_states_the_rate_a_foreign_row_was_converted_at(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+        $this->row($usd, 'deposit', '2026-02-10', '100');
+        $this->price('USDHKD=X', '2026-09-11', '7.8', 'HKD');
+        $this->price('USDHKD=X', '2026-09-15', '9', 'HKD');
+
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
+            // The card's row shows the figure converted, so the page carries the rate that did
+            // it: the only place one is ever stated rather than applied.
+            ->where('rates', ['USD' => '9.0000'])
+        );
+
+        // The day the cards read, not today: a snapshot picked on the chart was built at that
+        // day's rate, so the same page asked for an earlier day has to quote the earlier rate.
+        $this->get('/net-worth?at=2026-09-11')->assertInertia(fn (Assert $page) => $page
+            ->where('rates', ['USD' => '7.8000'])
+        );
+    }
+
     private function row(Account $account, string $type, string $date, string $amount, array $extra = []): void
     {
         $this->post('/transactions', [

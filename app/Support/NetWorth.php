@@ -54,6 +54,32 @@ class NetWorth
     }
 
     /**
+     * What each currency held went at on a day, in the base currency.
+     *
+     * For a row held in another to say what converted its figure, which is the only place a
+     * rate is ever stated rather than applied. Asked for the day the page shows rather than
+     * for today: a snapshot picked on the chart was built at that day's rate, so a rate from
+     * today would not be the one its figures went at. A currency with no rate on that day is
+     * left out -- a row whose base figure is null was converted at nothing.
+     *
+     * @return array<string, string> currency => one unit of it in the base currency
+     */
+    public function ratesOn(string $day): array
+    {
+        $rates = [];
+
+        foreach ($this->accounts->pluck('ccy')->unique() as $ccy) {
+            $rate = $ccy === Fx::BASE->value ? null : $this->fx->rate($ccy, $day);
+
+            if ($rate !== null) {
+                $rates[$ccy] = $rate;
+            }
+        }
+
+        return $rates;
+    }
+
+    /**
      * The same figures for a run of days, in a fixed number of queries rather than one per
      * day.
      *

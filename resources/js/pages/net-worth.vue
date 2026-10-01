@@ -107,33 +107,71 @@
               <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
             </q-card-section>
             <q-separator />
-            <template v-for="group in cashGroups" :key="group.ccy">
+            <template v-for="group in cashGroups.groups" :key="group.ccy">
               <div v-if="group.headed" class="app-worth-row app-worth-row--group">
-                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
-                <span class="row items-baseline no-wrap">
-                  <span v-if="group.native" class="text-caption text-grey-6 money q-mr-sm">
-                    {{ money(group.native) }}
-                  </span>
-                  <span class="text-caption text-weight-medium text-grey-8 money">
-                    {{ money(group.total) }}
+                <span class="app-home-list__group-label">
+                  <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                  <span class="app-home-list__group-count">
+                    {{ counted(group.items.length, 'account') }}
                   </span>
                 </span>
+                <div class="app-home-list__group-figures text-right">
+                  <!-- What these rows come to in the currency the heading names. A run of one
+                       has no sum to state: its own money is on the row beneath it. The run in
+                       the card's own currency keeps its figure, since that is the one the note
+                       under it reconciles with the card's. -->
+                  <div
+                    v-if="group.ownShown"
+                    class="money text-caption text-weight-medium text-grey-8"
+                  >
+                    {{ money(group.own) }}
+                    <!-- The rate on a run held in another currency, where nothing else in the
+                         card states it: a run of one has no row figure to put it on. -->
+                    <q-tooltip v-if="rateFor(group)" :delay="500" :offset="[0, 6]">
+                      1 {{ group.ccy }} = {{ rateFor(group) }} {{ base }}
+                    </q-tooltip>
+                  </div>
+                  <div v-if="group.base && cashConverted" class="app-home-list__group-note">
+                    +{{ money(cashConverted.total) }} converted from
+                    {{ cashConverted.from.join(', ') }}
+                  </div>
+                </div>
               </div>
 
               <div v-for="account in group.items" :key="account.id" class="app-worth-row">
                 <span class="text-grey-9 ellipsis">{{ account.name }}</span>
                 <div class="text-right">
-                  <div class="money text-weight-medium">
-                    {{ money(account.base ?? account.balance) }}
+                  <!-- As on the home page's cards: what the account holds takes the figure, and
+                       what it is worth in the card's currency goes under it in the same light
+                       grey. A card holding one currency has no heading to name the own money,
+                       so there it carries its code. -->
+                  <span class="money text-weight-medium">
+                    {{
+                      account.converted
+                        ? group.headed
+                          ? money(account.own)
+                          : `${account.ccy} ${money(account.own)}`
+                        : money(account.total)
+                    }}
+                    <q-tooltip
+                      v-if="account.converted && rateFor(account)"
+                      :delay="500"
+                      :offset="[0, 6]"
+                    >
+                      1 {{ account.ccy }} = {{ rateFor(account) }} {{ base }}
+                    </q-tooltip>
+                  </span>
+                  <div v-if="account.converted" class="text-caption text-grey-6 money">
+                    {{ base }} {{ money(account.total) }}
                   </div>
-                  <!-- In the base currency first, as every figure here is; its own money under
-                       it. A group heading already names the currency, so this is for the rows
-                       it does not reach. -->
+                  <!-- A card holding one currency throughout has no heading over its rows, so
+                       a row nothing could convert is a figure in its own currency with nothing
+                       saying that. -->
                   <div
-                    v-if="!group.headed && account.ccy !== base"
-                    class="text-caption text-grey-6 money"
+                    v-if="!group.headed && !account.converted && account.ccy !== base"
+                    class="text-caption text-grey-6"
                   >
-                    {{ account.ccy }} {{ money(account.balance) }}
+                    {{ account.ccy }}
                   </div>
                 </div>
               </div>
@@ -174,23 +212,33 @@
             <!--
               A currency's own sum is a row like the All brokerages one under it, carrying the
               three figures it adds, rather than a heading over its rows: this is a four column
-              table and a heading would leave three cells empty. The native sits under the
-              value it belongs to, as it does on a brokerage's own row.
+              table and a heading would leave three cells empty. The money as held sits under
+              the value it belongs to, as it does on a brokerage's own row.
+
+              A run of one row gets no sum row, because these three figures are the card's
+              currency and are already on that one row -- unlike a heading, which would carry
+              the run's own money. A run nothing could convert gets none either: its figures
+              would be its own money under the wrong column's name, and this column adds up.
             -->
             <template v-for="group in brokerageGroups" :key="group.ccy">
               <div v-for="broker in group.items" :key="broker.id" class="app-worth-stocks">
                 <span class="text-grey-9 ellipsis">{{ broker.name }}</span>
                 <div class="text-right money">
-                  <div class="text-weight-medium">
-                    {{ money(broker.value_base ?? broker.value) }}
+                  <div class="text-weight-medium">{{ money(broker.total) }}</div>
+                  <div v-if="broker.converted" class="text-caption text-grey-6">
+                    {{ broker.ccy }} {{ money(broker.own) }}
+                    <q-tooltip v-if="rateFor(broker)" :delay="500" :offset="[0, 6]">
+                      1 {{ broker.ccy }} = {{ rateFor(broker) }} {{ base }}
+                    </q-tooltip>
                   </div>
-                  <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
-                    {{ broker.ccy }} {{ money(broker.value) }}
+                  <!-- Nothing converted it, so the figure above is its own money and says so. -->
+                  <div v-else-if="broker.ccy !== base" class="text-caption text-grey-6">
+                    {{ broker.ccy }}
                   </div>
                 </div>
                 <div class="text-right money text-grey-8">
                   <div>{{ money(broker.cost_base ?? broker.cost) }}</div>
-                  <div v-if="broker.ccy !== base" class="text-caption text-grey-6">
+                  <div v-if="broker.converted" class="text-caption text-grey-6">
                     {{ broker.ccy }} {{ money(broker.cost) }}
                   </div>
                 </div>
@@ -202,12 +250,22 @@
                 </div>
               </div>
 
-              <div v-if="group.headed" class="app-worth-stocks app-worth-stocks--subtotal">
-                <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+              <div
+                v-if="group.headed && group.inBase && group.items.length > 1"
+                class="app-worth-stocks app-worth-stocks--subtotal"
+              >
+                <span class="app-home-list__group-label">
+                  <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                  <span class="app-home-list__group-count">
+                    {{ counted(group.items.length, 'brokerage') }}
+                  </span>
+                </span>
                 <span class="text-right money text-weight-medium text-grey-8">
                   {{ money(group.total) }}
-                  <div v-if="group.native" class="text-caption text-grey-6 money">
-                    {{ group.ccy }} {{ money(group.native) }}
+                  <!-- Only where the run is in another currency: this figure is already in the
+                       card's currency and the one under it would be the same figure twice. -->
+                  <div v-if="!group.base" class="text-caption text-grey-6 money">
+                    {{ group.ccy }} {{ money(group.own) }}
                   </div>
                 </span>
                 <span class="text-right money text-weight-medium text-grey-8">
@@ -286,6 +344,9 @@
 <script setup>
 const props = defineProps({
   base: { type: String, default: 'HKD' },
+  // What each currency went at on the day shown, so a row held in another can say what
+  // converted it. The day is the one the cards read, not today.
+  rates: { type: Object, default: () => ({}) },
   current: { type: Object, default: () => ({ accounts: [], brokerages: [], unconverted: [] }) },
   lastMonth: { type: Object, default: null },
   since: { type: Object, default: null },
@@ -311,6 +372,15 @@ const pick = day => visit({ at: day === props.history.at(-1)?.date ? null : day 
 
 const money = useMoney()
 
+// A rate to four places: a rate is not a sum of money, and its fourth place is the one that
+// decides what a converted figure comes to.
+const rate = useMoney(4)
+
+const rateFor = item => (props.rates?.[item.ccy] ? rate(props.rates[item.ccy]) : null)
+
+/* Zero plural, because the count and the word are put together here and nowhere else. */
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`
+
 const periodLabels = { 1: 'Monthly', 3: 'Quarterly', 6: 'Half-yearly', 12: 'Yearly' }
 
 const periodName = computed(
@@ -332,34 +402,41 @@ const figure = (value, signed = false) =>
 const accountsOf = type => props.current.accounts.filter(account => account.type === type)
 
 // A cash account's row, spread so the markup keeps reading the payload's own fields, with
-// the two figures its group adds. The native needs the currency test as well as the base
+// the two figures its group adds. The own money needs the currency test as well as the base
 // one -- this payload gives every account a base figure, base currency included, where the
-// home page's leaves it null, so testing `base` alone would make the HKD group total itself
-// twice over.
+// home page's leaves it null, so testing `base` alone would count an HKD account's balance as
+// something a rate converted.
 const cashItems = computed(() =>
   accountsOf('cash')
     .map(account => ({
       ...account,
       total: account.base ?? account.balance,
-      nativeTotal: account.ccy !== props.base && account.base ? account.balance : null,
+      own: account.balance,
+      converted: account.ccy !== props.base && account.base !== null,
     }))
     .sort(byAmountDescending),
 )
 
 const cashGroups = computed(() => groupedByCurrency(cashItems.value, props.base))
 
-// A brokerage carries three figures, so its group sums three. `total` is the market value,
-// which is what the group heading leads with; cost and the gain are summed alongside.
+// What the card's own figure holds beyond the run in its own currency, and the currencies it
+// came from: the base run's money plus this is the figure at the top of the card.
+const cashConverted = computed(() => cashGroups.value.converted)
+
+// A brokerage carries three figures, so its group sums three. `total` is the market value in
+// the card's currency, which is what the sum row carries; cost and the gain are summed
+// alongside.
 const brokerageItems = computed(() =>
   props.current.brokerages.map(broker => ({
     ...broker,
     total: broker.value_base ?? broker.value,
-    nativeTotal: broker.ccy !== props.base && broker.value_base ? broker.value : null,
+    own: broker.value,
+    converted: broker.ccy !== props.base && broker.value_base !== null,
   })),
 )
 
 const brokerageGroups = computed(() =>
-  groupedByCurrency(brokerageItems.value, props.base).map(group => ({
+  groupedByCurrency(brokerageItems.value, props.base).groups.map(group => ({
     ...group,
     cost: group.items.reduce((sum, item) => plus(sum, item.cost_base ?? item.cost), '0'),
     unrealised: group.items.reduce((sum, item) => plus(sum, gain(item)), '0'),

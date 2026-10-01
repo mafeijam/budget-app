@@ -90,6 +90,29 @@ class HomeTest extends TestCase
         );
     }
 
+    public function test_it_states_the_rate_a_foreign_account_was_converted_at(): void
+    {
+        $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
+
+        $this->post('/transactions', [
+            'account_id' => $usd->id,
+            'date' => '2026-01-01',
+            'type' => 'deposit',
+            'description' => 'Dollars',
+            'amount' => '100.0000',
+            'ccy' => 'USD',
+        ])->assertSessionHasNoErrors();
+
+        Price::create(['symbol' => 'USDHKD=X', 'date' => today()->toDateString(), 'close' => '7.8000', 'ccy' => 'HKD', 'source' => 'yahoo']);
+
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('cash.1.base', '780.0000')
+            // Only the currencies with money here, and the card's own currency is not one of
+            // them: there is no rate to quote for the currency the figure is already in.
+            ->where('rates', ['USD' => '7.8000'])
+        );
+    }
+
     public function test_it_lists_the_statements_still_owing_soonest_first(): void
     {
         $this->travelTo(Carbon::parse('2026-02-01 12:00', 'Asia/Hong_Kong'));

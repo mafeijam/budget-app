@@ -1150,14 +1150,25 @@ body {
   white-space: nowrap;
 }
 
-/* The currency a run of rows is in, and what the run comes to. Flush with the rows' own
-   padding so the two columns of figures line up. */
+/* The currency a run of rows is in, over how many of them there are. Two lines, so a
+   heading is the same shape as the figures beside it and neither column has to be wide
+   enough to carry both on one line -- at the width these cards get beside a navigation rail
+   there is not one. */
 .app-home-list__group {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 16px 2px;
+}
+
+/* The left of a heading: the code over the count. Its own width, being what names the run,
+   and never squeezed to make room for the figures beside it. */
+.app-home-list__group-label {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
 }
 
 /* The currency code alone takes the app's group heading type, at the weight of a caption
@@ -1170,6 +1181,41 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--app-muted);
+}
+
+/* How many rows the run is, under the code that names its currency. A caption in a grey
+   lighter than the code, with no weight of its own: it says what the heading is made of and
+   the code is still the first thing the eye lands on. Cut off rather than wrapped, since a
+   count broken over two lines reads as two counts. */
+.app-home-list__group-count {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The figures beside a heading: as wide as they need and free to give ground, so the note
+   under them can wrap where the card is narrow rather than run past its edge. The rows'
+   figures keep their width instead -- a money figure there is a column. The heading's label
+   keeps its own, being what names the run, and the figure beside it never breaks: a money
+   figure split over two lines is two figures. */
+.app-home-list__group-figures {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.app-home-list__group-figures .money {
+  white-space: nowrap;
+}
+
+/* What a heading's sum does not reach: the rows in another currency, already worth the card's
+   currency. A sentence, and the one thing in a heading that wraps. Tabular figures of its own
+   rather than the money class, which is nowrap for the figure above it. */
+.app-home-list__group-note {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: #757575;
 }
 
 /* A rule above every group but the first, so the run beneath one reads as its own. */
@@ -1242,9 +1288,9 @@ body {
 
 /* A currency's heading over its rows, on the list of one-figure rows rather than over the
    table of three. No rule of its own: the border the last row above already drew is the one
-   that separates this run from what came before. */
+   that separates this run from what came before. Two lines, like the figures beside it. */
 .app-worth-row--group {
-  align-items: baseline;
+  align-items: flex-start;
   padding-top: 10px;
   border-bottom: 0;
 }
