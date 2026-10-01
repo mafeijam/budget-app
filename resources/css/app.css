@@ -665,15 +665,15 @@ body {
 }
 
 /*
- * An estimate's figures, a step lighter than the brand's amber, which read too heavy
- * at the size these are set. It still sits darker than the amber the charts draw
- * estimates in, which is what keeps an estimate apart from a known figure.
+ * An estimate's figures, in the amber the charts draw estimates in and the forecast's
+ * controls take, a step darker so it holds as text. The brand's amber, and the 4.07:1
+ * shade this was before, read as brown beside those controls.
  *
- * It is 4.07:1 on white, under the 4.5:1 AA wants for text at this size. That is the
- * trade, not an oversight to put right.
+ * It is 3.19:1 on white: enough for a figure at heading size, under the 4.5:1 AA wants for
+ * a caption. That is the trade, not an oversight to put right.
  */
 .app-text-estimate {
-  color: #c2650a;
+  color: #d97706;
 }
 
 /* How a forecast estimate is made up, as a short sum: its parts, then the total ruled off. */

@@ -111,7 +111,7 @@
           <q-toggle
             v-model="withTypical"
             label="Typical spending"
-            color="warning"
+            color="amber-8"
             dense
             class="q-px-sm"
           />
@@ -174,7 +174,7 @@
               markers
               snap
               dense
-              color="warning"
+              color="amber-8"
               class="col"
             />
             <span class="text-caption money q-ml-sm" style="width: 44px">
@@ -189,7 +189,7 @@
             label="Irregular spending"
             :disable="!withTypical"
             dense
-            color="warning"
+            color="amber-8"
           />
           <q-btn
             v-if="whatIfOn"
