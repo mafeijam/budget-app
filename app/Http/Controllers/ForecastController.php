@@ -16,18 +16,24 @@ class ForecastController extends Controller
         // today() is Hong Kong's, so the forecast starts on the app's day, not the browser's.
         $forecast = Forecast::for(today(), $months);
 
-        // A currency the cash accounts hold, shown in its own money; otherwise everything in
-        // the base currency.
-        $ccy = in_array($r->input('ccy'), $forecast->currencies(), true) ? $r->input('ccy') : null;
+        // Every view the currency dropdown can ask for, in one response: the dropdown is the
+        // browser's to remember, like the other pages', so the server cannot be told which it
+        // is and a choice must not cost a visit. `all` is every account in the base currency.
+        $views = ['all' => null];
+
+        foreach ($forecast->currencies() as $code) {
+            $views[$code] = $code;
+        }
 
         return inertia('forecast', [
-            'projection' => $forecast->projection($ccy),
-            'ccy' => $ccy,
+            'views' => array_map(fn (?string $only) => [
+                'projection' => $forecast->projection($only),
+                'upcoming' => $forecast->upcoming($only),
+                'outlook' => $forecast->monthOutlook($only),
+                'warnings' => $forecast->warnings($only),
+            ], $views),
             'currencies' => $forecast->currencies(),
             'base' => Fx::BASE->value,
-            'upcoming' => $forecast->upcoming($ccy),
-            'outlook' => $forecast->monthOutlook($ccy),
-            'warnings' => $forecast->warnings($ccy),
             'months' => $months,
             'horizons' => Forecast::HORIZONS,
             'upcomingDays' => Forecast::UPCOMING_DAYS,

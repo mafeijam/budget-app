@@ -141,6 +141,28 @@ global. Inertia pages must live in `resources/js/pages/` (globbed in `app.js`).
 `auto-imports.d.ts`, `components.d.ts` and `.eslintrc-auto-import.json` are
 generated **and committed** — a build can dirty them.
 
+## A page's dropdowns and toggles live in localStorage, not the URL
+
+A control that picks what the page is *about* — a brokerage, a currency, the Totals
+switch, the Forecast's what-if — is the browser's to remember (`useStorage`, or
+`useLocalStorage` on the Forecast), and choosing one must not add a query string. The
+server cannot read storage, so it sends every view the control can ask for and the client
+picks: `byBroker[id]` on Dividends, `views.all` / `views.USD` on the Forecast. The cost is a
+larger response, so build each view from one shared object (`Forecast::for()` memoises).
+
+- **Keep the choice if the option is gone.** A stored currency or brokerage the data no
+  longer has falls back to "all" *without overwriting storage* — a stale value is harmless
+  until the option comes back.
+- **The URL is for what the server needs to compute.** The Forecast's horizon (`?months=`)
+  changes how many days are projected, so it stays a query. Filters on a list
+  (Transactions) stay in the URL too, because a link to a filtered list is the point.
+- **A preference on a list is not a filter.** Transactions' "Hide transfers" is remembered
+  like Totals, so Clear all leaves it and `active` does not count it. The server cannot see
+  storage, so a remembered yes asks for the list again on arrival (one extra request); a
+  link that names it applies for that visit without changing the choice.
+- **The what-if is remembered too** (`forecast.spendingChange`, `.noIncome`, `.irregular`),
+  so the page opens as it was left. Reset puts all three back.
+
 ## Dates: pick the right formatter, or fail silently
 
 - `useCalendarDay()` for a `date` column, `useHongKongTime()` for a `timestamp`

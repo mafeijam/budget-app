@@ -259,11 +259,15 @@ class ForecastTest extends TestCase
         $this->assertSame('USD', $only[0]['ccy']);
         $this->assertSame('100.0000', $only[0]['points'][0]['known']);
 
-        $this->get('/forecast?ccy=USD')->assertInertia(fn (Assert $page) => $page
-            ->where('ccy', 'USD')
+        // Every view in the one response, the dropdown's choice being the browser's to keep.
+        $this->get('/forecast')->assertInertia(fn (Assert $page) => $page
             ->where('currencies', ['HKD', 'USD'])
+            ->has('views', 3)
+            ->where('views.all.projection.0.ccy', 'HKD')
+            ->where('views.USD.projection.0.ccy', 'USD')
+            ->where('views.HKD.projection.0.ccy', 'HKD')
+            ->missing('ccy')
         );
-        $this->get('/forecast?ccy=EUR')->assertInertia(fn (Assert $page) => $page->where('ccy', null));
     }
 
     public function test_the_page_takes_an_offered_horizon_and_ignores_any_other(): void
@@ -272,7 +276,7 @@ class ForecastTest extends TestCase
             ->component('forecast')
             ->where('months', 6)
             ->where('horizons', [3, 6, 12])
-            ->where('projection.0.points', fn ($points) => count($points) === 182)
+            ->where('views.all.projection.0.points', fn ($points) => count($points) === 182)
         );
 
         $this->get('/forecast?months=2')->assertInertia(fn (Assert $page) => $page->where('months', 3));

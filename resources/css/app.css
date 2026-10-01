@@ -501,6 +501,11 @@ body {
   min-height: 48px;
 }
 
+/* A slider in the toolbar's row of controls, wide enough to drag. */
+.app-toolbar__slider {
+  width: 190px;
+}
+
 .app-toolbar__label {
   line-height: 1.1;
 }

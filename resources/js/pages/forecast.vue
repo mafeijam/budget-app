@@ -5,7 +5,7 @@
         <div class="text-h6 text-weight-medium q-mr-md">Forecast</div>
         <q-select
           v-if="currencies.length > 1"
-          :model-value="ccy ?? ''"
+          :model-value="ccy"
           :options="currencyOptions"
           class="app-broker-select"
           dense
@@ -13,7 +13,7 @@
           emit-value
           map-options
           options-dense
-          @update:model-value="value => visit({ ccy: value || null })"
+          @update:model-value="value => (ccy = value)"
         >
           <template #prepend>
             <q-icon name="payments" size="xs" color="grey-7" />
@@ -94,7 +94,7 @@
     <div v-if="!projection.length" class="text-grey-6">No cash accounts to forecast.</div>
 
     <q-card v-for="section in projection" :key="section.ccy" flat bordered>
-      <q-card-section class="row items-center no-wrap">
+      <q-card-section class="row items-center q-gutter-y-sm">
         <q-icon name="query_stats" size="sm" color="grey-6" class="q-mr-sm" />
         <div>
           <div class="text-subtitle1 text-weight-medium">Cash runway</div>
@@ -107,7 +107,7 @@
 
         <!-- On the chart it changes, as the cash flow page keeps its: the toggle draws the
              pale second line, and the horizon is the one the figures below count to. -->
-        <div class="col-auto app-toolbar row items-center no-wrap">
+        <div class="col-auto app-toolbar row items-center">
           <q-toggle
             v-model="withTypical"
             label="Typical spending"
@@ -115,23 +115,76 @@
             dense
             class="q-px-sm"
           />
-
-          <q-separator vertical inset class="q-mx-sm" />
-
-          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
-          <q-btn-toggle
-            :model-value="months"
-            :options="horizons.map(n => ({ label: `${n} months`, value: n }))"
-            no-caps
-            unelevated
+          <!-- What the typical spending would be if it ran above or below the median month. -->
+          <div class="row items-center no-wrap q-px-sm app-toolbar__slider">
+            <q-slider
+              v-model="spendingChange"
+              :min="-50"
+              :max="50"
+              :step="10"
+              :disable="!withTypical"
+              markers
+              snap
+              dense
+              color="amber-8"
+              class="col"
+            />
+            <span class="text-caption money q-ml-sm text-grey-8" style="width: 40px">
+              {{ spendingChange > 0 ? '+' : '' }}{{ spendingChange }}%
+            </span>
+            <q-tooltip>Typical spending, up to half again either way</q-tooltip>
+          </div>
+          <!-- On by default: off is the question "what if the year has no large month". -->
+          <q-toggle
+            v-if="!isZero(section.typical_basis?.irregular ?? '0')"
+            v-model="irregular"
+            label="Irregular spending"
+            :disable="!withTypical"
             dense
-            toggle-color="blue-1"
-            toggle-text-color="primary"
-            text-color="grey-8"
-            padding="xs md"
-            class="app-toolbar__toggle text-weight-bold"
-            @update:model-value="choose"
+            color="amber-8"
+            class="q-px-sm"
           />
+          <q-toggle v-model="noIncome" label="No income" dense color="negative" class="q-px-sm" />
+          <q-btn
+            flat
+            round
+            dense
+            size="sm"
+            icon="restart_alt"
+            color="primary"
+            :disable="!whatIfOn"
+            @click="resetWhatIf"
+          >
+            <q-tooltip>Back to the typical month</q-tooltip>
+          </q-btn>
+          <!-- The sums under the chart: a place to check an estimate from, not to read every visit. -->
+          <q-toggle
+            v-model="showBasis"
+            label="Breakdown"
+            :disable="!withTypical"
+            color="amber-8"
+            dense
+            class="q-px-sm"
+          />
+
+          <div class="row items-center no-wrap self-stretch">
+            <q-separator vertical inset class="q-mx-sm" />
+
+            <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
+            <q-btn-toggle
+              :model-value="months"
+              :options="horizons.map(n => ({ label: `${n} months`, value: n }))"
+              no-caps
+              unelevated
+              dense
+              toggle-color="blue-1"
+              toggle-text-color="primary"
+              text-color="grey-8"
+              padding="xs md"
+              class="app-toolbar__toggle text-weight-bold"
+              @update:model-value="choose"
+            />
+          </div>
         </div>
       </q-card-section>
 
@@ -161,49 +214,11 @@
           :what-if="whatIf"
         />
 
-        <div class="row items-center q-gutter-md q-mt-sm app-forecast-whatif">
-          <div class="text-caption text-weight-medium text-grey-8">What if</div>
-          <div class="row items-center no-wrap" style="min-width: 280px">
-            <span class="text-caption text-grey-7 q-mr-sm">Typical spending</span>
-            <q-slider
-              v-model="spendingChange"
-              :min="-50"
-              :max="50"
-              :step="10"
-              :disable="!withTypical"
-              markers
-              snap
-              dense
-              color="amber-8"
-              class="col"
-            />
-            <span class="text-caption money q-ml-sm" style="width: 44px">
-              {{ spendingChange > 0 ? '+' : '' }}{{ spendingChange }}%
-            </span>
-          </div>
-          <q-toggle v-model="noIncome" label="No income" dense color="negative" />
-          <!-- On by default: off is the question "what if the year has no large month". -->
-          <q-toggle
-            v-if="!isZero(section.typical_basis?.irregular ?? '0')"
-            v-model="irregular"
-            label="Irregular spending"
-            :disable="!withTypical"
-            dense
-            color="amber-8"
-          />
-          <q-btn
-            v-if="whatIfOn"
-            flat
-            dense
-            no-caps
-            color="primary"
-            label="Reset"
-            @click="resetWhatIf"
-          />
-        </div>
         <!-- Laid out as sums, so each estimate can be checked from its parts. -->
         <div
-          v-if="withTypical && section.typical_basis && !isZero(section.typical_monthly)"
+          v-if="
+            withTypical && showBasis && section.typical_basis && !isZero(section.typical_monthly)
+          "
           class="row q-col-gutter-lg q-mt-xs text-caption"
         >
           <!-- A month, because that is the unit the estimate is made in: it adds up, with the
@@ -435,17 +450,27 @@
 
 <script setup>
 const props = defineProps({
-  projection: { type: Array, default: () => [] },
-  upcoming: { type: Array, default: () => [] },
-  warnings: { type: Array, default: () => [] },
+  views: { type: Object, default: () => ({}) },
   months: { type: Number, default: 3 },
   horizons: { type: Array, default: () => [3, 6, 12] },
   upcomingDays: { type: Number, default: 30 },
-  outlook: { type: Array, default: () => [] },
-  ccy: { type: String, default: null },
   currencies: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
 })
+
+// The currency is the browser's to remember, as the other pages' dropdowns are, and not in
+// the URL. The server sends a view of each, so a choice is a lookup. A remembered currency
+// the accounts no longer hold falls back to all of them.
+const keptCcy = useLocalStorage('forecast.ccy', '')
+const ccy = computed({
+  get: () => (props.currencies.includes(keptCcy.value) ? keptCcy.value : ''),
+  set: value => (keptCcy.value = value || ''),
+})
+const view = computed(() => props.views[ccy.value || 'all'] ?? {})
+const projection = computed(() => view.value.projection ?? [])
+const upcoming = computed(() => view.value.upcoming ?? [])
+const outlook = computed(() => view.value.outlook ?? [])
+const warnings = computed(() => view.value.warnings ?? [])
 
 const currencyOptions = computed(() => [
   { label: `All, in ${props.base}`, value: '', caption: "Converted at today's rate" },
@@ -453,15 +478,11 @@ const currencyOptions = computed(() => [
 ])
 
 // Held in another currency than the one shown, so its own figure is given too.
-const foreign = account => account.ccy !== (props.ccy ?? props.base)
+const foreign = account => account.ccy !== (ccy.value || props.base)
 
-// The horizon and currency together, each off the URL at its default.
-const visit = ({ months = props.months, ccy = props.ccy }) =>
-  router.get(
-    '/forecast',
-    { ...(months === 3 ? {} : { months }), ...(ccy ? { ccy } : {}) },
-    { preserveScroll: true, replace: true },
-  )
+// The horizon, off the URL at its default: the server draws the chart to it.
+const visit = ({ months = props.months }) =>
+  router.get('/forecast', months === 3 ? {} : { months }, { preserveScroll: true, replace: true })
 
 // The known figures alone while the estimate is switched off.
 const likely = row => (withTypical.value ? row.likely_net : row.likely_known)
@@ -513,11 +534,14 @@ const formatDate = useCalendarDay()
 
 // Remembered per browser: a view preference, not data anyone else needs.
 const withTypical = useLocalStorage('forecast.typical', true)
+const showBasis = useLocalStorage('forecast.basis', true)
 
-// The what-if is a question asked of the chart, so it is not remembered.
-const spendingChange = ref(0)
-const noIncome = ref(false)
-const irregular = ref(true)
+// The what-if is remembered with the rest of the toolbar, so the page opens as it was left.
+// It is not in the URL: a link carries the horizon and the currency, which the server needs,
+// and the chart redraws the rest itself.
+const spendingChange = useLocalStorage('forecast.spendingChange', 0)
+const noIncome = useLocalStorage('forecast.noIncome', false)
+const irregular = useLocalStorage('forecast.irregular', true)
 const whatIf = computed(() => ({
   factor: withTypical.value ? 1 + spendingChange.value / 100 : 0,
   noIncome: noIncome.value,
@@ -532,11 +556,11 @@ const resetWhatIf = () => {
 
 // Past the 27th this month is all but over, and its outlook is zeros to come.
 const nextMonth = computed(() => {
-  const section = props.projection[0]
+  const section = projection.value[0]
 
-  if (!props.outlook.length || props.outlook[0].days_left > 3 || !section) return null
+  if (!outlook.value.length || outlook.value[0].days_left > 3 || !section) return null
 
-  return section.months.find(m => m.month > props.outlook[0].month) ?? null
+  return section.months.find(m => m.month > outlook.value[0].month) ?? null
 })
 
 const nextNet = computed(() =>
@@ -576,14 +600,14 @@ const averageTile = (value, row) => {
 const outlookCard = computed(() => {
   if (nextMonth.value) {
     const month = nextMonth.value
-    const row = props.outlook[0]
+    const row = outlook.value[0]
 
     return {
       title: `${monthName(month.month)} ahead`,
       caption: `${monthName(row.month)} is all but over, so this is next month.`,
       rows: [
         {
-          ccy: props.projection[0].ccy,
+          ccy: projection.value[0].ccy,
           tiles: [
             {
               label: 'Known in',
@@ -615,15 +639,15 @@ const outlookCard = computed(() => {
     }
   }
 
-  if (!props.outlook.length) return null
+  if (!outlook.value.length) return null
 
-  const first = props.outlook[0]
+  const first = outlook.value[0]
   const days = `${first.days_left} day${first.days_left === 1 ? '' : 's'}`
 
   return {
     title: `${monthName(first.month)} outlook`,
     caption: `This month so far, and what is still to come in the ${days} left.`,
-    rows: props.outlook.map(row => ({
+    rows: outlook.value.map(row => ({
       ccy: row.ccy,
       tiles: [
         {
@@ -662,7 +686,7 @@ const outlookCard = computed(() => {
 
 // The events the projection placed within the list's reach, with the balance each leaves.
 const soon = computed(() => {
-  const section = props.projection[0]
+  const section = projection.value[0]
 
   if (!section) return []
 
@@ -720,7 +744,7 @@ const endsAMonth = day => {
 }
 
 const monthsShown = section => {
-  const row = props.outlook.find(o => o.ccy === section.ccy)
+  const row = outlook.value.find(o => o.ccy === section.ccy)
   const months = section.months.map((month, i) =>
     i === 0 && row?.month === month.month ? wholeMonth(month, row) : month,
   )
@@ -741,7 +765,7 @@ const whatIfEnd = section => {
 }
 
 const soonPoint = computed(() => {
-  const points = props.projection[0]?.points ?? []
+  const points = projection.value[0]?.points ?? []
 
   return points[Math.min(props.upcomingDays, points.length - 1)] ?? null
 })
@@ -833,7 +857,7 @@ const signed = value => (negative(value) ? `−${money(String(value).slice(1))}`
 
 // Only the known figures raise a warning: an estimate crossing zero is not a fact.
 const allWarnings = computed(() => [
-  ...props.projection.flatMap(section =>
+  ...projection.value.flatMap(section =>
     section.accounts
       .filter(account => negative(account.lowest.amount))
       .map(
@@ -841,7 +865,7 @@ const allWarnings = computed(() => [
           `${account.name} goes below zero: ${money(account.native.lowest)} ${account.ccy} on ${formatDate(account.lowest.date)}.`,
       ),
   ),
-  ...props.warnings,
+  ...warnings.value,
 ])
 
 const figures = section => {
