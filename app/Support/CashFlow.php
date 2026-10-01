@@ -76,7 +76,7 @@ class CashFlow
     }
 
     /**
-     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null, one_off: bool}>  $facts
      * @return list<array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}>
      */
     private static function byCurrency(array $facts, Carbon $today, int $count): array
@@ -96,7 +96,7 @@ class CashFlow
     }
 
     /**
-     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null, one_off: bool}>  $facts
      * @return array{report: array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}|null, unconverted: list<string>}
      */
     private static function inBase(array $facts, Carbon $today, int $count): array
@@ -131,7 +131,7 @@ class CashFlow
      * once and handed to the readings below. The date is carried because the base currency's
      * reading converts at the rate on the row's own day, and a month's rate is not that.
      *
-     * @return list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>
+     * @return list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null, one_off: bool}>
      */
     private static function facts(Carbon $today, int $count, bool $onDueDate): array
     {
@@ -172,6 +172,7 @@ class CashFlow
                 'month' => substr($onDueDate ? self::countedOn($row) : $row->date, 0, 7),
                 'date' => $row->date,
                 'category' => $kind === 'spending' ? ['id' => $row->category_id, 'name' => $row->category?->name] : null,
+                'one_off' => (bool) ($row->meta?->meta['one_off'] ?? false),
             ];
         }
 
@@ -212,7 +213,7 @@ class CashFlow
      * The facts by currency and month: each in its own currency's money, or with $fx, in the
      * base currency's at the rate on its own day.
      *
-     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null}>  $facts
+     * @param  list<array{kind: string, part: string|null, figure: BigDecimal, ccy: string, month: string, date: string, category: array{id: int|null, name: string|null}|null, one_off: bool}>  $facts
      * @param  list<string>  $unconverted  filled with the currency of every row left out
      * @return array<string, array<string, array<string, mixed>>>
      */
@@ -243,6 +244,14 @@ class CashFlow
 
             if ($fact['part'] !== null) {
                 $entry[$fact['part']] = ($entry[$fact['part']] ?? BigDecimal::zero())->plus($figure);
+            }
+
+            // Of each, what was marked one-off. Counted all the same, being money that moved;
+            // the forecast takes it out of a typical month.
+            if ($fact['one_off']) {
+                foreach (array_filter([$fact['kind'], $fact['part']]) as $key) {
+                    $entry["one_off_{$key}"] = ($entry["one_off_{$key}"] ?? BigDecimal::zero())->plus($figure);
+                }
             }
 
             if ($fact['category'] !== null) {
@@ -406,7 +415,7 @@ class CashFlow
     private static function currencyReport(string $ccy, array $byMonth, array $months): array
     {
         $zero = BigDecimal::zero();
-        $totals = array_fill_keys(['income', 'dividend', 'other_income', 'spending', 'card_spending', 'cash_spending', 'net', 'invested'], $zero);
+        $totals = array_fill_keys(['income', 'dividend', 'other_income', 'spending', 'card_spending', 'cash_spending', 'net', 'invested', 'one_off_income', 'one_off_dividend', 'one_off_spending', 'one_off_card_spending'], $zero);
         $rows = [];
 
         foreach ($months as $month) {
@@ -419,6 +428,10 @@ class CashFlow
                 'spending' => $entry['spending'] ?? $zero,
                 'card_spending' => $entry['card_spending'] ?? $zero,
                 'invested' => $entry['invested'] ?? $zero,
+                'one_off_income' => $entry['one_off_income'] ?? $zero,
+                'one_off_dividend' => $entry['one_off_dividend'] ?? $zero,
+                'one_off_spending' => $entry['one_off_spending'] ?? $zero,
+                'one_off_card_spending' => $entry['one_off_card_spending'] ?? $zero,
             ];
             $figures['other_income'] = $figures['income']->minus($figures['dividend']);
             $figures['cash_spending'] = $figures['spending']->minus($figures['card_spending']);

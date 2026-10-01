@@ -7,6 +7,7 @@ use App\Models\Price;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Support\CardStatementCycle;
+use App\Support\CashFlow;
 use App\Support\Forecast;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
@@ -106,7 +107,7 @@ class ForecastTest extends TestCase
         $this->assertTrue((float) $section['points'][30]['typical'] < (float) $section['points'][30]['known']);
     }
 
-    public function test_what_the_year_spent_beyond_an_ordinary_month_is_spent_as_one_offs(): void
+    public function test_what_the_year_spent_beyond_an_ordinary_month_is_spent_as_irregular_spending(): void
     {
         // The median test's year: 200 a month, a 5000 holiday in June, a 50 rule. The ordinary
         // month is 150 and the rule 50, against an average of 600 over 2025's twelve months.
@@ -123,26 +124,70 @@ class ForecastTest extends TestCase
 
         // The rest of the 600: the holiday, which a median sets at nothing.
         $this->assertSame('150.0000', $section['typical_monthly']);
-        $this->assertSame('400.0000', $section['typical_basis']['one_offs']);
+        $this->assertSame('400.0000', $section['typical_basis']['irregular']);
         $this->assertSame('600.0000', $section['typical_basis']['average']);
 
         // Spread from tomorrow, apart from the ordinary allowance, and off the typical line.
-        $this->assertSame('0.0000', $points['2026-01-20']['one_offs']);
+        $this->assertSame('0.0000', $points['2026-01-20']['irregular']);
         $day = $points['2026-03-20'];
         $this->assertSame(
-            round((float) $day['known'] - (float) $day['allowance'] - (float) $day['one_offs'] + (float) $day['earned'], 4),
+            round((float) $day['known'] - (float) $day['allowance'] - (float) $day['irregular'] + (float) $day['earned'], 4),
             (float) $day['typical'],
         );
-        $this->assertGreaterThan(0, (float) $day['one_offs']);
+        $this->assertGreaterThan(0, (float) $day['irregular']);
 
         // In a month's typical spending, and its own figure of it.
         $february = collect($section['months'])->firstWhere('month', '2026-02');
-        $this->assertGreaterThan(0, (float) $february['one_offs']);
-        $this->assertGreaterThan((float) $february['one_offs'], (float) $february['typical']);
+        $this->assertGreaterThan(0, (float) $february['irregular']);
+        $this->assertGreaterThan((float) $february['irregular'], (float) $february['typical']);
 
         // And in the rest of this month, so the outlook's month end is the chart's: the cash
         // 150 and the 400 for 11 of January's 31 days.
         $this->assertSame('195.1613', $forecast->monthOutlook()[0]['typical_rest']);
+    }
+
+    public function test_a_row_marked_one_off_is_left_out_of_every_typical_figure(): void
+    {
+        // The irregular spending test's year, with the holiday marked one-off: the average is
+        // the eleven months of 200 over twelve, under the ordinary month and the rule, so
+        // nothing is irregular. And a marked deposit of 9000, which is no month's income.
+        foreach (range(0, 11) as $back) {
+            $this->row('withdraw', today()->startOfMonth()->subMonthsNoOverflow($back)->addDays(9)->toDateString(), '200');
+        }
+
+        $this->oneOff($this->row('withdraw', '2025-06-15', '5000'));
+        $this->oneOff($this->row('deposit', '2025-04-02', '9000'));
+        $this->rule(['type' => 'withdraw', 'amount' => '50', 'start_date' => '2026-03-01']);
+
+        $section = Forecast::for(today(), 3)->projection()[0];
+
+        $this->assertSame('150.0000', $section['typical_monthly']);
+        $this->assertSame('183.3333', $section['typical_basis']['average']);
+        $this->assertSame('0.0000', $section['typical_basis']['irregular']);
+        $this->assertSame('0.0000', $section['typical_income_basis']['average']);
+
+        // The cash flow report still counts both, being money that moved, and says which part.
+        $june = collect(CashFlow::lastMonths(today())[0]['months'])->firstWhere('month', '2025-06');
+        $this->assertSame('5200.0000', $june['spending']);
+        $this->assertSame('5000.0000', $june['one_off_spending']);
+    }
+
+    public function test_a_card_charge_marked_one_off_is_not_in_the_cards_typical_month(): void
+    {
+        // Seven of the twelve complete months carry a 1000 charge, so the median is 1000 a
+        // month. Every one is marked one-off, which leaves the card with no typical month.
+        foreach (range(1, 7) as $month) {
+            $this->oneOff($this->charge(sprintf('2025-%02d-05', $month), '1000.0000'));
+        }
+
+        $this->assertSame('0.0000', Forecast::for(today(), 3)->projection()[0]['typical_basis']['card']);
+    }
+
+    public function test_a_bonus_marked_one_off_is_not_expected_again(): void
+    {
+        $this->oneOff($this->row('deposit', '2025-06-01', '2000', description: 'BONUS'));
+
+        $this->assertSame('0.0000', Forecast::for(today(), 12)->projection()[0]['expected_bonuses']);
     }
 
     public function test_the_month_outlook_adds_what_is_still_to_come_to_the_month_so_far(): void
@@ -626,8 +671,8 @@ class ForecastTest extends TestCase
         string $amount,
         string $status = 'posted',
         ?string $description = null,
-    ): void {
-        Transaction::create([
+    ): Transaction {
+        return Transaction::create([
             'account_id' => $this->bank->id,
             'category_id' => null,
             'date' => $date,
@@ -735,6 +780,11 @@ class ForecastTest extends TestCase
         $transfer->meta()->create([
             'meta' => ['paired_transaction_id' => $payment->id],
         ]);
+    }
+
+    private function oneOff(Transaction $row): void
+    {
+        $row->meta()->updateOrCreate([], ['meta' => [...($row->meta?->meta ?? []), 'one_off' => true]]);
     }
 
     private function rule(array $overrides): void

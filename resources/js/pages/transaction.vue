@@ -37,6 +37,15 @@
                   class="app-tint app-tint--warning q-ml-sm"
                   label="pending"
                 />
+                <q-badge
+                  v-if="cell.row.meta_data?.one_off"
+                  class="app-tint app-tint--info q-ml-sm"
+                  label="one-off"
+                >
+                  <q-tooltip :delay="500" :offset="[0, 6]">
+                    Left out of the forecast's typical figures
+                  </q-tooltip>
+                </q-badge>
               </div>
               <div class="text-caption text-grey-6 ellipsis">
                 {{ [categoryName(cell.row), cell.row.account_name].filter(Boolean).join(' · ') }}
@@ -347,6 +356,8 @@ const metaChips = row => {
     'fees',
     'no_cash',
     'brokerage_account_id',
+    // A badge beside the description instead, where the row is named.
+    'one_off',
   ]
 
   Object.entries(meta)

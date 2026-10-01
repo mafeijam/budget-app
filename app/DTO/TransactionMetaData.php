@@ -40,6 +40,12 @@ class TransactionMetaData extends Data
         // A foreign-currency charge in the card's own currency. See guardCardAmount().
         public ?string $card_amount = null,
 
+        // Money that moved once and is not expected again, which the forecast leaves out of
+        // every typical figure and does not project a year on. Null rather than false when
+        // it is not, as no_cash is. In the bag rather than a column although the forecast
+        // filters on it: it reads the rows into PHP to classify them already.
+        public ?bool $one_off = null,
+
         // Server-owned links, restored by keepLinksOf(). destroy() deletes whatever
         // paired_transaction_id points at; settled_by records which payment closed a
         // charge's statement, and is never the test of whether it is paid.
@@ -73,6 +79,8 @@ class TransactionMetaData extends Data
             // Whether it is needed depends on the account row, which a rule cannot see;
             // this only bounds it, so a zero is refused rather than summed.
             'card_amount' => ['nullable', 'decimal:0,'.self::AMOUNT_SCALE, 'gt:0', 'max:'.self::MAX_AMOUNT],
+
+            'one_off' => ['nullable', 'boolean'],
         ];
     }
 
@@ -101,6 +109,7 @@ class TransactionMetaData extends Data
             'brokerage_account_id' => 'brokerage',
             'due_date' => 'due date',
             'card_amount' => 'amount in the card\'s currency',
+            'one_off' => 'one-off',
         ];
     }
 

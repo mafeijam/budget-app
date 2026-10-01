@@ -198,6 +198,14 @@ class TransactionMetaDataTest extends TestCase
         );
     }
 
+    public function test_a_one_off_is_a_yes_or_nothing(): void
+    {
+        // The rule is run, not merely accepted: a word is refused, and true and null are not.
+        $this->assertTrue($this->rejects('one_off', ['one_off' => 'banana'], ['type' => 'withdraw']));
+        $this->assertFalse($this->rejects('one_off', ['one_off' => true], ['type' => 'withdraw']));
+        $this->assertFalse($this->rejects('one_off', ['one_off' => null], ['type' => 'withdraw']));
+    }
+
     public function test_an_unrecognised_type_is_treated_as_needing_every_field(): void
     {
         // The exclusion lists are built from the enum, so a type the enum does
@@ -223,8 +231,8 @@ class TransactionMetaDataTest extends TestCase
         //
         // This is a whitelist rather than a lookup, so a rule new to this bag
         // has to be added here deliberately -- which is the point. `date_format`
-        // arrived with due_date; the rest predate it.
-        $supported = ['nullable', 'required_unless', 'prohibited_unless', 'integer', 'max', 'decimal', 'gt', 'min', 'date_format'];
+        // arrived with due_date and `boolean` with one_off; the rest predate them.
+        $supported = ['nullable', 'required_unless', 'prohibited_unless', 'integer', 'max', 'decimal', 'gt', 'min', 'date_format', 'boolean'];
 
         foreach (TransactionMetaData::rules() as $field => $rules) {
             foreach ($rules as $rule) {

@@ -184,9 +184,9 @@
           <q-toggle v-model="noIncome" label="No income" dense color="negative" />
           <!-- On by default: off is the question "what if the year has no large month". -->
           <q-toggle
-            v-if="!isZero(section.typical_basis?.one_offs ?? '0')"
-            v-model="oneOffs"
-            label="One-offs"
+            v-if="!isZero(section.typical_basis?.irregular ?? '0')"
+            v-model="irregular"
+            label="Irregular spending"
             :disable="!withTypical"
             dense
             color="warning"
@@ -220,8 +220,8 @@
                 <span class="money">{{ money(section.typical_basis.card) }}</span>
               </div>
               <div class="app-basis__row">
-                <span>One-offs, spread from tomorrow</span>
-                <span class="money">{{ money(section.typical_basis.one_offs ?? '0') }}</span>
+                <span>Irregular, spread from tomorrow</span>
+                <span class="money">{{ money(section.typical_basis.irregular ?? '0') }}</span>
               </div>
               <div class="app-basis__row app-basis__row--total">
                 <span>Typical</span>
@@ -237,8 +237,9 @@
               </div>
               <div class="app-basis__note">
                 Cash and cards are each the median month of the last 12 complete months, so one
-                large month does not set them, and the one-offs are what those months spent beyond
-                that. They averaged {{ money(section.typical_basis.average) }} a month.
+                large month does not set them, and irregular is what those months spent beyond that.
+                Leaving out the rows marked one-off, which are in none of this, they averaged
+                {{ money(section.typical_basis.average) }} a month.
               </div>
             </div>
           </div>
@@ -502,17 +503,17 @@ const withTypical = useLocalStorage('forecast.typical', true)
 // The what-if is a question asked of the chart, so it is not remembered.
 const spendingChange = ref(0)
 const noIncome = ref(false)
-const oneOffs = ref(true)
+const irregular = ref(true)
 const whatIf = computed(() => ({
   factor: withTypical.value ? 1 + spendingChange.value / 100 : 0,
   noIncome: noIncome.value,
-  oneOffs: oneOffs.value,
+  irregular: irregular.value,
 }))
-const whatIfOn = computed(() => spendingChange.value !== 0 || noIncome.value || !oneOffs.value)
+const whatIfOn = computed(() => spendingChange.value !== 0 || noIncome.value || !irregular.value)
 const resetWhatIf = () => {
   spendingChange.value = 0
   noIncome.value = false
-  oneOffs.value = true
+  irregular.value = true
 }
 
 // Past the 27th this month is all but over, and its outlook is zeros to come.
@@ -664,10 +665,10 @@ const soon = computed(() => {
 const addsUp = values =>
   values.map(value => money(value ?? '0').replaceAll(',', '')).reduce(plus, '0')
 
-// The month the spending box adds up to: the ordinary month and the one-offs, and those
+// The month the spending box adds up to: the ordinary month and the irregular spending, and those
 // with the rules.
 const typicalTotal = section =>
-  addsUp([section.typical_basis.cash, section.typical_basis.card, section.typical_basis.one_offs])
+  addsUp([section.typical_basis.cash, section.typical_basis.card, section.typical_basis.irregular])
 const spendingInAll = section => addsUp([typicalTotal(section), section.typical_basis.recurring])
 const incomeTotal = section =>
   addsUp([section.typical_income_basis.spread, ...incomeEstimates(section).map(row => row.value)])
@@ -694,7 +695,7 @@ const whatIfEnd = section => {
   const last = section.points.at(-1)
   const known = Number(last.known) - (noIncome.value ? Number(last.recurring_in) : 0)
   const earned = noIncome.value ? 0 : Number(last.earned)
-  const spent = Number(last.allowance) + (oneOffs.value ? Number(last.one_offs ?? 0) : 0)
+  const spent = Number(last.allowance) + (irregular.value ? Number(last.irregular ?? 0) : 0)
 
   return known - spent * whatIf.value.factor + earned
 }
@@ -705,9 +706,9 @@ const soonPoint = computed(() => {
   return points[Math.min(props.upcomingDays, points.length - 1)] ?? null
 })
 
-// The one-offs with the ordinary allowance: the column beside it spends both.
+// The irregular spending with the ordinary allowance: the column beside it spends both.
 const soonAllowance = computed(() =>
-  soonPoint.value ? plus(soonPoint.value.allowance, soonPoint.value.one_offs ?? '0') : null,
+  soonPoint.value ? plus(soonPoint.value.allowance, soonPoint.value.irregular ?? '0') : null,
 )
 const soonEarned = computed(() => soonPoint.value?.earned ?? '0')
 

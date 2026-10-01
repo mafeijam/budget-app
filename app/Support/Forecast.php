@@ -159,7 +159,7 @@ class Forecast
 
         $base = fn (int $id, BigDecimal $amount) => $amount->multipliedBy($rates[$id])->toScale(4, RoundingMode::HalfUp);
 
-        $monthly = $average = $covered = $cashMonthly = $cardMonthly = $oneOffsMonthly = BigDecimal::zero();
+        $monthly = $average = $covered = $cashMonthly = $cardMonthly = $irregularMonthly = BigDecimal::zero();
         $incomeMonthly = $incomeAverage = $incomeCovered = $incomeDividends = $incomeMedian = BigDecimal::zero();
 
         foreach ($typical as $ccy => $figures) {
@@ -175,7 +175,7 @@ class Forecast
 
             $monthly = $monthly->plus(BigDecimal::of($figures['monthly'])->multipliedBy($rate));
             $cashMonthly = $cashMonthly->plus(BigDecimal::of($figures['cash'])->multipliedBy($rate));
-            $oneOffsMonthly = $oneOffsMonthly->plus(BigDecimal::of($figures['one_offs'])->multipliedBy($rate));
+            $irregularMonthly = $irregularMonthly->plus(BigDecimal::of($figures['irregular'])->multipliedBy($rate));
             $incomeMonthly = $incomeMonthly->plus(BigDecimal::of($figures['income'])->multipliedBy($rate));
             $incomeAverage = $incomeAverage->plus(BigDecimal::of($figures['income_average'])->multipliedBy($rate));
             $incomeCovered = $incomeCovered->plus(BigDecimal::of($figures['income_recurring'])->multipliedBy($rate));
@@ -190,7 +190,7 @@ class Forecast
         $dailyIncome = $perDay($incomeMonthly);
         // An allowance and not a payment, so it is spread as cash spending is rather than
         // guessed onto a card's due date: the year it averages over paid both ways.
-        $dailyOneOffs = $perDay($oneOffsMonthly);
+        $dailyIrregular = $perDay($irregularMonthly);
 
         $lowest = array_map(fn (BigDecimal $balance) => [$balance, $day], $balances);
         $byDay = collect($this->events)->whereIn('account_id', array_keys($balances))->groupBy('date');
@@ -238,7 +238,7 @@ class Forecast
 
         $points = [];
         $allowance = BigDecimal::zero();
-        $oneOffs = BigDecimal::zero();
+        $irregular = BigDecimal::zero();
         $earned = BigDecimal::zero();
         // Of $earned, the part spread day by day; the rest is the estimates on their dates.
         $spread = BigDecimal::zero();
@@ -259,18 +259,18 @@ class Forecast
         for ($cursor = $this->today->copy(); $cursor->lessThanOrEqualTo($this->end); $cursor->addDay()) {
             $date = $cursor->toDateString();
             $month = substr($date, 0, 7);
-            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'one_offs' => $zero, 'typical_in' => $zero, 'dividends' => $zero, 'bonuses' => $zero, 'double_pay' => $zero];
+            $monthsAhead[$month] ??= ['month' => $month, 'in' => $zero, 'out' => $zero, 'typical' => $zero, 'irregular' => $zero, 'typical_in' => $zero, 'dividends' => $zero, 'bonuses' => $zero, 'double_pay' => $zero];
 
             // From tomorrow: today's spending is in today's balance already.
             if ($cursor->greaterThan($this->today)) {
                 $daily = $dailyCash->plus($cardDue[$date] ?? BigDecimal::zero());
                 $allowance = $allowance->plus($daily);
-                $oneOffs = $oneOffs->plus($dailyOneOffs);
+                $irregular = $irregular->plus($dailyIrregular);
                 $earned = $earned->plus($dailyIncome);
                 $spread = $spread->plus($dailyIncome);
                 // In the month's typical spending, and its own figure of it as well.
-                $monthsAhead[$month]['typical'] = $monthsAhead[$month]['typical']->plus($daily)->plus($dailyOneOffs);
-                $monthsAhead[$month]['one_offs'] = $monthsAhead[$month]['one_offs']->plus($dailyOneOffs);
+                $monthsAhead[$month]['typical'] = $monthsAhead[$month]['typical']->plus($daily)->plus($dailyIrregular);
+                $monthsAhead[$month]['irregular'] = $monthsAhead[$month]['irregular']->plus($dailyIrregular);
                 $monthsAhead[$month]['typical_in'] = $monthsAhead[$month]['typical_in']->plus($dailyIncome);
             }
 
@@ -298,7 +298,7 @@ class Forecast
                     'kind' => $event['kind'],
                     'link' => $event['link'],
                     'balance' => self::money($running),
-                    'with_typical' => self::money($running->minus($allowance)->minus($oneOffs)->plus($earned)),
+                    'with_typical' => self::money($running->minus($allowance)->minus($irregular)->plus($earned)),
                 ];
             }
 
@@ -325,7 +325,7 @@ class Forecast
                     'kind' => $expected['kind'],
                     'link' => ['transaction' => $expected['transaction']],
                     'balance' => self::money($running),
-                    'with_typical' => self::money($running->minus($allowance)->minus($oneOffs)->plus($earned)),
+                    'with_typical' => self::money($running->minus($allowance)->minus($irregular)->plus($earned)),
                     'estimate' => true,
                 ];
             }
@@ -347,7 +347,7 @@ class Forecast
             // After today, since today's balance is already a fact and the lowest of every
             // horizon that only rises from here.
             if ($cursor->greaterThan($this->today)) {
-                foreach (['known' => $total, 'typical' => $total->minus($allowance)->minus($oneOffs)->plus($earned)] as $line => $value) {
+                foreach (['known' => $total, 'typical' => $total->minus($allowance)->minus($irregular)->plus($earned)] as $line => $value) {
                     if ($lowestAhead[$line] === null || $value->isLessThan($lowestAhead[$line][0])) {
                         $lowestAhead[$line] = [$value, $date];
                     }
@@ -364,16 +364,16 @@ class Forecast
             }
 
             $monthsAhead[$month]['end_known'] = $total;
-            $monthsAhead[$month]['end_typical'] = $total->minus($allowance)->minus($oneOffs)->plus($earned);
+            $monthsAhead[$month]['end_typical'] = $total->minus($allowance)->minus($irregular)->plus($earned);
 
             $points[] = [
                 'date' => $date,
                 'known' => self::money($total),
-                'typical' => self::money($total->minus($allowance)->minus($oneOffs)->plus($earned)),
+                'typical' => self::money($total->minus($allowance)->minus($irregular)->plus($earned)),
                 // Running totals, so the page's what-if can redraw without the server. The
-                // one-offs are apart from the allowance so the page can take them away.
+                // irregular spending is apart from the allowance so the page can take it away.
                 'allowance' => self::money($allowance),
-                'one_offs' => self::money($oneOffs),
+                'irregular' => self::money($irregular),
                 'earned' => self::money($earned),
                 'recurring_in' => self::money($recurringIn),
             ];
@@ -414,7 +414,7 @@ class Forecast
                 'recurring' => self::money($covered),
                 'cash' => self::money($cashMonthly),
                 'card' => self::money($cardMonthly),
-                'one_offs' => self::money($oneOffsMonthly),
+                'irregular' => self::money($irregularMonthly),
             ],
             'lowest' => ['amount' => self::money($lowestTotal[0]), 'date' => $lowestTotal[1]],
             'lowest_ahead' => array_map(
@@ -433,8 +433,8 @@ class Forecast
                 'in' => self::money($m['in']),
                 'out' => self::money($m['out']),
                 'typical' => self::money($m['typical']),
-                // Of typical, the one-offs.
-                'one_offs' => self::money($m['one_offs']),
+                // Of typical, the irregular spending.
+                'irregular' => self::money($m['irregular']),
                 'typical_in' => self::money($m['typical_in']),
                 // Of typical_in, what the holdings are expected to pay, the bonus expected on
                 // the date it was paid, and the second month's pay likewise.
@@ -614,10 +614,10 @@ class Forecast
             $comingIn = $toCome[$ccy]['income'] ?? $zero;
             $comingOut = $toCome[$ccy]['spending'] ?? $zero;
             // Cash only: a card charge made in the days left is paid for next month or later.
-            // The one-offs as the projection spreads them, so the month end is the estimate
+            // The irregular spending as the projection spreads it, so the month end is the estimate
             // the chart draws.
             $typicalRest = BigDecimal::of($typical[$ccy]['cash'] ?? '0')
-                ->plus($typical[$ccy]['one_offs'] ?? '0')
+                ->plus($typical[$ccy]['irregular'] ?? '0')
                 ->multipliedBy($daysLeft)
                 ->dividedBy($daysInMonth, TransactionMetaData::AMOUNT_SCALE, RoundingMode::HalfUp);
 
@@ -638,7 +638,7 @@ class Forecast
                 'typical_income_rest' => self::money($typicalIncomeRest),
                 'likely_known' => self::money($known),
                 'likely_net' => self::money($known->minus($typicalRest)->plus($typicalIncomeRest)),
-                'average_net' => self::money(self::monthlyMean(self::completeMonths($section), 'net')),
+                'average_net' => self::money(self::monthlyMean(array_map(self::ordinary(...), self::completeMonths($section)), 'net')),
             ];
         }
 
@@ -891,6 +891,7 @@ class Forecast
             ->where('type', TransactionType::Dividend->value)
             ->where('date', '>', $from->copy()->subDays(self::DIVIDEND_WINDOW)->toDateString())
             ->get()
+            ->reject(self::oneOff(...))
             ->map(fn (Transaction $row) => [
                 'id' => $row->id,
                 'date' => $row->date,
@@ -1018,12 +1019,14 @@ class Forecast
         $today = $this->today->toDateString();
 
         $rows = Transaction::query()
+            ->with('meta')
             ->whereIn('account_id', $this->cash->keys())
             ->where('type', TransactionType::Deposit->value)
             ->where('description', 'BONUS')
             ->where('date', '>', $this->today->copy()->subYearNoOverflow()->toDateString())
             ->where('date', '<=', $today)
-            ->get();
+            ->get()
+            ->reject(self::oneOff(...));
 
         foreach ($rows as $row) {
             $date = Carbon::parse($row->date)->addYearNoOverflow();
@@ -1069,12 +1072,14 @@ class Forecast
     private function expectedDoublePay(): void
     {
         $rows = Transaction::query()
+            ->with('meta')
             ->whereIn('account_id', $this->cash->keys())
             ->where('type', TransactionType::Deposit->value)
             ->where('description', 'SALARY')
             ->where('date', '>', $this->today->copy()->subYearNoOverflow()->toDateString())
             ->where('date', '<=', $this->today->toDateString())
-            ->get();
+            ->get()
+            ->reject(self::oneOff(...));
 
         if ($rows->isEmpty()) {
             return;
@@ -1174,6 +1179,35 @@ class Forecast
         return array_slice($section['months'], 0, CashFlow::MONTHS);
     }
 
+    /**
+     * A month as the typical figures read it: what was marked one-off taken out of each figure
+     * that holds it, so the medians, the averages and the irregular spending are of the rest.
+     * The cash flow report keeps it in, being money that moved.
+     *
+     * @param  array<string, mixed>  $month
+     * @return array<string, mixed>
+     */
+    private static function ordinary(array $month): array
+    {
+        $less = fn (string $key) => BigDecimal::of($month[$key])->minus($month["one_off_{$key}"] ?? '0');
+
+        $spending = $less('spending');
+        $card = $less('card_spending');
+        $income = $less('income');
+        $dividend = $less('dividend');
+
+        return [
+            ...$month,
+            'spending' => (string) $spending,
+            'card_spending' => (string) $card,
+            'cash_spending' => (string) $spending->minus($card),
+            'income' => (string) $income,
+            'dividend' => (string) $dividend,
+            'other_income' => (string) $income->minus($dividend),
+            'net' => (string) $income->minus($spending),
+        ];
+    }
+
     /** @param  list<array<string, mixed>>  $months */
     private static function monthlyMean(array $months, string $key): BigDecimal
     {
@@ -1232,6 +1266,10 @@ class Forecast
             $byMonth = array_fill_keys($months, BigDecimal::zero());
 
             foreach ($charged[$card->id] ?? [] as $row) {
+                if (self::oneOff($row)) {
+                    continue;
+                }
+
                 $month = substr((string) $row->date, 0, 7);
 
                 if (isset($byMonth[$month])) {
@@ -1270,7 +1308,7 @@ class Forecast
      * already bring, so a forecast that knows only the salary does not read every other
      * deposit of the year as never happening again.
      *
-     * @return array<string, array{monthly: string, cash: string, card: string, one_offs: string, average: string, recurring: string, income: string, income_average: string, income_dividends: string, income_recurring: string}>
+     * @return array<string, array{monthly: string, cash: string, card: string, irregular: string, average: string, recurring: string, income: string, income_average: string, income_dividends: string, income_recurring: string}>
      */
     private function typicalSpending(): array
     {
@@ -1323,7 +1361,7 @@ class Forecast
         $brought = $this->broughtByRules($earningRules);
 
         foreach ($this->lastMonths() as $section) {
-            $months = self::completeMonths($section);
+            $months = array_map(self::ordinary(...), self::completeMonths($section));
 
             // The median month, not the mean: one month of a holiday's charges set the mean,
             // and with it every month the forecast looked ahead at, a fifth above an ordinary
@@ -1341,13 +1379,13 @@ class Forecast
             $card = $cards[$section['ccy']] ?? BigDecimal::zero();
             $cash = $floor($cashMedian->minus($covered->minus($cardCovered)));
 
-            // What the year spent beyond an ordinary month: its average, less the ordinary
-            // month and the rules. A median sets the holiday, the appliance and the annual bill
-            // at nothing, and they are not nothing -- one card's 77,562 December and a 112,510
-            // February left the forecast spending 38,000 less over a year than the year before
-            // it did. With this the ordinary month, the rules and this come to the year's
-            // average, so the typical line spends what the last twelve months did.
-            $oneOffs = $floor($average->minus($cash)->minus($card)->minus($covered));
+            // Irregular spending: what the year spent beyond an ordinary month, its average less
+            // the ordinary month and the rules. A median sets the annual bill and the odd
+            // appliance at nothing, and they are not nothing; with this the ordinary month, the
+            // rules and it come to the year's average. What was marked one-off is in neither the
+            // average nor the median (see ordinary()), because it is not expected again: left in,
+            // a 76,305 purchase was charged to every month ahead at 6,360 a month.
+            $irregular = $floor($average->minus($cash)->minus($card)->minus($covered));
 
             $incomeAverage = self::monthlyMean($months, 'income');
             $dividendAverage = self::monthlyMean($months, 'dividend');
@@ -1373,7 +1411,7 @@ class Forecast
                 'monthly' => self::money($cash->plus($card)),
                 'cash' => self::money($cash),
                 'card' => self::money($card),
-                'one_offs' => self::money($oneOffs),
+                'irregular' => self::money($irregular),
                 'average' => self::money($average),
                 'recurring' => self::money($covered),
                 // Income the rules do not bring: the small deposits and the interest, which
@@ -1450,6 +1488,16 @@ class Forecast
         }
 
         return $brought;
+    }
+
+    /**
+     * Whether a row was marked as money that will not come or go again. Such a row is not
+     * projected a year on: a bonus, a double month or a dividend marked so is last year's
+     * alone.
+     */
+    private static function oneOff(Transaction $row): bool
+    {
+        return (bool) ($row->meta?->meta['one_off'] ?? false);
     }
 
     /**

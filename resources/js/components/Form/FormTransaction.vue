@@ -416,6 +416,27 @@
         </template>
       </q-field>
 
+      <!-- Not for a trade, which is no one's spending or income. false-value null, or
+           unticking stores false. -->
+      <q-field
+        v-if="!derivesAmount"
+        class="col-12 app-form-flag"
+        borderless
+        hint="Not expected again, so the forecast leaves it out of typical spending and income"
+        :error="!!form.errors['meta_data.one_off']"
+        :error-message="form.errors['meta_data.one_off']"
+      >
+        <template #control>
+          <q-toggle
+            v-model="form.meta_data.one_off"
+            :false-value="null"
+            label="One-off"
+            color="primary"
+            dense
+          />
+        </template>
+      </q-field>
+
       <!-- The fields only some types have, set apart so the everyday form stays short. -->
       <div v-if="hasExtras" class="col-12">
         <div class="app-form-panel">
@@ -1046,6 +1067,8 @@ watch(
     if (derivesAmount.value) form.amount = null
 
     if (!derivesAmount.value) form.meta_data.no_cash = null
+
+    if (derivesAmount.value) form.meta_data.one_off = null
   },
 )
 

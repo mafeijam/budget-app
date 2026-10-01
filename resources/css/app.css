@@ -1371,6 +1371,14 @@ body {
   border-top: 1px solid var(--app-border);
 }
 
+/* A toggle in a borderless field, there for the hint and error line under it: the field's own
+   control height left the hint a line clear of the toggle it explains. */
+.q-field.app-form-flag .q-field__control,
+.q-field.app-form-flag .q-field__native {
+  min-height: 28px;
+  height: auto;
+}
+
 /* The transaction form: the amount is the figure the form is for, so it reads largest. */
 .app-form-amount .q-field__native,
 .app-form-amount .q-field__prefix {

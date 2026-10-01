@@ -92,6 +92,20 @@ class TransactionControllerTest extends TestCase
         $this->assertDatabaseMissing('meta', ['model_type' => Transaction::class]);
     }
 
+    public function test_a_one_off_is_kept_in_the_bag_and_unticked_leaves_nothing(): void
+    {
+        $this->post('/transactions', $this->expense(['meta_data' => ['one_off' => true]]))->assertSessionHasNoErrors();
+
+        $this->assertTrue(Transaction::latest('id')->first()->meta->meta['one_off']);
+
+        // Unticked is null, which is no key at all: false in the bag would be a second way
+        // to say no, and a row with nothing else in its bag would gain one for it.
+        $this->post('/transactions', $this->expense(['description' => 'Dinner', 'meta_data' => ['one_off' => null]]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull(Transaction::latest('id')->first()->meta);
+    }
+
     public function test_a_card_charge_keeps_its_derived_due_date_in_the_bag(): void
     {
         // The whole point of moving due_date off the column and into the bag. The
