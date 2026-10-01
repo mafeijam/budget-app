@@ -91,8 +91,10 @@ class AccountController extends Controller
      */
     public static function formProps(): array
     {
+        // In the base currency unless changed: nearly every account here is.
         $formEmpty = AccountData::empty([
             'status' => 'active',
+            'ccy' => Fx::BASE->value,
         ]);
 
         $settlementOptions = Account::settlementOptions();

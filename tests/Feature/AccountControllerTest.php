@@ -40,6 +40,8 @@ class AccountControllerTest extends TestCase
         $response->assertInertia(fn (Assert $page) => $page
             ->component('account')
             ->has('formEmpty')
+            ->where('formEmpty.ccy', 'HKD')
+            ->where('formEmpty.status', 'active')
             ->has('data')
             ->has('params')
             ->has('meta')
