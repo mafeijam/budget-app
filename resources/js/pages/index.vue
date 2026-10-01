@@ -173,9 +173,7 @@
               <div class="app-home-month-days column items-end">
                 <div class="text-caption text-grey-7">
                   Day {{ monthDays.done }} of {{ monthDays.total }}
-                  <template v-if="month.days_left">
-                    · {{ month.days_left }} day{{ month.days_left === 1 ? '' : 's' }} left
-                  </template>
+                  <template v-if="month.days_left">· {{ month.days_left }} left</template>
                 </div>
                 <div class="app-home-month-days__track">
                   <div :style="{ width: `${(monthDays.done / monthDays.total) * 100}%` }" />

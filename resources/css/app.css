@@ -1820,10 +1820,10 @@ body {
 
 /* The home month card's place in its month, a thin bar under the day count. */
 .app-home-month-days__track {
-  width: 160px;
-  height: 4px;
-  margin-top: 4px;
-  border-radius: 2px;
+  width: 200px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
   background: #e2e8f0;
   overflow: hidden;
 }
