@@ -131,9 +131,9 @@ class NetWorth
             }
         }
 
-        // Bounded by the earliest day asked for, since a later close cannot answer for an
-        // earlier day -- and the last close before that bound comes back with it.
-        $closeSeries = Price::seriesFor(array_keys($symbols), (string) min($inOrder), (string) max($inOrder));
+        // Only the closes the days asked for can be answered by, not every close between
+        // the first and the last: see seriesOn().
+        $closeSeries = Price::seriesOn(array_keys($symbols), $inOrder);
 
         $snapshots = [];
 
@@ -337,6 +337,18 @@ class NetWorth
      */
     public function history(int $months, Carbon $today, ?int $limit = null): array
     {
+        return self::chartPoints($this->onMany($this->historyDays($months, $today, $limit)));
+    }
+
+    /**
+     * The days history() takes its snapshots on, for a caller that wants other days too and
+     * reads them all in one onMany(): each call is the balance aggregate and the closes
+     * again.
+     *
+     * @return list<string>
+     */
+    public function historyDays(int $months, Carbon $today, ?int $limit = null): array
+    {
         $first = Transaction::query()->min('date');
 
         if ($first === null) {
@@ -369,12 +381,23 @@ class NetWorth
 
         $points[] = $todayString;
 
+        return $points;
+    }
+
+    /**
+     * history()'s points from the snapshots on its days, cut to what a chart draws.
+     *
+     * @param  list<array<string, mixed>>  $snapshots
+     * @return list<array<string, string>>
+     */
+    public static function chartPoints(array $snapshots): array
+    {
         return array_map(
             fn (array $snapshot) => array_intersect_key(
                 $snapshot,
                 array_flip(['date', 'net_worth', 'cash', 'cards', 'value', 'cost'])
             ),
-            $this->onMany($points)
+            $snapshots
         );
     }
 }

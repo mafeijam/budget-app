@@ -28,16 +28,22 @@ class NetWorthController extends Controller
 
         $first = Transaction::query()->min('date');
 
-        // The three snapshots this page shows, asked for together. One at a time each
-        // meant three full balance aggregates over every transaction, and the page already
-        // knew it wanted all three.
+        // The cards' three snapshots and the chart's, asked for together. One at a time each
+        // meant a full balance aggregate over every transaction and a read of the closes, and
+        // the page already knew every day it wanted.
         $days = [$at->toDateString(), $at->copy()->startOfMonth()->subDay()->toDateString()];
 
         if ($first !== null) {
             $days[] = Carbon::parse($first)->endOfMonth()->toDateString();
         }
 
-        $days = array_values(array_unique($days));
+        //
+        // Not with a day inside a month that is not the last asked for: the balances are read
+        // by month, so every day but the last must be a month end, and the 15th asked
+        // alongside today would get the whole month's movements.
+        $chart = $worth->historyDays($months, $today);
+        $together = $at->isSameDay($today) || $at->isLastOfMonth();
+        $days = array_values(array_unique($together ? [...$days, ...$chart] : $days));
         $shown = array_combine($days, $worth->onMany($days));
 
         $current = $shown[$at->toDateString()];
@@ -58,7 +64,9 @@ class NetWorthController extends Controller
             'rates' => $worth->ratesOn($at->toDateString()),
             'lastMonth' => $against($at->copy()->startOfMonth()->subDay()->toDateString()),
             'since' => $first === null ? null : $against(Carbon::parse($first)->endOfMonth()->toDateString()),
-            'history' => $worth->history($months, $today),
+            'history' => $together
+                ? NetWorth::chartPoints(array_map(fn (string $day) => $shown[$day], $chart))
+                : $worth->history($months, $today),
             'at' => $at->isSameDay($today) ? null : $at->toDateString(),
             'months' => $months,
             'periods' => NetWorth::PERIODS,
