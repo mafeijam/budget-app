@@ -33,7 +33,7 @@ class NetWorthTest extends TestCase
         $this->broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
     }
 
-    public function test_cash_less_the_cards_plus_the_stocks_at_their_last_close(): void
+    public function test_cash_plus_the_stocks_at_their_last_close(): void
     {
         $this->row($this->bank, 'deposit', '2026-01-02', '10000');
         $this->buy('2026-02-01', '100', '40');
@@ -52,7 +52,10 @@ class NetWorthTest extends TestCase
         $this->assertSame('5000.0000', $now['value']);
         $this->assertSame('4000.0000', $now['cost']);
         $this->assertSame('1000.0000', $now['unrealised']);
-        $this->assertSame('10700.0000', $now['net_worth']);
+
+        // 6000 + 5000. The 300 owed is reported and is not in this: a debt netted against
+        // the cash set aside to pay it is the same bill subtracted twice.
+        $this->assertSame('11000.0000', $now['net_worth']);
     }
 
     public function test_a_snapshot_leaves_out_what_came_after_its_day(): void

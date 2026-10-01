@@ -134,7 +134,11 @@ const emit = defineEmits(['select'])
 const money = useMoney()
 
 // Cash in the app's positive, stocks in its primary, cost as a dashed line in the negative
-// so the gap to the market value reads as the unrealised gain or loss.
+// so the gap to the market value reads as the unrealised gain or loss. What the cards owe
+// takes no colour here: at a few tens of thousands against a couple of million it is a
+// hairline along zero, and paying a third of the plot's height for a line too small to read
+// costs the four series that are legible more than the debt's absence does. It is the
+// Cash card's total row instead.
 const colours = {
   net_worth: '#475569',
   cash: '#059669',
@@ -156,6 +160,7 @@ const bands = [
   { label: 'Below cost', colour: colours.cost },
 ]
 
+// Painted in this order, so the net worth line is over every fill beneath it.
 const lines = [
   { key: 'cost', colour: colours.cost, dashed: true },
   { key: 'cash', colour: colours.cash },
@@ -222,7 +227,12 @@ const niceStep = raw => {
 const scale = computed(() => {
   const values = points.value.flatMap(point => Object.values(point.numbers))
   const peak = Math.max(1, ...values)
-  const tick = niceStep(peak / 4)
+
+  // A fifth of the peak, not a quarter: at a quarter, a 2.2M ledger asks for 550K, which the
+  // ladder can only round up to 1M and so drew three gridlines where five were wanted. A fifth
+  // asks 440K, which lands on 500K exactly -- the rung already there, rather than one above.
+  // Five intervals is also the better density on a plot this height.
+  const tick = niceStep(peak / 5)
 
   return {
     tick,

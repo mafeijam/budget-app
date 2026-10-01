@@ -20,7 +20,8 @@
         </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">
-        Net worth {{ base }} {{ money(summary.net_worth) }}. Click an account for its transactions.
+        Net worth {{ base }} {{ money(summary.net_worth) }}, cash and stocks only. Click an account
+        for its transactions.
       </div>
     </div>
 

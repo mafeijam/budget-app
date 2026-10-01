@@ -12,8 +12,14 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * What everything held is worth on a day, in the base currency: cash, less what the cards
- * owe, plus the stocks at their last close on or before it.
+ * What everything held is worth on a day, in the base currency: the cash, plus the stocks at
+ * their last close on or before it.
+ *
+ * What the cards owe is reported alongside and is not in this. It is a debt against money
+ * already counted rather than money held, and netting the two nets a liability against the
+ * cash that is set aside to pay it -- the same bill subtracted twice. So it is a line of its
+ * own on the chart and a row of its own on the cards page, where it can be read for what it
+ * is.
  *
  * Read from the rows rather than stored, so a corrected transaction corrects every past
  * snapshot too. A holding with no close yet counts at cost, and one in a currency with no
@@ -234,7 +240,8 @@ class NetWorth
             ];
         }
 
-        $net = $totals['cash']->plus($totals['cards'])->plus($totals['value']);
+        // The cards are not in this, and their absence is the point: see the class docblock.
+        $net = $totals['cash']->plus($totals['value']);
 
         // Four places throughout, the amount column's, so a zero reads 0.0000 as a balance does.
         $money = fn (BigDecimal $value) => (string) $value->toScale(4);

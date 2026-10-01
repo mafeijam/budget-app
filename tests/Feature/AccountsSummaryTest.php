@@ -46,7 +46,8 @@ class AccountsSummaryTest extends TestCase
         $this->get('/accounts')->assertInertia(fn (Assert $page) => $page
             ->where('summary.cash', '1000.0000')
             ->where('summary.cards', '-150.0000')
-            ->where('summary.net_worth', '850.0000')
+            // The 1000, with the 150 owed reported beside it and not subtracted.
+            ->where('summary.net_worth', '1000.0000')
             // Twelve month ends and today, oldest first; zero before the first row.
             ->has("trends.{$this->bank->id}", 13)
             ->where("trends.{$this->bank->id}.0", '0.0000')

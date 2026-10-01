@@ -1229,6 +1229,23 @@ body {
   padding: 6px 16px;
 }
 
+/* A change in net worth: the amount in a pill with its share beside it, split by a rule so the
+   two read as figures and not as one run of text. Roomier than Quasar's badge, which is sized
+   for a count. */
+.app-change {
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.app-change__pct {
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid currentColor;
+  opacity: 0.85;
+}
+
 /* The net worth page's cards: the split as a bar, and the rows behind each figure. */
 .app-worth-bar {
   display: flex;
@@ -1276,8 +1293,15 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--app-border);
+}
+
+/* Only the plain rows, which are the ones with no modifier class: a band or a total already
+   carries the tint, and a hover that changed it would make a label look clickable. */
+.app-worth-row:not([class*='--']):hover,
+.app-worth-stocks:not([class*='--']):hover {
+  background: #f8fafc;
 }
 
 .app-worth-row--total {
@@ -1286,13 +1310,24 @@ body {
   margin-top: auto;
 }
 
-/* A currency's heading over its rows, on the list of one-figure rows rather than over the
-   table of three. No rule of its own: the border the last row above already drew is the one
-   that separates this run from what came before. Two lines, like the figures beside it. */
+/* A currency's heading over its rows, as a tinted band one line high: the code and the count
+   side by side, and the run's sum at the other end. Two stacked lines here are what made the
+   Stocks table three columns of empty cell at every heading, and pushed the Cash card's foot
+   down into a gap. Scoped to these cards, because the home page's cards share the label
+   classes and keep theirs stacked. */
 .app-worth-row--group {
-  align-items: flex-start;
-  padding-top: 10px;
-  border-bottom: 0;
+  align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-worth-row--group .app-home-list__group-label,
+.app-worth-stocks--group .app-home-list__group-label {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .app-worth-stocks {
@@ -1300,20 +1335,39 @@ body {
   grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--app-border);
 }
 
+/* The column names take the heading type the group bands use, so the table's furniture reads
+   as one set: a label, never a row. */
 .app-worth-stocks--head {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted);
 }
 
-/* A currency's sum across the three figures, in the form the All brokerages row under it
-   already takes. A heading over these rows would leave three of the four cells empty. */
+/* A currency's name over the rows it holds, as a band on the table of three figures. Flex
+   rather than the grid, since the three figure columns are empty by design -- the sum they
+   would hold is the subtotal row under the group -- and a label that has to fit the first
+   column would wrap. */
+.app-worth-stocks--group {
+  display: flex;
+  align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--app-border);
+}
+
+/* A currency's sum across the three figures. Its label stays regular weight so the card's own
+   total below is the heavier of the two. */
 .app-worth-stocks--subtotal {
   align-items: baseline;
-  border-bottom: 0;
 }
 
 .app-worth-stocks--total {

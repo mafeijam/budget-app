@@ -183,13 +183,14 @@ class HomeTest extends TestCase
         $this->charge('2026-02-12', '200.0000');
 
         $this->get('/')->assertInertia(fn (Assert $page) => $page
-            ->where('headline.net_worth', '1300.0000')
+            // 1500 cash less the 200 owed, which is not in this: cash and stocks only.
+            ->where('headline.net_worth', '1500.0000')
             ->where('headline.cash', '1500.0000')
             ->where('headline.cards', '-200.0000')
             // Keyed by figure, so every card's note comes from one expression on the
             // client and net worth is not the one that carries it.
             ->where('headline.last_month.net_worth', '1000.0000')
-            ->where('headline.change.net_worth', '300.0000')
+            ->where('headline.change.net_worth', '500.0000')
             ->where('headline.last_month.cash', '1000.0000')
             ->where('headline.change.cash', '500.0000')
             ->where('headline.last_month.cards', '0.0000')

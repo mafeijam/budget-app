@@ -538,6 +538,10 @@ const headlineFigures = computed(() => {
       ...onLastMonth('cards'),
       items: statementItems.value,
       empty: 'Nothing owed on any card.',
+      // Under the rows rather than in the note line, which carries the month-on-month change
+      // and is coloured by its sign. Three cards sum to Net worth and this one does not, so
+      // it says so where the card's own figure can be read against it.
+      more: isZero(h.cards) ? null : 'Not counted in net worth.',
     },
   ]
 })
@@ -883,9 +887,20 @@ const brokerItems = computed(() =>
       lines: [
         {
           // The gain and its share, without the word: in a card this narrow it was cut off.
-          text: `${signed(broker.unrealised_base ?? broker.unrealised)}${pct ? ` (${pct})` : ''}`,
+          // As held, with the card's currency under it, as the value beside it reads -- and the
+          // share is of that same figure, so the two are one statement. It was quoting the
+          // gain in the card's currency against a share taken in the brokerage's, which agreed
+          // with itself only by accident.
+          text: broker.converted
+            ? `${broker.ccy} ${signed(broker.unrealised)}${pct ? ` (${pct})` : ''}`
+            : `${signed(broker.unrealised_base ?? broker.unrealised)}${pct ? ` (${pct})` : ''}`,
           class: signClass(broker.unrealised),
         },
+        // What that gain is worth where the card's figure is kept, so the two figures above it
+        // and the value beside it all read the same way round.
+        ...(broker.converted
+          ? [{ text: `${props.base} ${money(broker.unrealised_base)}`, class: 'text-grey-6' }]
+          : []),
         // Only when it matters: a holding with no price is missing from the value above.
         ...(broker.unpriced ? [{ text: `${broker.unpriced} unpriced, left out` }] : []),
       ],
