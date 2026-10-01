@@ -364,6 +364,18 @@
               </template>
             </td>
 
+            <!-- What the closed parts of the line made. Unlike unrealised it gets no
+                 percentage: a gain on shares already sold has no cost still held to
+                 divide it by. The dash is hasFigure's doing, not a truth test on the
+                 figure, because Positions.php opens a position's realised at "0.0000"
+                 and that is a string, so the test would print 0.00 down the column. -->
+            <td class="text-right money" :class="signClass(position.realised)">
+              <template v-if="hasFigure(position.realised)">{{
+                signed(position.realised)
+              }}</template>
+              <span v-else class="text-grey-5">—</span>
+            </td>
+
             <!-- Received, on the symbol this row holds; its count opens those rows. -->
             <td
               v-if="view.dividends"
@@ -465,6 +477,10 @@ const formatTime = useHongKongTime()
 // templates: vite.config.js sets no vueTemplate, so a composable used in one is
 // undefined at runtime and neither lint nor build sees it.
 const quantity = plainQuantity
+
+// The same trap, and it needs its own name because script already has the auto-import
+// under its own. Reads as it is used: a figure this row does not have.
+const hasFigure = received
 
 // "Today, 12:26" in Hong Kong's day; the tooltip carries the full timestamp.
 const tz = usePage().props.tz
@@ -768,13 +784,13 @@ const details = totals =>
     `Fees ${money(totals.fees)}, not taken off the return`,
   ].join(' · ')
 
-// Trades, the last of them, and the fees and realised gains a row has only sometimes.
+// Trades, the last of them, and the fees a row has only sometimes. What the line realised
+// is not repeated here: it has a column of its own now.
 const activity = position =>
   [
     `${position.trades} trade${position.trades === 1 ? '' : 's'}`,
     position.last_trade_date ? `last ${formatDate(position.last_trade_date)}` : null,
     received(position.fees) ? `fees ${money(position.fees)}` : null,
-    received(position.realised) ? `realised ${signed(position.realised)}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -811,6 +827,7 @@ const columns = computed(() => [
   { key: 'cost', label: 'Cost', sort: true },
   { key: 'market', label: 'Market value', sort: true },
   { key: 'unrealised', label: 'Unrealised', sort: true },
+  { key: 'realised', label: 'Realised', sort: true },
   ...(view.value?.dividends ? [{ key: 'dividends', label: 'Dividends', sort: true }] : []),
   { key: 'pnl', label: 'Total return', sort: true },
   { key: 'bar', label: 'Return' },
@@ -830,6 +847,7 @@ const sortValue = {
   cost: p => Number(p.open ? p.cost : 0),
   market: p => Number(p.market_value ?? 0),
   unrealised: p => Number(p.unrealised ?? 0),
+  realised: p => Number(p.realised ?? 0),
   dividends: p => Number(p.dividends ?? 0),
   pnl: p => Number(p.pnl ?? 0),
 }
