@@ -394,6 +394,25 @@ class CashFlow
     }
 
     /**
+     * The ids of the bank-side rows of a trade: the withdraw a buy takes money out of and the
+     * deposit a sell pays into, found as whereSettlesACard() finds a settlement's, by the
+     * partner in the bag. Read off the bag and not the description, which TradeCash writes
+     * but a row's owner can edit.
+     *
+     * @param  QueryBuilder<int, object>  $q
+     * @return QueryBuilder<int, object>
+     */
+    public static function whereSettlesATrade(QueryBuilder $q): QueryBuilder
+    {
+        return DB::table('meta')
+            ->select('model_id')
+            ->where('model_type', Transaction::class)
+            ->whereIn('meta->paired_transaction_id', $q
+                ->select('transactions.id')
+                ->whereIn('transactions.type', [TransactionType::Buy->value, TransactionType::Sell->value]));
+    }
+
+    /**
      * The share of its kind a row is broken out as: a dividend of income, a card charge of
      * spending. The rest of each kind is the other share, taken by subtraction in
      * currencyReport() rather than summed, so the two always add up to the kind's figure.

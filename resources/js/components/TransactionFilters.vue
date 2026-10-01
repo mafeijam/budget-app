@@ -51,6 +51,16 @@
           class="q-px-sm"
         />
         <q-separator vertical inset class="q-mx-sm" />
+        <q-toggle
+          v-model="hideTransfers"
+          label="Hide transfers"
+          color="primary"
+          dense
+          class="q-px-sm"
+        >
+          <q-tooltip>The bank's side of a card payment, a buy and a sell</q-tooltip>
+        </q-toggle>
+        <q-separator vertical inset class="q-mx-sm" />
         <!-- The totals under the table, off unless asked for: a figure on every visit is one
              nobody reads, and the page is shorter without it. -->
         <q-toggle v-model="showTotals" label="Totals" color="primary" dense class="q-px-sm" />
@@ -490,9 +500,27 @@ const parse = filter => ({
   due_month: list(filter.due_month),
   // A string, as in the URL: query() drops '', so off is no filter rather than one on false.
   unpaid: filter.unpaid ?? '',
+  hide_transfers: filter.hide_transfers ?? '',
 })
 
 const filters = reactive(parse(seeded))
+
+// A choice about the page and not a filter on one search, so it is remembered per browser as
+// Totals is, and Clear all leaves it. A link that names it wins for that visit without
+// changing the choice. The server cannot see the browser's storage, so a remembered yes
+// asks for the list again on arrival.
+const hideTransfersKept = useStorage('transactions.hideTransfers', false)
+const hideTransfers = computed({
+  get: () => filters.hide_transfers === '1',
+  set: on => {
+    hideTransfersKept.value = on
+    filters.hide_transfers = on ? '1' : ''
+  },
+})
+
+const askedForTransfers = hideTransfersKept.value && !('hide_transfers' in seeded)
+
+if (askedForTransfers) filters.hide_transfers = '1'
 
 // What the list on screen is filtered by: the server's echo of the last request, not the
 // controls. The chips and Clear all read this, so they change when the rows do -- off the
@@ -554,7 +582,10 @@ const query = () =>
       .filter(([, value]) => value !== null && value !== ''),
   )
 
-const active = computed(() => Object.keys(page.props.params?.filter ?? {}).length > 0)
+const active = computed(
+  () =>
+    Object.keys(page.props.params?.filter ?? {}).filter(key => key !== 'hide_transfers').length > 0,
+)
 
 const chips = computed(() => {
   const on = applied.value
@@ -690,4 +721,8 @@ const showStatement = (cardId, dueDate) => {
 defineExpose({ showStatement, clear })
 
 watch(filters, apply, { deep: true })
+
+onMounted(() => {
+  if (askedForTransfers) apply()
+})
 </script>

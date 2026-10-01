@@ -489,6 +489,39 @@ class TransactionFilterTest extends TestCase
         $this->assertListed(['filter' => ['type' => 'charge']], ['Coffee, tea']);
     }
 
+    public function test_it_hides_the_bank_half_of_a_card_payment_and_of_a_trade(): void
+    {
+        $this->post('/transactions', $this->chargePayload([
+            'date' => '2026-02-10',
+            'description' => 'Flight',
+            'amount' => '50.0000',
+        ]))->assertSessionHasNoErrors();
+        $this->settle(['due_date' => '2026-03-12', 'owed' => '50.0000'])->assertSessionHasNoErrors();
+
+        $broker = Account::create(['name' => 'Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
+        $broker->meta()->create(['meta' => ['settlement_account_id' => $this->bank->id]]);
+
+        foreach (['buy' => '2026-04-01', 'sell' => '2026-04-02'] as $type => $date) {
+            $this->post('/transactions', [
+                'account_id' => $broker->id,
+                'date' => $date,
+                'type' => $type,
+                'description' => ucfirst($type),
+                'ccy' => 'HKD',
+                'meta_data' => ['symbol' => '0700.HK', 'quantity' => '10', 'unit_price' => '400'],
+            ])->assertSessionHasNoErrors();
+        }
+
+        $account = (string) $this->bank->id;
+
+        // The bank's own rows stay, and the three halves go: the payment, the buy's
+        // withdrawal and the sell's deposit.
+        $this->assertListed(['filter' => ['account_id' => $account, 'hide_transfers' => '1']], ['Salary', 'Rent']);
+
+        $this->get('/transactions?'.http_build_query(['filter' => ['account_id' => $account], 'per_page' => 20]))
+            ->assertInertia(fn (Assert $page) => $page->has('data.data', 5));
+    }
+
     public function test_a_value_that_does_not_say_yes_filters_nothing(): void
     {
         $this->assertListed(['filter' => ['unpaid' => '0']], ['Salary', 'Rent', 'Books', 'Coffee, tea']);

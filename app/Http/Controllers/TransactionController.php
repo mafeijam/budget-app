@@ -148,6 +148,21 @@ class TransactionController extends Controller
 
                     return CashFlow::whereSpends($q);
                 }),
+                // The bank's half of money that only moved between accounts: the withdrawal that
+                // pays a card and the withdrawal or deposit a buy or sell settles through. Each
+                // is the other half of a row the list shows already, and no category could mark
+                // them: settle() and TradeCash write them with none, and TradeCash rewrites its
+                // row's category to null on every edit of the trade. Off unless asked, as
+                // `unpaid` is.
+                AllowedFilter::callback('hide_transfers', function (Builder $q, $value) {
+                    if (! in_array((string) $value, ['1', 'true'], true)) {
+                        return $q;
+                    }
+
+                    return $q
+                        ->whereNotIn('id', CashFlow::whereSettlesACard(DB::table('transactions')))
+                        ->whereNotIn('id', CashFlow::whereSettlesATrade(DB::table('transactions')));
+                }),
                 AllowedFilter::exact('ccy'),
                 // No delimiter: "coffee, tea" is one phrase.
                 AllowedFilter::partial('description')->delimiter(''),
