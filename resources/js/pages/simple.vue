@@ -43,6 +43,8 @@
       </q-list>
     </q-card>
 
+    <HomeMonths :month="month" :next-month="nextMonth" :base="base" />
+
     <q-card flat bordered>
       <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
         Cash
@@ -126,8 +128,6 @@
         </q-item>
       </q-list>
     </q-card>
-
-    <HomeMonths :month="month" :next-month="nextMonth" :base="base" />
 
     <div class="text-center q-pb-md">
       <q-btn flat no-caps color="grey-7" label="Full site" icon="desktop_windows" @click="full" />
