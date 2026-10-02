@@ -22,8 +22,7 @@ use Illuminate\Support\Collection;
  *
  * A loan is subtracted, and that is not the same mistake. The money borrowed is in the cash
  * and nothing else records the debt, so leaving it out counts a loan as money earned. A loan
- * repaid by card instalments stops being owed on the day each is charged, and the instalment
- * is then card debt like any other: a month counted nowhere until the statement is paid.
+ * repaid by card instalments is owed until each statement's due date: see Loans.
  *
  * Read from the rows rather than stored, so a corrected transaction corrects every past
  * snapshot too. A holding with no close yet counts at cost, and one in a currency with no

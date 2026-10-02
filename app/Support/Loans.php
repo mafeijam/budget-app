@@ -41,19 +41,32 @@ class Loans
 
         foreach ($rows as $row) {
             $bag = $row->meta->meta;
-            $change = BigDecimal::zero();
+            $move = fn (string $date, BigDecimal $change) => $this->moves[] = [
+                'loan' => $bag['loan'], 'date' => $date, 'ccy' => $row->account->ccy, 'change' => $change,
+            ];
 
+            // Owed from the day the records start, not from the payment that states it.
             if (isset($bag['loan_borrowed'])) {
-                $change = $change->plus($bag['loan_borrowed'])->minus($bag['loan_repaid_before'] ?? '0');
+                $move($row->date, BigDecimal::of($bag['loan_borrowed'])->minus($bag['loan_repaid_before'] ?? '0'));
             }
 
-            $change = isset($bag['loan_principal'])
-                ? $change->minus($bag['loan_principal'])
+            if (! isset($bag['loan_principal'])) {
                 // A card states its own amount, so a drawdown onto one is card_amount.
-                : $change->plus($bag['card_amount'] ?? $row->amount);
+                $move($row->date, BigDecimal::of($bag['card_amount'] ?? $row->amount));
 
-            $this->moves[] = ['loan' => $bag['loan'], 'date' => $row->date, 'ccy' => $row->account->ccy, 'change' => $change];
+                continue;
+            }
+
+            /* A card instalment is repaid on its statement's due date, when the money leaves
+               the cash, not on the day it is charged. Net worth leaves card debt out, so on
+               the charge date the instalment came off the loan and went nowhere, and net worth
+               read a month of it high. */
+            $move($bag['due_date'] ?? $row->date, BigDecimal::of($bag['loan_principal'])->negated());
         }
+
+        // A due date is weeks after the charge, so the moves are put back in date order for
+        // owedOn(), which stops at the first one past the day.
+        usort($this->moves, fn (array $a, array $b) => $a['date'] <=> $b['date']);
     }
 
     /** @return Builder<Transaction> */

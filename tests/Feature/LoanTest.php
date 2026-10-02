@@ -63,9 +63,10 @@ class LoanTest extends TestCase
     public function test_a_loan_from_before_the_records_starts_at_what_was_left(): void
     {
         for ($n = 6; $n <= 36; $n++) {
-            $date = Carbon::parse('2016-12-06')->addMonthsNoOverflow($n - 6)->toDateString();
-            $this->row($this->card, $date, 'charge', '6250', "INSTALMENT {$n} OF 36");
-            $this->row($this->card, $date, 'charge', '360', "INSTALMENT {$n} OF 36");
+            $date = Carbon::parse('2016-12-06')->addMonthsNoOverflow($n - 6);
+            $due = $date->copy()->addDays(42)->toDateString();
+            $this->row($this->card, $date->toDateString(), 'charge', '6250', "INSTALMENT {$n} OF 36", $due);
+            $this->row($this->card, $date->toDateString(), 'charge', '360', "INSTALMENT {$n} OF 36", $due);
         }
 
         $this->artisan('loans:tag', ['--apply' => true])->assertSuccessful();
@@ -75,9 +76,14 @@ class LoanTest extends TestCase
         $this->assertSame('31250', $first->meta->meta['loan_repaid_before']);
         $this->assertSame(31, Transaction::whereHas('meta', fn ($q) => $q->where('meta->loan', 'MASTER INSTALMENT LOAN'))->count());
 
-        // 225,000 less instalments 1 to 6.
-        $this->assertSame('187500.0000', (new NetWorth)->on('2016-12-31')['loans']);
-        $this->assertSame('0.0000', (new NetWorth)->on('2019-06-30')['loans']);
+        // 225,000 less instalments 1 to 5: owed from the first recorded charge, and that charge
+        // not repaid until its statement falls due in January.
+        $this->assertSame('193750.0000', (new NetWorth)->on('2016-12-31')['loans']);
+        $this->assertSame('187500.0000', (new NetWorth)->on('2017-01-31')['loans']);
+
+        // The last instalment, charged in June, is owed until its due date in July.
+        $this->assertSame('6250.0000', (new NetWorth)->on('2019-06-30')['loans']);
+        $this->assertSame('0.0000', (new NetWorth)->on('2019-07-31')['loans']);
     }
 
     public function test_a_loan_with_a_missing_instalment_is_left_untagged(): void
@@ -126,11 +132,15 @@ class LoanTest extends TestCase
         }
     }
 
-    private function row(Account $account, string $date, string $type, string $amount, string $description): void
+    private function row(Account $account, string $date, string $type, string $amount, string $description, ?string $due = null): void
     {
-        Transaction::create([
+        $row = Transaction::create([
             'account_id' => $account->id, 'date' => $date, 'type' => $type,
             'description' => $description, 'amount' => $amount, 'ccy' => 'HKD', 'status' => 'posted',
         ]);
+
+        if ($due !== null) {
+            $row->meta()->create(['meta' => ['due_date' => $due]]);
+        }
     }
 }
