@@ -47,9 +47,24 @@
           stroke-dasharray="3 3"
         />
 
+        <!-- Above and below zero, so cash can change colour where it crosses. -->
+        <defs>
+          <clipPath :id="`${uid}-above`">
+            <rect x="0" y="0" :width="width" :height="y(0)" />
+          </clipPath>
+          <clipPath :id="`${uid}-below`">
+            <rect x="0" :y="y(0)" :width="width" :height="height" />
+          </clipPath>
+        </defs>
+
         <!-- Fills first, so the lines and the marker sit on top of them. -->
         <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
-        <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
+        <path
+          :d="area('cash')"
+          :clip-path="`url(#${uid}-above)`"
+          :fill="colours.cash"
+          fill-opacity="0.18"
+        />
         <path v-if="owing" :d="area('loans')" :fill="colours.loans" fill-opacity="0.2" />
         <path
           v-for="(piece, i) in gaps"
@@ -61,10 +76,11 @@
 
         <polyline
           v-for="series in shownLines"
-          :key="series.key"
+          :key="series.id ?? series.key"
           :points="line(series.key)"
           fill="none"
           :stroke="series.colour"
+          :clip-path="series.clip ? `url(#${uid}-${series.clip})` : null"
           stroke-width="2"
           :stroke-dasharray="series.dashed ? '5 4' : null"
           stroke-linejoin="round"
@@ -150,6 +166,7 @@ const colours = {
   value: '#2563eb',
   cost: '#e11d48',
   loans: '#d97706',
+  overdrawn: '#b97373',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
 }
@@ -170,7 +187,10 @@ const bands = [
 // Painted in this order, so the net worth line is over every fill beneath it.
 const lines = [
   { key: 'cost', colour: colours.cost, dashed: true },
-  { key: 'cash', colour: colours.cash },
+  // Cash below zero is a line in a muted red with no fill: money missing rather than held, and
+  // a fill there would sit on the loans' and muddy both. Muted, as red proper is the stock cost.
+  { key: 'cash', colour: colours.cash, clip: 'above' },
+  { key: 'cash', id: 'cash-below', colour: colours.overdrawn, clip: 'below' },
   { key: 'value', colour: colours.value },
   { key: 'loans', colour: colours.loans },
   { key: 'net_worth', colour: colours.net_worth },
@@ -180,6 +200,9 @@ const lines = [
 const owing = computed(() => points.value.some(point => point.numbers.loans !== 0))
 const shownLegend = computed(() => legend.filter(series => series.key !== 'loans' || owing.value))
 const shownLines = computed(() => lines.filter(series => series.key !== 'loans' || owing.value))
+
+// The clip paths' ids, which must be unique on the page.
+const uid = useId()
 
 const width = 960
 const height = 300
