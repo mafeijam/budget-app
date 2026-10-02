@@ -951,6 +951,12 @@ body {
   background: #f8fafc;
 }
 
+/* The peek cell fades only into its own hover: fading into the row's tint as well left it a
+   beat behind the cells beside it, a flicker every time the row was entered elsewhere. */
+.app-positions__row > td.app-peek-trigger:not(:hover) {
+  transition: none;
+}
+
 .app-positions__sortable:hover {
   color: #1e293b;
 }
