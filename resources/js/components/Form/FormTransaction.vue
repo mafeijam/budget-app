@@ -357,6 +357,11 @@
         <template #prepend>
           <q-icon name="label" color="grey-6" />
         </template>
+        <template #option="scope">
+          <q-item v-bind="scope.itemProps" dense>
+            <q-item-section>{{ scope.opt.label }}</q-item-section>
+          </q-item>
+        </template>
         <template #no-option>
           <q-item>
             <q-item-section class="text-grey">No category matches</q-item-section>
