@@ -1511,10 +1511,6 @@ body {
   background: #f8fafc;
 }
 
-.app-worth-stack {
-  gap: 16px;
-}
-
 .app-worth-loan-bar {
   height: 6px;
   margin-bottom: 4px;

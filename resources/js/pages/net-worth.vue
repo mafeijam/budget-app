@@ -276,138 +276,136 @@
     <!-- Wrapped: the column's gutter margin would undo the row's own negative one. -->
     <div>
       <div class="row q-col-gutter-md">
-        <div class="col-12 col-md-5">
-          <!-- The Cash card grows to the Stocks card's height; what is owed sits under it. -->
-          <div class="column no-wrap full-height app-worth-stack">
-            <q-card flat bordered class="app-worth-card col-grow">
-              <q-card-section class="row items-center q-pb-sm">
-                <q-icon name="account_balance" size="sm" color="grey-7" class="q-mr-sm" />
-                <div class="text-subtitle1 text-weight-medium">Cash</div>
-                <q-space />
-                <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
-              </q-card-section>
-              <q-separator />
-              <template v-for="group in cashGroups.groups" :key="group.ccy">
-                <div v-if="group.headed" class="app-worth-row app-worth-row--group">
-                  <span class="app-home-list__group-label">
-                    <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
-                    <span class="app-home-list__group-count">
-                      {{ counted(group.items.length, 'account') }}
-                    </span>
+        <!-- Cash, what is owed, then stocks, one row on a wide screen with the debt between
+             what is held in cash and in stocks. Each card is its own height: stretched to the
+             tallest, a short one only opened white above its foot. Cash takes Owed's width
+             too when there is nothing owed. -->
+        <div class="col-12" :class="hasOwed ? 'col-md-6 col-lg-3' : 'col-lg-6'">
+          <q-card flat bordered class="app-worth-card">
+            <q-card-section class="row items-center q-pb-sm">
+              <q-icon name="account_balance" size="sm" color="grey-7" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-medium">Cash</div>
+              <q-space />
+              <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
+            </q-card-section>
+            <q-separator />
+            <template v-for="group in cashGroups.groups" :key="group.ccy">
+              <div v-if="group.headed" class="app-worth-row app-worth-row--group">
+                <span class="app-home-list__group-label">
+                  <span class="app-home-list__group-ccy">{{ group.ccy }}</span>
+                  <span class="app-home-list__group-count">
+                    {{ counted(group.items.length, 'account') }}
                   </span>
-                  <div class="app-home-list__group-figures text-right">
-                    <!-- What these rows come to in the currency the heading names. A run of one
+                </span>
+                <div class="app-home-list__group-figures text-right">
+                  <!-- What these rows come to in the currency the heading names. A run of one
                        has no sum to state: its own money is on the row beneath it. -->
-                    <div
-                      v-if="group.ownShown"
-                      class="money text-caption text-weight-medium text-grey-8"
-                    >
-                      {{ money(group.own) }}
-                      <!-- The rate on a run held in another currency, where nothing else in the
+                  <div
+                    v-if="group.ownShown"
+                    class="money text-caption text-weight-medium text-grey-8"
+                  >
+                    {{ money(group.own) }}
+                    <!-- The rate on a run held in another currency, where nothing else in the
                          card states it: a run of one has no row figure to put it on. -->
-                      <q-tooltip v-if="rateFor(group)" :delay="500" :offset="[0, 6]">
-                        1 {{ group.ccy }} = {{ rateFor(group) }} {{ base }}
-                      </q-tooltip>
-                    </div>
+                    <q-tooltip v-if="rateFor(group)" :delay="500" :offset="[0, 6]">
+                      1 {{ group.ccy }} = {{ rateFor(group) }} {{ base }}
+                    </q-tooltip>
                   </div>
                 </div>
+              </div>
 
-                <div v-for="account in group.items" :key="account.id" class="app-worth-row">
-                  <span class="text-grey-9 ellipsis">{{ account.name }}</span>
-                  <div class="text-right">
-                    <!-- As on the home page's cards: what the account holds takes the figure, and
+              <div v-for="account in group.items" :key="account.id" class="app-worth-row">
+                <span class="text-grey-9 ellipsis">{{ account.name }}</span>
+                <div class="text-right">
+                  <!-- As on the home page's cards: what the account holds takes the figure, and
                        what it is worth in the card's currency goes under it in the same light
                        grey. A card holding one currency has no heading to name the own money,
                        so there it carries its code. -->
-                    <span class="money text-weight-medium">
-                      {{
-                        account.converted
-                          ? group.headed
-                            ? money(account.own)
-                            : `${account.ccy} ${money(account.own)}`
-                          : money(account.total)
-                      }}
-                      <q-tooltip
-                        v-if="account.converted && rateFor(account)"
-                        :delay="500"
-                        :offset="[0, 6]"
-                      >
-                        1 {{ account.ccy }} = {{ rateFor(account) }} {{ base }}
-                      </q-tooltip>
-                    </span>
-                    <div v-if="account.converted" class="text-caption text-grey-6 money">
-                      {{ base }} {{ money(account.total) }}
-                    </div>
-                    <!-- A card holding one currency throughout has no heading over its rows, so
+                  <span class="money text-weight-medium">
+                    {{
+                      account.converted
+                        ? group.headed
+                          ? money(account.own)
+                          : `${account.ccy} ${money(account.own)}`
+                        : money(account.total)
+                    }}
+                    <q-tooltip
+                      v-if="account.converted && rateFor(account)"
+                      :delay="500"
+                      :offset="[0, 6]"
+                    >
+                      1 {{ account.ccy }} = {{ rateFor(account) }} {{ base }}
+                    </q-tooltip>
+                  </span>
+                  <div v-if="account.converted" class="text-caption text-grey-6 money">
+                    {{ base }} {{ money(account.total) }}
+                  </div>
+                  <!-- A card holding one currency throughout has no heading over its rows, so
                        a row nothing could convert is a figure in its own currency with nothing
                        saying that. -->
-                    <div
-                      v-if="!group.headed && !account.converted && account.ccy !== base"
-                      class="text-caption text-grey-6"
-                    >
-                      {{ account.ccy }}
-                    </div>
+                  <div
+                    v-if="!group.headed && !account.converted && account.ccy !== base"
+                    class="text-caption text-grey-6"
+                  >
+                    {{ account.ccy }}
                   </div>
                 </div>
-              </template>
-            </q-card>
-
-            <!-- Owed apart from the cash, so the Cash card holds only what is held. Its total is the
-               loans alone, which net worth subtracts; the cards are listed for what they owe and
-               say they are not counted: their debt is paid from the cash above. -->
-            <q-card
-              v-if="!isZero(current.loans) || !isZero(current.cards)"
-              flat
-              bordered
-              class="app-worth-card"
-            >
-              <q-card-section class="row items-center q-pb-sm">
-                <q-icon name="request_quote" size="sm" color="grey-7" class="q-mr-sm" />
-                <div class="text-subtitle1 text-weight-medium">Owed</div>
-                <q-space />
-                <div v-if="!isZero(current.loans)" class="money text-weight-bold text-negative">
-                  {{ figure(current.loans) }}
-                </div>
-              </q-card-section>
-              <q-separator />
-              <div v-for="loan in current.loan_rows" :key="loan.name" class="app-worth-row">
-                <div class="col">
-                  <div class="row items-center no-wrap">
-                    <span class="text-grey-9 text-weight-medium ellipsis">{{ loan.name }}</span>
-                    <q-badge class="app-tint app-tint--warning q-ml-sm" label="Loan" />
-                  </div>
-                  <div class="app-worth-loan-bar q-mt-xs">
-                    <div :style="{ width: `${paidShare(loan)}%` }" />
-                  </div>
-                  <div class="text-caption text-grey-6">
-                    {{ paidShare(loan) }}% paid of {{ money(loan.total) }} · ends
-                    {{ shortMonthLabel(loan.ends) }}
-                  </div>
-                </div>
-                <span class="money text-weight-medium">
-                  {{ loan.ccy === base ? money(loan.owed) : `${loan.ccy} ${money(loan.owed)}` }}
-                </span>
               </div>
-              <div v-if="!isZero(current.cards)" class="app-worth-row">
-                <div>
-                  <div class="row items-center no-wrap">
-                    <span class="text-grey-9">Cards</span>
-                    <q-badge class="app-tint app-tint--muted q-ml-sm" label="Not in net worth" />
-                  </div>
-                  <div class="text-caption text-grey-6">
-                    Paid from the cash above when each statement is due
-                  </div>
-                </div>
-                <span class="money text-weight-medium text-grey-6">{{
-                  owedMagnitude(current.cards)
-                }}</span>
-              </div>
-            </q-card>
-          </div>
+            </template>
+          </q-card>
         </div>
 
-        <div class="col-12 col-md-7">
-          <q-card flat bordered class="app-worth-card full-height">
+        <div v-if="hasOwed" class="col-12 col-md-6 col-lg-3">
+          <!-- Owed apart from the cash, so the Cash card holds only what is held. Its total is the
+               loans alone, which net worth subtracts; the cards are listed for what they owe and
+               say they are not counted: their debt is paid from the cash above. -->
+          <q-card flat bordered class="app-worth-card">
+            <q-card-section class="row items-center q-pb-sm">
+              <q-icon name="request_quote" size="sm" color="grey-7" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-medium">Owed</div>
+              <q-space />
+              <div v-if="!isZero(current.loans)" class="money text-weight-bold text-negative">
+                {{ figure(current.loans) }}
+              </div>
+            </q-card-section>
+            <q-separator />
+            <div v-for="loan in current.loan_rows" :key="loan.name" class="app-worth-row">
+              <div class="col">
+                <div class="row items-center no-wrap">
+                  <span class="text-grey-9 text-weight-medium ellipsis">{{ loan.name }}</span>
+                  <q-badge class="app-tint app-tint--warning q-ml-sm" label="Loan" />
+                </div>
+                <div class="app-worth-loan-bar q-mt-xs">
+                  <div :style="{ width: `${paidShare(loan)}%` }" />
+                </div>
+                <div class="text-caption text-grey-6">
+                  {{ paidShare(loan) }}% paid of {{ money(loan.total) }} · ends
+                  {{ shortMonthLabel(loan.ends) }}
+                </div>
+              </div>
+              <span class="money text-weight-medium">
+                {{ loan.ccy === base ? money(loan.owed) : `${loan.ccy} ${money(loan.owed)}` }}
+              </span>
+            </div>
+            <div v-if="!isZero(current.cards)" class="app-worth-row">
+              <div>
+                <div class="row items-center no-wrap">
+                  <span class="text-grey-9">Cards</span>
+                  <q-badge class="app-tint app-tint--muted q-ml-sm" label="Not in net worth" />
+                </div>
+                <div class="text-caption text-grey-6">
+                  Paid from the cash above when each statement is due
+                </div>
+              </div>
+              <span class="money text-weight-medium text-grey-6">{{
+                owedMagnitude(current.cards)
+              }}</span>
+            </div>
+          </q-card>
+        </div>
+
+        <div class="col-12 col-lg-6">
+          <q-card flat bordered class="app-worth-card">
             <q-card-section class="row items-center q-pb-sm">
               <q-icon name="show_chart" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Stocks</div>
@@ -800,6 +798,8 @@ const chooseMonth = (end, month, reason) => {
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
+
+const hasOwed = computed(() => !isZero(props.current.loans) || !isZero(props.current.cards))
 const up = value => !String(value).startsWith('-')
 
 const signClass = value => (isZero(value) ? '' : up(value) ? 'text-positive' : 'text-negative')
