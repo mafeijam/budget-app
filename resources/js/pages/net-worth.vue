@@ -1,28 +1,13 @@
 <template>
   <div class="column no-wrap q-gutter-lg">
     <div>
-      <div class="row items-end q-col-gutter-md">
-        <div class="col">
-          <div class="text-h6 text-weight-medium">
-            Net worth
-            <span v-if="at" class="text-subtitle1 text-grey-7">at {{ monthLabel(at) }}</span>
-          </div>
-          <div class="text-caption text-grey-7">
-            Cash, plus the stocks at their last close, in {{ base }}. What the cards owe is not
-            subtracted here. Pending rows are left out. Click a point on the chart to read that
-            month.
-          </div>
-        </div>
-        <div v-if="at" class="col-auto">
-          <q-btn
-            class="text-weight-bold app-btn"
-            unelevated
-            no-caps
-            icon="today"
-            :label="`Back to ${to ? monthLabel(to) : 'today'}`"
-            @click="visit({ at: null })"
-          />
-        </div>
+      <div class="text-h6 text-weight-medium">
+        Net worth
+        <span v-if="at" class="text-subtitle1 text-grey-7">at {{ monthLabel(at) }}</span>
+      </div>
+      <div class="text-caption text-grey-7">
+        Cash, plus the stocks at their last close, in {{ base }}. What the cards owe is not
+        subtracted here. Pending rows are left out. Click a point on the chart to read that month.
       </div>
     </div>
 
@@ -106,6 +91,18 @@
         </div>
 
         <div class="col-auto row items-center no-wrap q-gutter-sm">
+          <!-- Put back to the window's end, beside the controls that moved the window rather
+               than up on the page heading, where it read as though it undid the whole page. -->
+          <q-btn
+            v-if="at"
+            class="text-weight-bold app-btn"
+            unelevated
+            no-caps
+            icon="today"
+            :label="`Back to ${to ? monthLabel(to) : 'today'}`"
+            @click="visit({ at: null })"
+          />
+
           <!-- The Positions page's toolbar, so the pages' controls read alike. Both ends of
                the window in one box, divided: they are one range, and a reader should not
                have to know they are two controls. -->
@@ -116,7 +113,7 @@
               no-caps
               class="app-toolbar__pick q-px-sm"
               icon-right="expand_more"
-              @click="opens.from++"
+              @click="openPicker('from')"
             >
               <div class="row items-center no-wrap">
                 <q-icon
@@ -160,7 +157,7 @@
               no-caps
               class="app-toolbar__pick q-px-sm"
               icon-right="expand_more"
-              @click="opens.to++"
+              @click="openPicker('to')"
             >
               <div class="row items-center no-wrap">
                 <q-icon
@@ -596,10 +593,15 @@ const bounds = computed(() => ({
   to: { min: nav(props.from ?? props.earliest), max: maxYearMonth.value },
 }))
 
-// Each picker's own month to open on: the end that is set, or the month it would default to.
+/* Where each picker is looking, as opposed to what it has committed: browsing to a year is
+   not a choice, so it is held here and given back to the q-date as its model, and the menu
+   reopens on the end that is set. */
+const browses = reactive({ from: null, to: null })
+
+// Each picker's own month to open on: the end it is set to, or the month it would default to.
 const opening = computed(() => ({
-  from: props.from ?? props.today?.slice(0, 7),
-  to: props.to ?? props.today?.slice(0, 7),
+  from: browses.from ?? props.from ?? props.today?.slice(0, 7),
+  to: browses.to ?? props.to ?? props.today?.slice(0, 7),
 }))
 
 /* What the caption says the window is, which is the one thing the chart's own axis cannot:
@@ -616,9 +618,16 @@ const windowLabel = computed(() => {
   return props.to ? `, up to ${monthLabel(props.to)}` : ", and today's"
 })
 
-/* Choosing a month leaves the q-date on its calendar view, and that view is read once at
-   mount, so the menu would next open on day cells. Each key mounts a fresh one per opening. */
+/* The q-date's view is its own, read once at mount and never handed back: it changes to the
+   calendar's day grid after a month is picked, and after a year is chosen off the year grid
+   too, which is a calendar's rule and wrong for a picker that has no days. Each key mounts a
+   fresh one, on the months view, looking where this picker last was. */
 const opens = reactive({ from: 0, to: 0 })
+
+const openPicker = end => {
+  opens[end]++
+  browses[end] = null
+}
 
 /* The ledger's own bounds are the defaults, so they stay off the URL. `from` at the floor is
    the whole ledger and `to` at this month is today, which is the page without a window. */
@@ -630,10 +639,20 @@ const choose = (end, month) =>
         : month,
   })
 
-/* Only a month picked is a choice. A q-date also emits for the year arrows and for a year
-   chosen off a grid, carrying whichever month was already selected, so honouring every emit
-   set the window to a year the reader was only looking through. It says which it was. */
-const chooseMonth = (end, month, reason) => reason === 'month' && choose(end, month)
+/* Wherever this leaves the picker, the q-date is remounted. It reads its view once at mount
+   and then drops to its day grid after a month is picked, and after a year is chosen off the
+   year grid -- a calendar's rule, on a control with no days. Without the remount that grid is
+   there for as long as the menu takes to close, so picking a month flashed days on a picker
+   that never offers any. */
+const chooseMonth = (end, month, reason) => {
+  browses[end] = month
+  opens[end]++
+
+  /* Only a month picked is a choice. The year arrows and the year grid emit too, carrying
+     whichever month was already selected, so honouring every one set the window to a year the
+     reader was only looking through. It says which it was. */
+  return reason === 'month' ? choose(end, month) : null
+}
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
