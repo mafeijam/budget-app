@@ -51,6 +51,13 @@ class TransactionMetaData extends Data
         // charge's statement, and is never the test of whether it is paid.
         public ?int $paired_transaction_id = null,
         public ?int $settled_by = null,
+
+        // A loan's rows, tagged by loans:tag and read by App\Support\Loans, which says what
+        // each means. Server-owned as the links above are.
+        public ?string $loan = null,
+        public ?string $loan_principal = null,
+        public ?string $loan_borrowed = null,
+        public ?string $loan_repaid_before = null,
     ) {}
 
     public static function rules()

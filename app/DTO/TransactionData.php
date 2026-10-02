@@ -10,6 +10,7 @@ use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
+use App\Support\Loans;
 use App\Support\Positions;
 use App\Support\TradeCash;
 use App\Support\Transfer;
@@ -335,7 +336,7 @@ class TransactionData extends Data
     }
 
     /** The bag keys only settle() writes. */
-    private const SERVER_LINKS = ['paired_transaction_id', 'settled_by'];
+    private const SERVER_LINKS = ['paired_transaction_id', 'settled_by', ...Loans::KEYS];
 
     /** Without this, any edit to a settled row cuts its links, since update() replaces the bag. */
     public function keepLinksOf(Transaction $row): void

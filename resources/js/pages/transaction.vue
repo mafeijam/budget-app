@@ -368,6 +368,27 @@ const metaChips = row => {
     }
   }
 
+  // The loan a row drew or repaid, as loans:tag named it. A repayment's interest is the rest of
+  // its amount, which stays spending; only the principal brings the loan down.
+  if (meta.loan) {
+    chips.push({
+      label: meta.loan_principal ? `Repays ${meta.loan}` : `Loan: ${meta.loan}`,
+      class: 'app-tint app-tint--info',
+    })
+
+    const interest = meta.loan_principal ? minus(row.amount, meta.loan_principal) : null
+
+    if (interest && Number(interest) > 0) {
+      plain(`${formatMoney(meta.loan_principal)} principal, ${formatMoney(interest)} interest`)
+    }
+
+    if (meta.loan_borrowed) {
+      plain(
+        `${formatMoney(meta.loan_borrowed)} borrowed, ${formatMoney(meta.loan_repaid_before)} repaid before the records`,
+      )
+    }
+  }
+
   if (meta.symbol) {
     if (meta.quantity) {
       const fees = received(meta.fees) ? `, fees ${twoPlaces(meta.fees)}` : ''
@@ -393,6 +414,10 @@ const metaChips = row => {
     'fees',
     'no_cash',
     'brokerage_account_id',
+    'loan',
+    'loan_principal',
+    'loan_borrowed',
+    'loan_repaid_before',
     // A badge beside the description instead, where the row is named.
     'one_off',
   ]

@@ -95,6 +95,12 @@ class FormContractTest extends TestCase
         // The payment that settled a charge's statement, written by settle() beside the
         // pairing and for the same reason nothing on the form can write it.
         'meta_data.settled_by',
+
+        // A loan's tags, written by loans:tag and kept through an edit as the links are.
+        'meta_data.loan',
+        'meta_data.loan_principal',
+        'meta_data.loan_borrowed',
+        'meta_data.loan_repaid_before',
     ];
 
     /**

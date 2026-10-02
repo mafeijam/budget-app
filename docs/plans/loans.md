@@ -1,6 +1,8 @@
-# Plan: loans in net worth
+# Loans in net worth
 
-Status: **parked**, design agreed, not started. Nothing is tagged in the data yet.
+Status: **built**. `php artisan loans:tag --apply` tags the three loans below on any copy
+of the ledger, finding them by description rather than by id. `--untag --apply` removes
+every tag. What each tag means is in `App\Support\Loans`.
 
 ## Why
 
@@ -17,8 +19,8 @@ and the repayments then read as spending, so the same money is wrong twice.
   `SERVER_ONLY`.
 - **A repayment counts only its principal toward the loan; the interest stays
   spending.** Every loan must end at exactly 0, not below it.
-- **Loans in scope:** HSBC TAX LOAN and HSBC LOAN. The older 36-instalment card loan
-  (6,250 + 360 on MASTER, to 2019-06) is left out: its drawdown predates the records.
+- **Loans in scope:** HSBC TAX LOAN, HSBC LOAN and the 2016 card loan
+  (MASTER INSTALMENT LOAN).
 
 ## The two loans
 
@@ -33,15 +35,14 @@ and the repayments then read as spending, so the same money is wrong twice.
 - **HSBC LOAN:** the interest is already its own 60 charges of 336, which stay
   untagged spending, and the 2,800 instalments repay the whole 168,000.
 
-## Pieces
+## The 2016 card loan: incomplete
 
-- `loans:tag` command: dry run by default, `--apply` to write, `--untag` to undo.
-  Takes the drawdown id, the repayment ids or a description pattern, and an optional
-  `--principal` per repayment.
-- `App\Support\Loans`: `owedOn($day)` for net worth and its history, and a summary
-  per loan for display.
-- `NetWorth`: subtract `owedOn()`. A card instalment is card debt, which net worth
-  leaves out by design (see its docblock), so the HSBC LOAN's drawdown has to be
-  offset there carefully. Check that the debt is not counted twice once the
-  instalments land on the card.
-- A repayment shows which loan it paid and what is left, on the transaction row.
+36 MASTER instalments of 6,250 principal + 360 interest, so 225,000 borrowed. Only
+instalments 6–36 are recorded (2016-12-06 to 2019-06-06, 62 rows), because MASTER's
+records begin at 2016-12-06 and the cash accounts' at 2017-01. Instalment 1 fell on
+2016-07-06 and the drawdown was about 2016-06. Neither the drawdown nor instalments
+1–5 exist.
+
+Decided: the first recorded instalment carries `loan_borrowed` 225,000 and
+`loan_repaid_before` 31,250 (5 × 6,250, from its "6 OF 36"). It therefore starts at
+193,750 owed and reaches 0 on 2019-06-06, with no transactions made up.

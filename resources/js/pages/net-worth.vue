@@ -6,8 +6,9 @@
         <span v-if="at" class="text-subtitle1 text-grey-7">at {{ monthLabel(at) }}</span>
       </div>
       <div class="text-caption text-grey-7">
-        Cash, plus the stocks at their last close, in {{ base }}. What the cards owe is not
-        subtracted here. Pending rows are left out. Click a point on the chart to read that month.
+        Cash, plus the stocks at their last close, less what is still owed on a loan, in
+        {{ base }}. What the cards owe is not subtracted here. Pending rows are left out. Click a
+        point on the chart to read that month.
       </div>
     </div>
 
@@ -73,7 +74,9 @@
                 <div class="text-subtitle1 text-weight-bold money" :class="part.class">
                   {{ figure(part.value) }}
                 </div>
-                <div class="text-caption text-grey-6">{{ share(part.value) }} of net worth</div>
+                <div class="text-caption text-grey-6">
+                  {{ share(part.value) }} of {{ owing ? 'what is held' : 'net worth' }}
+                </div>
               </div>
             </div>
           </div>
@@ -349,6 +352,19 @@
               <span class="text-grey-9 text-weight-medium">Cards owe</span>
               <span class="money text-weight-bold text-negative">{{ money(current.cards) }}</span>
             </div>
+            <!-- Unlike the cards, subtracted: the money borrowed is in the cash above. -->
+            <template v-if="!isZero(current.loans)">
+              <div class="app-worth-row app-worth-row--total">
+                <span class="text-grey-9 text-weight-medium">Loans owe</span>
+                <span class="money text-weight-bold text-negative">{{ owed(current.loans) }}</span>
+              </div>
+              <div v-for="loan in current.loan_rows" :key="loan.name" class="app-worth-row">
+                <span class="text-grey-9 ellipsis">{{ loan.name }}</span>
+                <span class="money text-weight-medium">
+                  {{ loan.ccy === base ? owed(loan.owed) : `${loan.ccy} ${owed(loan.owed)}` }}
+                </span>
+              </div>
+            </template>
           </q-card>
         </div>
 
@@ -605,6 +621,9 @@ const pick = day => {
 
 const money = useMoney()
 
+// A debt as the cards' is shown, below zero. A script helper: the template cannot see minus().
+const owed = value => money(minus('0', value))
+
 // A rate to four places: a rate is not a sum of money, and its fourth place is the one that
 // decides what a converted figure comes to.
 const rate = useMoney(4)
@@ -794,7 +813,10 @@ const percent = (part, whole) =>
     ? null
     : `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
 
-const share = part => percent(part, props.current.net_worth) ?? '—'
+// Of what is held, which is net worth until a loan is owed: then cash and stocks add up to more.
+const held = computed(() => plus(props.current.cash, props.current.value))
+const owing = computed(() => !isZero(props.current.loans ?? '0'))
+const share = part => percent(part, owing.value ? held.value : props.current.net_worth) ?? '—'
 
 // The server's difference; only the percentage is worked out here.
 const change = (against, key, label) => {

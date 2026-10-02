@@ -12,13 +12,18 @@ use Illuminate\Support\Collection;
 
 /**
  * What everything held is worth on a day, in the base currency: the cash, plus the stocks at
- * their last close on or before it.
+ * their last close on or before it, less what is still owed on a loan.
  *
  * What the cards owe is reported alongside and is not in this. It is a debt against money
  * already counted rather than money held, and netting the two nets a liability against the
  * cash that is set aside to pay it -- the same bill subtracted twice. So it is a line of its
  * own on the chart and a row of its own on the cards page, where it can be read for what it
  * is.
+ *
+ * A loan is subtracted, and that is not the same mistake. The money borrowed is in the cash
+ * and nothing else records the debt, so leaving it out counts a loan as money earned. A loan
+ * repaid by card instalments stops being owed on the day each is charged, and the instalment
+ * is then card debt like any other: a month counted nowhere until the statement is paid.
  *
  * Read from the rows rather than stored, so a corrected transaction corrects every past
  * snapshot too. A holding with no close yet counts at cost, and one in a currency with no
@@ -37,9 +42,12 @@ class NetWorth
 
     private Fx $fx;
 
+    private Loans $loans;
+
     public function __construct()
     {
         $this->accounts = Account::query()->with('meta')->orderBy('name')->get();
+        $this->loans = new Loans;
 
         foreach ($this->accounts->where('type', AccountType::Security->value) as $broker) {
             $this->trades[$broker->id] = Positions::tradesOf($broker);
@@ -239,8 +247,28 @@ class NetWorth
             ];
         }
 
+        $loans = [];
+        $totals['loans'] = $zero;
+
+        foreach ($this->loans->owedOn($day) as $loan) {
+            $base = $this->fx->toBase((string) $loan['owed'], $loan['ccy'], $day);
+
+            if ($base === null) {
+                $unconverted[$loan['ccy']] = true;
+            } else {
+                $totals['loans'] = $totals['loans']->plus($base);
+            }
+
+            $loans[] = [
+                'name' => $loan['name'],
+                'ccy' => $loan['ccy'],
+                'owed' => (string) $loan['owed']->toScale(4),
+                'base' => $base === null ? null : (string) $base->toScale(4),
+            ];
+        }
+
         // The cards are not in this, and their absence is the point: see the class docblock.
-        $net = $totals['cash']->plus($totals['value']);
+        $net = $totals['cash']->plus($totals['value'])->minus($totals['loans']);
 
         // Four places throughout, the amount column's, so a zero reads 0.0000 as a balance does.
         $money = fn (BigDecimal $value) => (string) $value->toScale(4);
@@ -250,11 +278,13 @@ class NetWorth
             'net_worth' => $money($net),
             'cash' => $money($totals['cash']),
             'cards' => $money($totals['cards']),
+            'loans' => $money($totals['loans']),
             'value' => $money($totals['value']),
             'cost' => $money($totals['cost']),
             'unrealised' => $money($totals['value']->minus($totals['cost'])),
             'accounts' => $cash,
             'brokerages' => $brokerages,
+            'loan_rows' => $loans,
             'unpriced' => $unpriced,
             'unconverted' => array_keys($unconverted),
         ];
@@ -435,7 +465,7 @@ class NetWorth
         return array_map(
             fn (array $snapshot) => array_intersect_key(
                 $snapshot,
-                array_flip(['date', 'net_worth', 'cash', 'cards', 'value', 'cost'])
+                array_flip(['date', 'net_worth', 'cash', 'cards', 'loans', 'value', 'cost'])
             ),
             $snapshots
         );
