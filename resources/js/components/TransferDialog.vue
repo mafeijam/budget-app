@@ -207,13 +207,15 @@
         <q-card-actions class="q-px-none q-py-md">
           <q-space />
           <q-btn
-            class="text-weight-bold q-mr-sm"
-            color="grey-6"
+            v-if="form.isDirty"
+            class="q-mr-md"
+            color="grey-6 text-weight-bold"
             padding="sm md"
             flat
             no-caps
-            label="Cancel"
-            @click="open = false"
+            icon="restart_alt"
+            label="Reset"
+            @click="(form.reset(), form.clearErrors())"
           />
           <q-btn
             type="submit"
@@ -221,8 +223,8 @@
             padding="sm md"
             unelevated
             no-caps
-            :icon="exchange ? 'currency_exchange' : 'sync_alt'"
-            :label="editingId ? 'Save' : exchange ? 'Record exchange' : 'Record transfer'"
+            icon="check"
+            label="Submit"
             :loading="form.processing"
           />
         </q-card-actions>
