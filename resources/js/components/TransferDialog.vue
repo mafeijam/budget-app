@@ -141,17 +141,36 @@
             :error="!!form.errors.description"
             :error-message="form.errors.description"
           />
+
+          <!-- The transaction form's status control, so the two read alike. -->
+          <q-field
+            class="col-12 app-segment"
+            borderless
+            hint="A pending transfer moves neither balance until it is posted"
+            :error="!!form.errors.status"
+            :error-message="form.errors.status"
+          >
+            <template #control>
+              <div class="app-segment__box">
+                <div class="app-segment__label">Status</div>
+                <q-btn-toggle
+                  v-model="form.status"
+                  :options="statusButtons"
+                  class="app-segment__buttons"
+                  spread
+                  unelevated
+                  no-caps
+                  color="white"
+                  text-color="grey-8"
+                  toggle-color="blue-1"
+                  toggle-text-color="primary"
+                />
+              </div>
+            </template>
+          </q-field>
         </div>
 
         <q-card-actions class="q-px-none q-py-md">
-          <q-toggle
-            v-model="form.status"
-            true-value="pending"
-            false-value="posted"
-            label="Pending"
-            color="warning"
-            dense
-          />
           <q-space />
           <q-btn
             class="text-weight-bold q-mr-sm"
@@ -203,6 +222,11 @@ const blank = () => ({
 })
 
 const form = useForm(blank())
+
+const statusButtons = [
+  { label: 'Pending', value: 'pending' },
+  { label: 'Posted', value: 'posted' },
+]
 
 // Cash accounts only: a card is paid by settling its statement, a brokerage by a trade.
 const accounts = computed(() =>
