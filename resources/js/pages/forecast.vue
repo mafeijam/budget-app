@@ -127,6 +127,7 @@
             :marker-labels="[0, 3, 6, 9, 12].map(value => ({ value, label: String(value) }))"
             marker-labels-class="text-caption text-grey-6"
             color="primary"
+            track-size="8px"
             class="q-mt-xs"
           />
         </div>
