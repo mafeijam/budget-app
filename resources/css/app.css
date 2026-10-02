@@ -2473,8 +2473,24 @@ body {
   gap: 8px;
 }
 
+/* Thicker than the track's 10px elsewhere: here the bars are the card's chart. */
+.app-months .app-outlook__track {
+  height: 14px;
+  border-radius: 7px;
+}
+
+/* One height for both headers, so the month with its day bar lines up with the other. */
+.app-months__head {
+  min-height: 36px;
+}
+
+.app-months__days {
+  width: 160px;
+  margin-top: 2px;
+}
+
 .app-months__bar + .app-months__bar {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .app-months__swatch {

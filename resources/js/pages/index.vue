@@ -197,18 +197,19 @@
           :class="{ 'app-months__col--forecast': col.forecast }"
           @click="go(col.path)"
         >
-          <div class="row items-center no-wrap">
+          <div class="row items-center no-wrap app-months__head">
             <div class="text-subtitle2 text-weight-bold text-grey-9">{{ col.name }}</div>
             <q-badge v-if="col.forecast" class="app-tint app-tint--info q-ml-sm" label="forecast" />
             <q-space />
-            <template v-if="col.days">
-              <div class="text-caption text-grey-7 q-mr-sm">
+            <!-- The day over its bar, both right-aligned to the column's edge. -->
+            <div v-if="col.days" class="column items-end">
+              <div class="text-caption text-grey-7">
                 Day {{ col.days.done }} of {{ col.days.total }}
               </div>
-              <div class="app-home-month-days__track">
+              <div class="app-home-month-days__track app-months__days">
                 <div :style="{ width: `${(col.days.done / col.days.total) * 100}%` }" />
               </div>
-            </template>
+            </div>
           </div>
 
           <div class="text-caption text-grey-7 q-mt-sm">Likely net</div>
