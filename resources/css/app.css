@@ -295,6 +295,7 @@ body {
 }
 
 .app-home-headline .app-home-figure {
+  margin-top: 8px;
   font-size: clamp(1.1rem, 9.5cqi, 1.875rem);
   line-height: 1.25;
   white-space: nowrap;
@@ -1291,7 +1292,9 @@ body {
  */
 .app-home-headline .app-home-spark,
 .app-home-headline .app-home-spark-placeholder {
-  height: 64px;
+  /* 20px above the line keeps it off the figure; the line itself is still 56px. */
+  height: 76px;
+  padding-top: 20px;
   margin-top: 0;
 }
 
