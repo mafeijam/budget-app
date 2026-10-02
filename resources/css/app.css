@@ -96,6 +96,13 @@ body {
   color: #424242;
 }
 
+/* Every row the same padding, a one-line row and a two-line one alike: a dense item's minimum
+   height left the one-line rows padded out and the two-line ones not, so the gaps between rows
+   changed with what each held. */
+.app-simple .q-item {
+  min-height: 0;
+}
+
 @media (min-width: 1024px) {
   .app-page {
     padding: 24px 32px;

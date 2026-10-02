@@ -26,14 +26,14 @@
       </q-card-section>
       <q-list>
         <q-item v-for="item in attention" :key="item.message" dense class="q-py-sm">
-          <q-item-section avatar style="min-width: 32px">
+          <q-item-section avatar top style="min-width: 32px">
             <q-icon :name="item.icon" color="warning" size="xs" />
           </q-item-section>
-          <q-item-section>
+          <q-item-section top>
             <q-item-label class="text-weight-medium text-grey-9">{{ item.title }}</q-item-label>
             <q-item-label caption>{{ item.detail }}</q-item-label>
           </q-item-section>
-          <q-item-section side class="text-right">
+          <q-item-section side top class="text-right">
             <q-item-label class="text-weight-bold money" :class="signClass(item.amount)">
               {{ item.ccy === base ? '' : `${item.ccy} ` }}{{ signed(item.amount) }}
             </q-item-label>
@@ -49,13 +49,13 @@
       </q-card-section>
       <q-list>
         <q-item v-for="account in held" :key="account.id" dense class="q-py-sm">
-          <q-item-section>
+          <q-item-section top>
             <q-item-label class="text-weight-medium text-grey-9">{{ account.name }}</q-item-label>
             <q-item-label v-if="account.status !== 'active'" caption>
               {{ account.status }}, still holding money
             </q-item-label>
           </q-item-section>
-          <q-item-section side class="text-right">
+          <q-item-section side top class="text-right">
             <q-item-label
               class="text-weight-bold money"
               :class="negative(account.balance) ? 'text-negative' : 'text-grey-9'"
@@ -82,13 +82,13 @@
       </q-card-section>
       <q-list>
         <q-item v-for="card in owing" :key="card.id" dense class="q-py-sm">
-          <q-item-section>
+          <q-item-section top>
             <q-item-label class="text-weight-medium text-grey-9">{{ card.name }}</q-item-label>
             <q-item-label caption :class="{ 'text-negative': card.daysUntilDue < 0 }">
               {{ dueText(card) }}
             </q-item-label>
           </q-item-section>
-          <q-item-section side class="text-right">
+          <q-item-section side top class="text-right">
             <q-item-label class="text-weight-bold text-negative money">
               {{ card.ccy === base ? '' : `${card.ccy} ` }}{{ money(card.owed) }}
             </q-item-label>
@@ -109,13 +109,13 @@
       </q-card-section>
       <q-list>
         <q-item v-for="broker in brokerages" :key="broker.id" dense class="q-py-sm">
-          <q-item-section>
+          <q-item-section top>
             <q-item-label class="text-weight-medium text-grey-9">{{ broker.name }}</q-item-label>
             <q-item-label caption :class="signClass(broker.unrealised)" class="money">
               {{ signed(broker.unrealised) }}
             </q-item-label>
           </q-item-section>
-          <q-item-section side class="text-right">
+          <q-item-section side top class="text-right">
             <q-item-label class="text-weight-bold text-grey-9 money">
               {{ broker.ccy === base ? '' : `${broker.ccy} ` }}{{ money(broker.market_value) }}
             </q-item-label>
