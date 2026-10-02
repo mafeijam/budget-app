@@ -1410,6 +1410,22 @@ body {
   min-width: 0;
 }
 
+/* A chart legend entry that switches its series; off, it fades and strikes through. */
+.app-chart-legend {
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.app-chart-legend:hover {
+  color: #0f172a;
+}
+
+.app-chart-legend--off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
 .app-tx-pending {
   color: #b45309;
   font-weight: 500;

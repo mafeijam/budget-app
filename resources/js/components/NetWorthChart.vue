@@ -1,13 +1,33 @@
 <template>
   <div>
     <div class="row items-center q-gutter-md text-caption text-grey-8 q-mb-sm">
-      <div v-for="series in shownLegend" :key="series.key" class="row items-center no-wrap">
+      <div
+        v-for="series in shownLegend"
+        :key="series.key"
+        class="app-chart-legend row items-center no-wrap"
+        :class="{ 'app-chart-legend--off': !shows(series.key) }"
+        role="button"
+        tabindex="0"
+        :aria-pressed="shows(series.key)"
+        @click="toggle(series.key)"
+        @keydown.enter.space.prevent="toggle(series.key)"
+      >
         <span
           :class="series.area ? 'cash-flow-chart__swatch' : 'cash-flow-chart__line'"
           :style="{ background: series.colour }"
         />{{ series.label }}
       </div>
-      <div v-for="band in bands" :key="band.label" class="row items-center no-wrap">
+      <div
+        v-for="band in bands"
+        :key="band.key"
+        class="app-chart-legend row items-center no-wrap"
+        :class="{ 'app-chart-legend--off': !shows(band.key) }"
+        role="button"
+        tabindex="0"
+        :aria-pressed="shows(band.key)"
+        @click="toggle(band.key)"
+        @keydown.enter.space.prevent="toggle(band.key)"
+      >
         <span
           class="cash-flow-chart__swatch"
           :style="{ background: band.colour, opacity: 0.35 }"
@@ -58,23 +78,30 @@
         </defs>
 
         <!-- Fills first, so the lines and the marker sit on top of them. -->
-        <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
+        <path v-if="shows('value')" :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
         <path
+          v-if="shows('cash')"
           :d="area('cash')"
           :clip-path="`url(#${uid}-above)`"
           :fill="colours.cash"
           fill-opacity="0.18"
         />
         <!-- Lighter than the cash's fill below zero, which is drawn over it, so the two separate. -->
-        <path v-if="owing" :d="area('loans')" :fill="colours.loans" fill-opacity="0.12" />
         <path
+          v-if="owing && shows('loans')"
+          :d="area('loans')"
+          :fill="colours.loans"
+          fill-opacity="0.12"
+        />
+        <path
+          v-if="shows('cash')"
           :d="area('cash')"
           :clip-path="`url(#${uid}-below)`"
           :fill="colours.overdrawn"
           fill-opacity="0.25"
         />
         <path
-          v-for="(piece, i) in gaps"
+          v-for="(piece, i) in shownGaps"
           :key="`gap-${i}`"
           :d="piece.d"
           :fill="piece.gain ? colours.value : colours.cost"
@@ -88,14 +115,14 @@
           fill="none"
           :stroke="series.colour"
           :clip-path="series.clip ? `url(#${uid}-${series.clip})` : null"
-          stroke-width="2"
+          stroke-width="1.5"
           :stroke-dasharray="series.dashed ? '5 4' : null"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
 
         <circle
-          v-if="points[selectedIndex]"
+          v-if="points[selectedIndex] && shows('net_worth')"
           :cx="x(selectedIndex)"
           :cy="y(points[selectedIndex].net_worth)"
           r="6"
@@ -187,9 +214,17 @@ const legend = [
 ]
 
 const bands = [
-  { label: 'Above cost', colour: colours.value },
-  { label: 'Below cost', colour: colours.cost },
+  { key: 'gain', label: 'Above cost', colour: colours.value },
+  { key: 'loss', label: 'Below cost', colour: colours.cost },
 ]
+
+// What the legend has switched off, by key, remembered across visits. A key the chart no
+// longer draws is harmless and kept, as the loans entry comes and goes with the window.
+const hidden = useStorage('netWorth.hidden', [])
+const shows = key => !hidden.value.includes(key)
+const toggle = key => {
+  hidden.value = shows(key) ? [...hidden.value, key] : hidden.value.filter(k => k !== key)
+}
 
 // Painted in this order, so the net worth line is over every fill beneath it.
 const lines = [
@@ -206,7 +241,9 @@ const lines = [
 // The loan only where the window has one: a legend entry for a line flat on zero says nothing.
 const owing = computed(() => points.value.some(point => point.numbers.loans !== 0))
 const shownLegend = computed(() => legend.filter(series => series.key !== 'loans' || owing.value))
-const shownLines = computed(() => lines.filter(series => series.key !== 'loans' || owing.value))
+const shownLines = computed(() =>
+  lines.filter(series => (series.key !== 'loans' || owing.value) && shows(series.key)),
+)
 
 // The clip paths' ids, which must be unique on the page.
 const uid = useId()
@@ -268,8 +305,19 @@ const niceStep = raw => {
   return (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * magnitude
 }
 
+// Rescaled to what is drawn, so hiding the loans gives their strip below zero back to the
+// rest. A band is drawn between the value and the cost, so either stays in the scale while
+// a band shows, even with its own line off, or the band would run off the plot.
+const scaled = computed(() => {
+  const bandShown = bands.some(band => shows(band.key))
+
+  return Object.keys(points.value[0]?.numbers ?? {}).filter(
+    key => shows(key) || (bandShown && (key === 'value' || key === 'cost')),
+  )
+})
+
 const scale = computed(() => {
-  const values = points.value.flatMap(point => Object.values(point.numbers))
+  const values = points.value.flatMap(point => scaled.value.map(key => point.numbers[key]))
   const peak = Math.max(1, ...values)
 
   // A fifth of the peak, not a quarter: at a quarter, a 2.2M ledger asks for 550K, which the
@@ -375,6 +423,8 @@ const gaps = computed(() => {
   return pieces
 })
 
+const shownGaps = computed(() => gaps.value.filter(piece => shows(piece.gain ? 'gain' : 'loss')))
+
 // About twelve labels at most, so a monthly history of years stays legible. Today's point
 // is always labelled.
 const axis = computed(() => {
@@ -397,12 +447,14 @@ const label = computed(() => `Net worth, cash, stock value and stock cost, in ${
 const tooltipRows = computed(() => {
   const point = points.value[hovered.value]
 
-  return shownLegend.value.map(series => ({
-    label: series.label,
-    // Owed is below zero, as the cards page shows it.
-    value: money(series.key === 'loans' ? minus('0', point.loans ?? '0') : point[series.key]),
-    colour: series.colour,
-  }))
+  return shownLegend.value
+    .filter(series => shows(series.key))
+    .map(series => ({
+      label: series.label,
+      // Owed is below zero, as the cards page shows it.
+      value: money(series.key === 'loans' ? minus('0', point.loans ?? '0') : point[series.key]),
+      colour: series.colour,
+    }))
 })
 
 // Flipped to the left of the point past the middle, so it never runs off the card.
