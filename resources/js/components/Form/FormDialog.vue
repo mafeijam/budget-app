@@ -14,8 +14,12 @@
             {{ title }}
           </div>
           <q-space />
-          <slot name="header" />
+          <slot v-if="!narrow" name="header" />
           <q-btn flat round color="grey-6" icon="close" @click="dialog = false" />
+        </div>
+        <!-- Its own row on a phone, where beside the title it squeezed the title onto two. -->
+        <div v-if="narrow && $slots.header" class="q-mt-xs">
+          <slot name="header" />
         </div>
         <slot name="subheader" />
       </q-card-section>
@@ -38,21 +42,28 @@
             <div class="row items-center">
               <slot name="actions-start" />
               <q-space />
+              <!-- The icon alone on a phone: with its word it no longer fit beside Save as
+                   template and Submit, so the first keystroke pushed Submit onto a new row. -->
               <q-btn
                 v-if="form.isDirty"
-                class="q-ml-auto q-mr-md"
+                class="q-ml-auto"
+                :class="narrow ? 'q-mr-xs' : 'q-mr-sm'"
                 color="grey-6 text-weight-bold"
                 padding="sm md"
                 flat
                 no-caps
                 icon="restart_alt"
-                label="Reset"
+                :label="narrow ? undefined : 'Reset'"
+                aria-label="Reset"
                 @click="(form.reset(), form.clearErrors())"
               />
+              <!-- A row of its own on a phone, the width of a thumb's reach, under the two
+                   above it so the Reset appearing moves nothing. -->
               <q-btn
                 type="submit"
                 class="text-weight-bold app-btn app-btn--positive"
-                padding="sm md"
+                :class="{ 'full-width q-mt-md text-subtitle1': narrow }"
+                :padding="narrow ? '12px md' : 'sm md'"
                 unelevated
                 no-caps
                 icon="check"
@@ -96,6 +107,9 @@ defineEmits(['hide-form'])
 const form = inject('form')
 
 const dialog = ref(false)
+
+const $q = useQuasar()
+const narrow = computed(() => $q.screen.lt.sm)
 
 eventBus.formDialog.on((name, payload = { hide: false }) => {
   if (name === props.name) {
