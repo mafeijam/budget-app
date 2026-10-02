@@ -27,6 +27,12 @@ class PhoneKey
 
     public const REQUEST_SECONDS = 120;
 
+    /**
+     * Set on the device that enrolled, so signing out there can warn that it ends the key. It
+     * only words the warning: who can sign in is the remember cookie's business, never this.
+     */
+    public const COOKIE = 'phone_key';
+
     public static function enrolment(User $user): string
     {
         $token = Str::random(40);

@@ -74,7 +74,7 @@ class PhoneApprovalTest extends TestCase
         $this->asThePhone()->post("/approve/{$token}", ['approve' => true])->assertRedirect("/approve/{$token}");
 
         $this->asTheComputer()->get('/login')->assertInertia(fn (Assert $page) => $page->where('status', 'approved'));
-        $this->post('/login')->assertRedirect('/forecast');
+        $this->post('/login')->assertRedirect('/forecast')->assertCookieMissing(PhoneKey::COOKIE);
 
         $this->assertAuthenticatedAs($this->user);
         $this->assertNull(PhoneKey::pending($token), 'a sign-in spends its code');

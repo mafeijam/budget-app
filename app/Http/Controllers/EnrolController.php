@@ -6,6 +6,7 @@ use App\Support\PhoneKey;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -35,6 +36,7 @@ class EnrolController extends Controller
         // Remembered, because a phone that has to sign in again is no longer a key.
         Auth::login($user, remember: true);
         $request->session()->regenerate();
+        Cookie::queue(Cookie::forever(PhoneKey::COOKIE, '1'));
 
         return redirect()->intended(route('home'));
     }

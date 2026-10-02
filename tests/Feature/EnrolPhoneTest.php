@@ -62,6 +62,26 @@ class EnrolPhoneTest extends TestCase
             ->assertCookie(Auth::guard()->getRecallerName());
     }
 
+    public function test_enrolling_marks_the_device_as_the_key_phone(): void
+    {
+        $this->post('/enrol/'.PhoneKey::enrolment($this->user))->assertCookie(PhoneKey::COOKIE, '1');
+
+        $this->withCookie(PhoneKey::COOKIE, '1')->get('/')
+            ->assertInertia(fn (Assert $page) => $page->where('keyPhone', true));
+    }
+
+    public function test_a_device_that_did_not_enrol_is_not_the_key_phone(): void
+    {
+        $this->actingAs($this->user)->get('/')
+            ->assertInertia(fn (Assert $page) => $page->where('keyPhone', false));
+    }
+
+    public function test_signing_out_unmarks_the_key_phone(): void
+    {
+        $this->actingAs($this->user)->withCookie(PhoneKey::COOKIE, '1')->post('/logout')
+            ->assertCookieExpired(PhoneKey::COOKIE);
+    }
+
     public function test_enrolling_returns_to_the_page_that_asked_for_sign_in(): void
     {
         $this->get('/forecast')->assertRedirect('/login');
