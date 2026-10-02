@@ -218,7 +218,7 @@
 
       <q-input
         v-model="form.amount"
-        class="col-12 col-sm-5 app-form-amount"
+        class="col-12 col-sm-7 app-form-amount"
         label="Amount"
         outlined
         type="number"
@@ -234,7 +234,7 @@
       <q-select
         v-model="form.ccy"
         :options="currencyOptions"
-        class="col-5 col-sm-3"
+        class="col-12 col-sm-5"
         label="Currency"
         outlined
         emit-value
@@ -246,31 +246,6 @@
         :error="!!form.errors.ccy"
         :error-message="form.errors.ccy"
       />
-
-      <!-- The mask goes on q-date only; on q-input it breaks. FormContractTest pins this. -->
-      <q-input
-        v-model="form.date"
-        class="col-7 col-sm-4"
-        label="Date"
-        outlined
-        :disable="locked('date')"
-        :error="!!form.errors.date"
-        :error-message="form.errors.date"
-      >
-        <template #append>
-          <q-btn flat dense icon="event" rounded :disable="locked('date')">
-            <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
-              <q-date
-                :model-value="form.date"
-                mask="YYYY-MM-DD"
-                minimal
-                color="primary"
-                @update:model-value="pickDate"
-              />
-            </q-menu>
-          </q-btn>
-        </template>
-      </q-input>
 
       <!--
         A text box with a menu of past descriptions, not a select. With use-input the field's
@@ -389,8 +364,33 @@
         </template>
       </q-select>
 
+      <!-- The mask goes on q-date only; on q-input it breaks. FormContractTest pins this. -->
+      <q-input
+        v-model="form.date"
+        class="col-12 col-sm-5"
+        label="Date"
+        outlined
+        :disable="locked('date')"
+        :error="!!form.errors.date"
+        :error-message="form.errors.date"
+      >
+        <template #append>
+          <q-btn flat dense icon="event" rounded :disable="locked('date')">
+            <q-menu ref="dateMenu" :offset="[10, 15]" anchor="bottom right" self="top right">
+              <q-date
+                :model-value="form.date"
+                mask="YYYY-MM-DD"
+                minimal
+                color="primary"
+                @update:model-value="pickDate"
+              />
+            </q-menu>
+          </q-btn>
+        </template>
+      </q-input>
+
       <q-field
-        class="col-12 col-sm-5 app-segment"
+        class="col-12 col-sm-7 app-segment"
         borderless
         :disable="locked('status')"
         hint="A pending charge does not count toward what the card owes"
@@ -420,7 +420,7 @@
            unticking stores false. -->
       <q-field
         v-if="!derivesAmount"
-        class="col-12 app-form-flag"
+        class="col-12 col-sm-5 app-form-flag"
         borderless
         hint="Not expected again, so the forecast leaves it out of typical spending and income"
         :error="!!form.errors['meta_data.one_off']"
