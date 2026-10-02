@@ -388,14 +388,9 @@
               </span>
             </div>
             <div v-if="!isZero(current.cards)" class="app-worth-row">
-              <div>
-                <div class="row items-center no-wrap">
-                  <span class="text-grey-9">Cards</span>
-                  <q-badge class="app-tint app-tint--muted q-ml-sm" label="Not in net worth" />
-                </div>
-                <div class="text-caption text-grey-6">
-                  Paid from the cash above when each statement is due
-                </div>
+              <div class="row items-center no-wrap">
+                <span class="text-grey-9">Cards</span>
+                <q-badge class="app-tint app-tint--muted q-ml-sm" label="Not in net worth" />
               </div>
               <span class="money text-weight-medium text-grey-6">{{
                 owedMagnitude(current.cards)
