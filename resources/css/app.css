@@ -2482,14 +2482,10 @@ body {
  */
 .app-tx-totals {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, 160px);
+  grid-template-columns: minmax(0, 1fr) repeat(var(--app-tx-figures, 3), 160px);
   align-items: center;
   gap: 8px 16px;
   padding: 10px 16px;
-}
-
-.app-tx-totals--trades {
-  grid-template-columns: minmax(0, 1fr) repeat(4, 160px);
 }
 
 .app-tx-totals + .app-tx-totals {
@@ -2513,8 +2509,7 @@ body {
 }
 
 @media (max-width: 599px) {
-  .app-tx-totals,
-  .app-tx-totals--trades {
+  .app-tx-totals {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

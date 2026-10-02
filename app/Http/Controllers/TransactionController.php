@@ -1146,7 +1146,8 @@ class TransactionController extends Controller
     /**
      * Money in and out per currency, signed as each row's Amount is. A brokerage row
      * moves no balance, so trades are totalled apart rather than netted. A pending row
-     * moves no balance either, so it is left out of these and of the base row below.
+     * moves no balance either, so it is left out of in, out and net, and totalled apart
+     * as `pending`, signed as its Amount is.
      *
      * Alongside the per-currency strips, the same figures in the base currency. A list of
      * USD rows and nothing else otherwise never says what it came to in HKD, and that is
@@ -1154,15 +1155,10 @@ class TransactionController extends Controller
      * not already the base currency, not whether the set spans two. A list that is all HKD
      * gains nothing, since the base row would repeat that strip in the same words.
      *
-     * @return array{currencies: list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string}>, base: array{count: int, in: string, out: string, net: string, trades: string}|null, unconverted: list<string>}
+     * @return array{currencies: list<array{ccy: string, count: int, in: string, out: string, net: string, trades: string, pending_count: int, pending: string}>, base: array{count: int, in: string, out: string, net: string, trades: string, pending_count: int, pending: string}|null, unconverted: list<string>}
      */
     private function totals(Builder $query): array
     {
-        // A pending row moves no balance, so it is not a figure the reader has yet, and the
-        // list is the only place it belongs. On the clone and not the shared builder, since
-        // the table above must keep showing the rows the reader is looking at.
-        $query = $query->whereIn('status', TransactionStatus::countingTowardBalance());
-
         // Summed in the database, a group to each currency, direction and kind of figure,
         // not row by row in PHP: the list is every row matching the filter, which on the
         // whole ledger is nine thousand models with their accounts and bags hydrated to add
@@ -1174,17 +1170,33 @@ class TransactionController extends Controller
                 ->on('meta.model_id', '=', 'transactions.id')
                 ->where('meta.model_type', Transaction::class))
             ->whereIn('transactions.id', $query->setEagerLoads([])->toBase()->select('transactions.id'))
-            ->selectRaw('transactions.ccy AS ccy')
+            ->selectRaw('transactions.ccy AS ccy, transactions.status AS status')
             ->selectRaw(self::signSql().' AS sign')
             ->selectRaw('accounts.type AS account_type, accounts.ccy AS account_ccy')
             ->selectRaw(self::statedSql().' IS NOT NULL AS stated')
             ->selectRaw('COUNT(*) AS n, SUM(transactions.amount) AS amount')
             ->selectRaw('SUM('.self::statedSql().') AS card_amount')
-            ->groupBy('ccy', 'sign', 'account_type', 'account_ccy', 'stated')
+            ->groupBy('ccy', 'status', 'sign', 'account_type', 'account_ccy', 'stated')
             ->get();
 
-        $zero = fn () => ['count' => 0, 'in' => BigDecimal::zero(), 'out' => BigDecimal::zero(), 'trades' => BigDecimal::zero()];
-        $add = function (array $into, int $sign, int $count, string $amount) {
+        $zero = fn () => [
+            'count' => 0,
+            'in' => BigDecimal::zero(),
+            'out' => BigDecimal::zero(),
+            'trades' => BigDecimal::zero(),
+            'pending_count' => 0,
+            'pending' => BigDecimal::zero(),
+        ];
+        // A pending row is not a figure the reader has yet, so it never reaches in, out or
+        // net, which would then disagree with the balance the account shows.
+        $add = function (array $into, int $sign, int $count, string $amount, bool $counted) {
+            if (! $counted) {
+                $into['pending'] = $into['pending']->plus(BigDecimal::of($amount)->multipliedBy($sign));
+                $into['pending_count'] += $count;
+
+                return $into;
+            }
+
             $key = match ($sign) {
                 1 => 'in',
                 -1 => 'out',
@@ -1201,6 +1213,8 @@ class TransactionController extends Controller
             'out' => (string) $sums['out']->toScale(4),
             'net' => (string) $sums['in']->minus($sums['out'])->toScale(4),
             'trades' => (string) $sums['trades']->toScale(4),
+            'pending_count' => $sums['pending_count'],
+            'pending' => (string) $sums['pending']->toScale(4),
         ];
 
         $base = Currency::Hkd->value;
@@ -1211,8 +1225,9 @@ class TransactionController extends Controller
         foreach ($groups as $group) {
             $sign = (int) $group->sign;
             $count = (int) $group->n;
+            $counted = TransactionStatus::from($group->status)->countsTowardBalance();
 
-            $byCurrency[$group->ccy] = $add($byCurrency[$group->ccy] ?? $zero(), $sign, $count, (string) $group->amount);
+            $byCurrency[$group->ccy] = $add($byCurrency[$group->ccy] ?? $zero(), $sign, $count, (string) $group->amount, $counted);
 
             // The base figure, as AGENTS.md says a card row is read: a base row's own amount, and a foreign
             // charge on a base card at what the card states. Any other foreign row has no
@@ -1229,7 +1244,7 @@ class TransactionController extends Controller
                 continue;
             }
 
-            $inBase = $add($inBase, $sign, $count, $figure);
+            $inBase = $add($inBase, $sign, $count, $figure, $counted);
         }
 
         ksort($byCurrency);
@@ -1248,7 +1263,7 @@ class TransactionController extends Controller
 
         return [
             'currencies' => $currencies,
-            'base' => $worthConverting && $inBase['count'] > 0 ? $shown($inBase) : null,
+            'base' => $worthConverting && $inBase['count'] + $inBase['pending_count'] > 0 ? $shown($inBase) : null,
             'unconverted' => array_keys($unconverted),
         ];
     }

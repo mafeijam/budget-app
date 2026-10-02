@@ -112,13 +112,13 @@
     <!-- Every filtered row, not just this page, one line per currency: nothing is
          converted, so HKD and USD never add up. Where a second currency is in the
          filter, a base row in front of them, which is the one total that does add up.
-         Pending rows are in none of them, which the card says under the strips. -->
+         Pending rows are in none of In, Out or Net, and have a column of their own. -->
     <q-card v-if="showTotals && totals.length" flat bordered>
       <div
         v-for="strip in totalStrips"
         :key="strip.key"
         class="app-tx-totals"
-        :class="{ 'app-tx-totals--trades': hasTrades }"
+        :style="{ '--app-tx-figures': figureColumns }"
       >
         <div class="row items-center no-wrap q-gutter-x-sm">
           <q-icon name="functions" size="xs" color="grey-6" />
@@ -133,6 +133,14 @@
         </div>
 
         <!-- A column each, the same in every strip, so the figures stack. -->
+        <div v-if="hasPending" class="app-tx-totals__figure">
+          <div class="app-tx-totals__label">
+            Pending{{ strip.pending_count ? ` (${strip.pending_count})` : '' }}
+          </div>
+          <div class="money text-body2 text-grey-7">
+            {{ strip.pending_count ? signedNet(strip.pending) : '—' }}
+          </div>
+        </div>
         <div class="app-tx-totals__figure">
           <div class="app-tx-totals__label">In</div>
           <div class="money text-body2" :class="isZero(strip.in) ? 'text-grey-5' : 'text-positive'">
@@ -165,10 +173,11 @@
         </div>
       </div>
 
-      <!-- The list above shows a pending row and this does not count it, so the card says
-           why rather than leaving a count that looks like a row went missing. -->
+      <!-- The list above shows a pending row and In, Out and Net do not count it, so the
+           card says why rather than leaving a count that looks like a row went missing. -->
       <div class="app-tx-totals__note q-px-md q-py-xs text-caption text-grey-7">
-        Pending rows are left out: they do not count toward a balance.
+        Pending rows are totalled apart and left out of In, Out and Net: they do not count toward a
+        balance.
       </div>
 
       <!-- "Some" is the word doing the work: a currency can be in the total through most
@@ -259,6 +268,11 @@ const signedNet = value =>
 
 // A Trades column in every strip when any has trades, so the columns stay in line.
 const hasTrades = computed(() => totalStrips.value.some(strip => !isZero(strip.trades)))
+
+// Likewise a Pending column in every strip when any strip has a pending row.
+const hasPending = computed(() => totalStrips.value.some(strip => strip.pending_count > 0))
+
+const figureColumns = computed(() => 3 + Number(hasTrades.value) + Number(hasPending.value))
 
 const netClass = value =>
   isZero(value) ? 'text-grey-9' : String(value).startsWith('-') ? 'text-negative' : 'text-positive'

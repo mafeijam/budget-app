@@ -690,7 +690,7 @@ class TransactionFilterTest extends TestCase
     {
         // Two charges of 120, a withdrawal of 9000 and a deposit of 30000, on pages of one.
         // Three of the four are counted: the second charge is pending, and a pending row
-        // is not a figure the reader has yet.
+        // is not a figure the reader has yet, so it is totalled apart.
         $this->withUnencryptedCookie(TransactionController::TOTALS_COOKIE, '1')->get('/transactions?per_page=5&filter[ccy]=HKD')->assertInertia(fn (Assert $page) => $page
             ->where('totals', [[
                 'ccy' => 'HKD',
@@ -699,6 +699,8 @@ class TransactionFilterTest extends TestCase
                 'out' => '9120.0000',
                 'net' => '20880.0000',
                 'trades' => '0.0000',
+                'pending_count' => 1,
+                'pending' => '-120.0000',
             ]])
         );
     }

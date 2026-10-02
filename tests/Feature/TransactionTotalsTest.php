@@ -52,6 +52,8 @@ class TransactionTotalsTest extends TestCase
                 'out' => '624.0000',
                 'net' => '376.0000',
                 'trades' => '0.0000',
+                'pending_count' => 0,
+                'pending' => '0.0000',
             ])
             // Unchanged by all of this: the strip still reports the charge in its own money.
             ->where('totals.0.ccy', 'AUD')
@@ -88,6 +90,8 @@ class TransactionTotalsTest extends TestCase
                 'out' => '158.0000',
                 'net' => '-158.0000',
                 'trades' => '0.0000',
+                'pending_count' => 0,
+                'pending' => '0.0000',
             ])
             // Still in dollars on its own strip, which is not what the base row replaces.
             ->where('totals.0.ccy', 'USD')
@@ -139,6 +143,8 @@ class TransactionTotalsTest extends TestCase
                 'out' => '0.0000',
                 'net' => '1000.0000',
                 'trades' => '0.0000',
+                'pending_count' => 0,
+                'pending' => '0.0000',
             ])
             // Named, because nothing on the page would otherwise say a row went missing.
             ->where('unconverted', ['USD'])
@@ -175,6 +181,8 @@ class TransactionTotalsTest extends TestCase
                 'out' => '0.0000',
                 'net' => '1000.0000',
                 'trades' => '0.0000',
+                'pending_count' => 0,
+                'pending' => '0.0000',
             ])
             ->where('unconverted', ['USD'])
         );
@@ -197,6 +205,8 @@ class TransactionTotalsTest extends TestCase
                 'out' => '0.0000',
                 'net' => '1000.0000',
                 'trades' => '0.0000',
+                'pending_count' => 0,
+                'pending' => '0.0000',
             ])
             ->where('unconverted', ['USD'])
             // The strip still reports it, in dollars, where it belongs. Sorted by code,
@@ -206,11 +216,10 @@ class TransactionTotalsTest extends TestCase
         );
     }
 
-    public function test_a_pending_row_is_left_out_of_the_totals(): void
+    public function test_a_pending_row_is_totalled_apart_from_in_out_and_net(): void
     {
-        // A pending row moves no balance, so it is not a figure the reader has yet. The
-        // list above still shows it, which is why the card has to say it is left out:
-        // a count of one beside a table of two rows reads as a mistake otherwise.
+        // A pending row moves no balance, so in, out and net leave it out and still agree
+        // with the account. It is totalled on its own instead, signed as its Amount is.
         $this->foreignCharge('2026-01-05', 'AUD', '79.8800', '624.0000', 'posted');
         $this->foreignCharge('2026-01-07', 'AUD', '10.0000', '78.0000', 'pending');
         $this->cash('2026-01-06', 'deposit', '1000.0000', 'HKD');
@@ -222,20 +231,26 @@ class TransactionTotalsTest extends TestCase
                 'out' => '624.0000',
                 'net' => '376.0000',
                 'trades' => '0.0000',
+                'pending_count' => 1,
+                'pending' => '-78.0000',
             ])
             ->where('totals.0.count', 1)
             ->where('totals.0.out', '79.8800')
+            ->where('totals.0.pending_count', 1)
+            ->where('totals.0.pending', '-10.0000')
+            ->where('totals.1.pending_count', 0)
         );
     }
 
-    public function test_a_list_of_pending_rows_alone_has_no_base_total(): void
+    public function test_a_list_of_pending_rows_alone_still_totals_what_is_pending(): void
     {
-        // Nothing left to total, and no currencies but one, so there is no card either way.
         $this->foreignCharge('2026-01-05', 'AUD', '79.8800', '624.0000', 'pending');
 
         $this->get('/transactions')->assertInertia(fn (Assert $page) => $page
-            ->where('baseTotals', null)
-            ->where('totals', [])
+            ->where('baseTotals.count', 0)
+            ->where('baseTotals.pending', '-624.0000')
+            ->where('totals.0.count', 0)
+            ->where('totals.0.pending', '-79.8800')
         );
     }
 
