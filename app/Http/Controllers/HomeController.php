@@ -183,7 +183,8 @@ class HomeController extends Controller
             'rates' => $ratesFor($cash->pluck('ccy')->merge($brokerages->pluck('ccy'))->all()),
 
             'headline' => [
-                ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
+                ...collect($now)->only(['net_worth', 'cash', 'cards', 'loans', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
+                'loan_count' => count($now['loan_rows']),
 
                 // Both keyed by the same figure the client holds, so every card's note comes
                 // from one expression and net worth stops being the special case. $then is

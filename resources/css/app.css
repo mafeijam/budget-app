@@ -294,6 +294,15 @@ body {
   container-type: inline-size;
 }
 
+/* A list row's colour key, as the chart legends draw theirs. */
+.app-home-list__swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
 .app-home-headline .app-home-figure {
   margin-top: 8px;
   font-size: clamp(1.1rem, 9.5cqi, 1.875rem);

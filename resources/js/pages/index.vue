@@ -105,6 +105,11 @@
               >
                 <div class="app-home-list__name">
                   <div class="row items-center no-wrap">
+                    <span
+                      v-if="item.swatch"
+                      class="app-home-list__swatch"
+                      :style="{ background: item.swatch }"
+                    />
                     <span class="text-body2 text-weight-medium text-grey-9 ellipsis">
                       {{ item.name }}
                     </span>
@@ -454,7 +459,14 @@ const percent = (part, whole) =>
     : ''
 
 // The net worth chart's colours, so a line here is the same line there.
-const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value: '#2563eb' }
+const colours = {
+  net_worth: '#475569',
+  cash: '#059669',
+  cards: '#e11d48',
+  value: '#2563eb',
+  // The net worth chart's.
+  loans: '#d97706',
+}
 
 const heldCash = computed(() => cashItems.value.filter(item => !item.empty))
 const openBrokers = computed(() => brokerItems.value.filter(item => !item.empty))
@@ -532,7 +544,30 @@ const headlineFigures = computed(() => {
 // Net worth's own story rather than its parts, which are the three cards beside it: how
 // it has moved over the trend's months, and its best and worst month. From the deferred
 // trend, so until it lands the rows hold their place, the card no taller once it does.
-const movement = computed(() => {
+const movement = computed(() => [...trendRows.value, ...loanRow.value])
+
+// What the loans still owe, under the rows of how net worth moved: it is in the figure above,
+// and no other card names it, so without it net worth reads short of cash and stocks with
+// nothing to say why. Only while something is owed.
+const loanRow = computed(() => {
+  const h = props.headline
+
+  if (isZero(h.loans ?? '0')) return []
+
+  return [
+    {
+      key: 'loans',
+      name: 'Loans owed',
+      swatch: colours.loans,
+      value: money(minus('0', h.loans)),
+      valueClass: 'text-negative',
+      lines: [{ text: `${h.loan_count} ${h.loan_count === 1 ? 'loan' : 'loans'}` }],
+      open: () => go('/net-worth'),
+    },
+  ]
+})
+
+const trendRows = computed(() => {
   const points = props.trend
   const open = () => go('/net-worth')
 

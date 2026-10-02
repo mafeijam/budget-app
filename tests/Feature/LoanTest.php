@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Support\NetWorth;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -130,6 +131,20 @@ class LoanTest extends TestCase
 
         $this->artisan('loans:tag', ['--untag' => true, '--apply' => true])->assertSuccessful();
         $this->assertSame('0.0000', (new NetWorth)->on('2019-03-31')['loans']);
+    }
+
+    public function test_home_names_what_the_loans_still_owe(): void
+    {
+        $this->taxLoan();
+        $this->artisan('loans:tag', ['--apply' => true]);
+
+        Carbon::setTestNow('2019-03-15 12:00:00');
+
+        // One instalment paid by the day: 277,776 less 11,574.
+        $this->get('/')->assertInertia(fn (Assert $page) => $page
+            ->where('headline.loans', '266202.0000')
+            ->where('headline.loan_count', 1)
+        );
     }
 
     private function taxLoan(): void
