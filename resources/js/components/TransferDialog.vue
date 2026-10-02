@@ -108,6 +108,16 @@
             :error-message="form.errors.amount_in"
           />
 
+          <q-input
+            v-model="form.description"
+            class="col-12"
+            label="Description"
+            outlined
+            :hint="form.description || !defaultDescription ? '' : `Empty: ${defaultDescription}`"
+            :error="!!form.errors.description"
+            :error-message="form.errors.description"
+          />
+
           <!-- The calendar control every date here uses: a mask on q-input itself breaks. -->
           <q-input
             v-model="form.date"
@@ -132,21 +142,11 @@
             </template>
           </q-input>
 
-          <q-input
-            v-model="form.description"
-            class="col-7"
-            label="Description"
-            outlined
-            :hint="form.description || !defaultDescription ? '' : `Empty: ${defaultDescription}`"
-            :error="!!form.errors.description"
-            :error-message="form.errors.description"
-          />
-
           <!-- The transaction form's status control, so the two read alike. -->
           <q-field
-            class="col-12 app-segment"
+            class="col-7 app-segment"
             borderless
-            hint="A pending transfer moves neither balance until it is posted"
+            hint="Pending moves neither balance until posted"
             :error="!!form.errors.status"
             :error-message="form.errors.status"
           >
