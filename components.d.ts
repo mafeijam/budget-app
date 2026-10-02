@@ -21,6 +21,7 @@ declare module 'vue' {
     DeleteDialog: typeof import('./resources/js/components/DeleteDialog.vue')['default']
     DividendMonths: typeof import('./resources/js/components/DividendMonths.vue')['default']
     DueDateDialog: typeof import('./resources/js/components/DueDateDialog.vue')['default']
+    FlowPeriodControl: typeof import('./resources/js/components/Flow/PeriodControl.vue')['default']
     ForecastChart: typeof import('./resources/js/components/ForecastChart.vue')['default']
     ForecastMonths: typeof import('./resources/js/components/ForecastMonths.vue')['default']
     FormAccount: typeof import('./resources/js/components/Form/FormAccount.vue')['default']

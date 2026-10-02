@@ -202,6 +202,80 @@ class CashFlowTest extends TestCase
         $this->assertSame('2026-02-28', $this->report('HKD')['months'][4]['to']);
     }
 
+    public function test_the_window_travels_back_a_month_at_a_time(): void
+    {
+        // A ledger begun mid-2016, so its first whole year is 2017 and the window may begin
+        // there: 105 months before the 2025-10 this September's window starts.
+        $this->cash('deposit', '2016-06-15', '1');
+        $this->cash('deposit', '2025-09-01', '70');
+        $this->cash('deposit', '2026-09-01', '30');
+
+        $this->get('/cash-flow?since=2025-09')->assertInertia(fn (Assert $page) => $page
+            ->where('since', '2025-09')
+            ->where('back', 1)
+            ->where('furthest', 105)
+            // The caption names since and the chart opens on it, so they cannot drift apart.
+            ->where('views.due.all.report.0.months.0.month', '2025-09')
+            ->where('views.due.all.report.0.months.11.month', '2026-08')
+            // Last September's row is in the window that moved; this month's is in neither.
+            ->where('views.due.all.report.0.totals.income', '70.0000')
+        );
+    }
+
+    public function test_the_window_may_not_begin_before_the_first_whole_year(): void
+    {
+        $this->cash('deposit', '2016-06-15', '1');
+        $this->cash('deposit', '2017-06-15', '40');
+        $this->cash('deposit', '2026-09-01', '100');
+
+        // 2016 is seven months of a ledger opened on balances brought into it, so a window
+        // may not begin there: it would put a part year at one end against twelve at the other.
+        $this->get('/cash-flow?since=2016-12')->assertInertia(fn (Assert $page) => $page
+            ->where('since', '2025-10')
+            ->where('back', 0)
+            ->where('views.due.all.report.0.totals.income', '100.0000')
+        );
+
+        $this->get('/cash-flow?since=2017-01')->assertInertia(fn (Assert $page) => $page
+            ->where('since', '2017-01')
+            ->where('back', 105)
+            ->where('views.due.all.report.0.months.0.month', '2017-01')
+            ->where('views.due.all.report.0.months.11.month', '2017-12')
+            // Only 2017's own row: not the one behind the window that was refused, and not the
+            // one eleven years past it. A window that quietly read this month's rows instead
+            // would pass every other assertion here.
+            ->where('views.due.all.report.0.totals.income', '40.0000')
+        );
+    }
+
+    public function test_a_month_that_is_not_one_is_the_current_window(): void
+    {
+        $this->cash('deposit', '2016-06-15', '1');
+        $this->cash('deposit', '2026-09-01', '100');
+
+        // Both ends of the range refused the same way as a middle one: a month that does not
+        // exist, and one the window cannot reach yet.
+        foreach (['2026-13', '2026-00', '2027-01', 'abc', ''] as $asked) {
+            $this->get("/cash-flow?since={$asked}")->assertInertia(fn (Assert $page) => $page
+                ->where('since', '2025-10')
+                ->where('back', 0)
+            );
+        }
+    }
+
+    public function test_a_ledger_under_a_year_old_has_nowhere_to_travel_to(): void
+    {
+        $this->cash('deposit', '2026-09-01', '100');
+
+        // The ledger began this year, so its start is the day it began and no window of this
+        // length fits behind it yet -- which is furthest 0, and the page offering no window control.
+        $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
+            ->where('furthest', 0)
+            ->where('since', '2025-10')
+            ->where('back', 0)
+        );
+    }
+
     public function test_each_currency_is_its_own_report(): void
     {
         $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
@@ -339,6 +413,7 @@ class CashFlowTest extends TestCase
         $this->get('/cash-flow')->assertInertia(fn (Assert $page) => $page
             ->component('cash-flow')
             ->where('months', 12)
+            ->where('since', '2025-10')
             ->where('views.due.all.report.0.ccy', 'HKD')
             ->where('views.due.all.report.0.totals.income', '100.0000')
         );

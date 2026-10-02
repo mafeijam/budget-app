@@ -29,8 +29,8 @@
         </q-select>
       </div>
       <div class="text-caption text-grey-7 q-mt-xs">
-        The last {{ months }} months. {{ cardNote }} Paying a card and trading are moves between
-        your own accounts, so neither counts as spending; pending rows are left out.
+        {{ cardNote }} Paying a card and trading are moves between your own accounts, so neither
+        counts as spending; pending rows are left out.
       </div>
     </div>
 
@@ -42,12 +42,31 @@
       </div>
     </div>
 
-    <div v-if="!report.length" class="text-grey-6">
-      No income or spending in the last {{ months }} months.
-    </div>
+    <!-- A window with nothing in it still shows the control that left it, or arrows that
+         cannot come back are a one-way trip: the reader landed here by stepping. -->
+    <q-card v-if="!report.length" flat bordered>
+      <q-card-section class="row items-center no-wrap q-col-gutter-md">
+        <div class="col text-caption text-grey-7">
+          No income or spending in the {{ months }} months since {{ monthLabel(windowSince) }}.
+        </div>
+        <div class="col-auto">
+          <div class="app-toolbar row items-center no-wrap">
+            <FlowPeriodControl
+              :last="windowLastMonth"
+              :earliest="earliestLast"
+              :latest="latestLast"
+              :months="months"
+              :label="monthLabel"
+              :shift-month="shiftMonth"
+              @choose="travelTo"
+            />
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
 
     <q-card v-for="section in report" :key="section.ccy" flat bordered>
-      <q-card-section class="row items-center no-wrap q-col-gutter-md">
+      <q-card-section class="row items-center q-col-gutter-md">
         <div class="col row items-center no-wrap">
           <q-icon name="insights" size="sm" color="grey-6" class="q-mr-sm" />
           <div>
@@ -60,24 +79,40 @@
             </div>
           </div>
         </div>
-        <!-- On the chart it changes, as the net worth page keeps its spacing. -->
-        <div class="col-auto app-toolbar row items-center no-wrap">
-          <q-icon name="credit_card" size="xs" color="grey-6" class="q-mx-sm" />
-          <q-btn-toggle
-            v-model="card"
-            :options="[
-              { label: 'By due date', value: 'due' },
-              { label: 'By charge date', value: 'charged' },
-            ]"
-            no-caps
-            unelevated
-            dense
-            toggle-color="blue-1"
-            toggle-text-color="primary"
-            text-color="grey-8"
-            padding="xs md"
-            class="app-toolbar__toggle text-weight-bold"
-          />
+        <!-- On the chart it changes, as the net worth page keeps its spacing. One box, as it
+             keeps one: the window's own control joins the toggle's rather than sitting beside
+             it in a second, and it is the taller of the two, so the box grows to it. -->
+        <div class="col-auto">
+          <div class="app-toolbar row items-center no-wrap">
+            <template v-if="furthest">
+              <FlowPeriodControl
+                :last="windowLastMonth"
+                :earliest="earliestLast"
+                :latest="latestLast"
+                :months="months"
+                :label="monthLabel"
+                :shift-month="shiftMonth"
+                @choose="travelTo"
+              />
+              <q-separator vertical inset class="q-mx-sm" />
+            </template>
+            <q-icon name="credit_card" size="xs" color="grey-6" class="q-mx-sm" />
+            <q-btn-toggle
+              v-model="card"
+              :options="[
+                { label: 'By due date', value: 'due' },
+                { label: 'By charge date', value: 'charged' },
+              ]"
+              no-caps
+              unelevated
+              dense
+              toggle-color="blue-1"
+              toggle-text-color="primary"
+              text-color="grey-8"
+              padding="xs md"
+              class="app-toolbar__toggle text-weight-bold"
+            />
+          </div>
         </div>
       </q-card-section>
 
@@ -247,6 +282,9 @@ const props = defineProps({
   months: { type: Number, default: 12 },
   currencies: { type: Array, default: () => [] },
   base: { type: String, default: 'HKD' },
+  since: { type: String, default: '' },
+  back: { type: Number, default: 0 },
+  furthest: { type: Number, default: 0 },
 })
 
 // The currency and how a card is counted are the browser's to keep, as the other pages'
@@ -328,8 +366,11 @@ const newestFirst = section => [...section.months].reverse()
 
 const quiet = month => [month.income, month.spending, month.invested].every(v => Number(v) === 0)
 
+// Short, not long, in the window's own range: the two months share the chart's toolbar with
+// the card toggle, and "November 2025 – October 2026" is twice the width of "Nov 2025 – Oct
+// 2026" for no gain -- the table below names every one of the twelve in full.
 const monthFormat = new Intl.DateTimeFormat('en', {
-  month: 'long',
+  month: 'short',
   year: 'numeric',
   timeZone: 'UTC',
 })
@@ -339,6 +380,35 @@ const monthLabel = month => {
 
   return monthFormat.format(new Date(Date.UTC(year, number - 1, 1)))
 }
+
+// A month as a name, or as a name moved whole months. The first of the month in UTC, so no
+// month is ever short of a day it does not have -- and shifted on the server's own anchor
+// rather than off the browser's Date, which disagrees with the app's day six hours a day.
+const shiftMonth = (month, by) => {
+  const [year, number] = month.split('-').map(Number)
+  const shifted = new Date(Date.UTC(year, number - 1 + by, 1))
+
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+// The window the server resolved, and how far either way its last month can go: back counts
+// months behind this month's window, so this month's ends at since + back + months - 1.
+const windowSince = computed(() => props.since)
+const windowLastMonth = computed(() => shiftMonth(props.since, props.months - 1))
+const latestLast = computed(() => shiftMonth(windowLastMonth.value, props.back))
+const earliestLast = computed(() => shiftMonth(latestLast.value, -props.furthest))
+
+// The window ending this month stays off the URL whatever the server resolved, as on the
+// other pages. Not by comparing to props.since: that would keep it on the way back to a window
+// already on screen, and the page would open a year later than it just showed.
+const travelTo = last =>
+  router.get(
+    '/cash-flow',
+    last === latestLast.value ? {} : { since: shiftMonth(last, 1 - props.months) },
+    // Scrolling to the top is wrong for the arrows, which a reader steps while reading the
+    // chart below them.
+    { preserveScroll: true, replace: true },
+  )
 
 const open = ref(new Set())
 const key = (ccy, month) => `${ccy}:${month}`

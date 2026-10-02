@@ -657,6 +657,18 @@ body {
   max-width: 100%;
 }
 
+/* The cash flow window's picker, fixed for the same reason as the net worth ends: wide enough
+   for "Sep 2025 – Aug 2026", so stepping a month never moves the arrows. */
+.app-toolbar__period {
+  width: 196px;
+  white-space: nowrap;
+}
+
+.app-toolbar__period .q-btn__content {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+}
+
 .app-toolbar__label {
   line-height: 1.1;
 }

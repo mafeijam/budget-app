@@ -38,6 +38,26 @@ class CashFlow
     public const MONTHS = 12;
 
     /**
+     * How many months before $firstMonth a window may begin and still be inside the ledger.
+     *
+     * The same rule every page that counts back starts from, and for the same reason: a part
+     * year at one end of the chart reads against whole ones at the other. Zero when the ledger
+     * is too young to have a window of its own past, which is the page offering no window control.
+     *
+     * diffInMonths answers $date - $this, so the ledger leads for the count to run forwards,
+     * and it answers a float and is signed -- hence the cast, which is also what turns an
+     * unreached past into the 0 above instead of a window reaching before the beginning.
+     */
+    public static function furthestBack(Carbon $firstMonth): int
+    {
+        if (($start = Ledger::start()) === null) {
+            return 0;
+        }
+
+        return (int) max(0, Carbon::parse($start)->startOfMonth()->diffInMonths($firstMonth));
+    }
+
+    /**
      * @return list<array{ccy: string, months: list<array<string, mixed>>, totals: array<string, string>}>
      */
     public static function lastMonths(Carbon $today, int $count = self::MONTHS, bool $onDueDate = true): array

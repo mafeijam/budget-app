@@ -6,6 +6,7 @@ use App\Enums\Currency;
 use App\Support\CashFlow;
 use App\Support\Fx;
 use Brick\Math\BigDecimal;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class CashFlowController extends Controller
@@ -13,8 +14,49 @@ class CashFlowController extends Controller
     /** Rows sent for a quick view, the largest first; the count and the total are of them all. */
     private const PEEK_LIMIT = 500;
 
-    public function index()
+    /**
+     * The first month of the window, off the URL: a real month between the ledger's first whole
+     * year and the current window's own.
+     *
+     * Anything else is the current window, both ends of the range the same way: a month that
+     * does not exist, one past the end, and one before the ledger are all a hand-edited URL.
+     * The day is not checked because there is none to check -- checkdate() on the 1st is what
+     * tells 2026-13 from 2026-12, which a comparison of the strings alone would not.
+     */
+    private static function since(Request $r, Carbon $current, Carbon $floor): string
     {
+        $months = $current->format('Y-m');
+        $since = $r->query('since');
+
+        $asked = is_string($since)
+            && preg_match('/^\d{4}-\d{2}$/', $since)
+            && checkdate((int) substr($since, 5, 2), 1, (int) substr($since, 0, 4))
+            && $since >= $floor->format('Y-m')
+            && $since <= $months;
+
+        return $asked ? $since : $months;
+    }
+
+    public function index(Request $r)
+    {
+        // The window is the 12 months ending this month, named by its first month -- 2025-11 for
+        // an October today -- and the toolbar travels it back a month at a time. today() is Hong
+        // Kong's, so the window's last month turns over when the app's day does. It may not
+        // begin before the ledger's first whole year: a part year at one end of the chart reads
+        // against twelve at the other. furthest is where that stops, and a ledger under a year
+        // old leaves nowhere to go, which the page reads as no window control at all.
+        $current = today()->startOfMonth()->subMonthsNoOverflow(CashFlow::MONTHS - 1);
+        $furthest = CashFlow::furthestBack($current);
+        $since = self::since($r, $current, $current->copy()->subMonthsNoOverflow($furthest));
+
+        // since names the window's first month and CashFlow reads its $today as the window's
+        // last, so passing one through as the other quietly shortens the window to one month.
+        // back counts this month's window back to this one, because the browser cannot ask what
+        // month it is in, and the toolbar needs this month's window to reset to.
+        $first = Carbon::parse($since.'-01');
+        $window = $first->copy()->addMonthsNoOverflow(CashFlow::MONTHS - 1);
+        $back = (int) $first->diffInMonths($current);
+
         // Every view the page can ask for -- card spending by due date or by charge date, for
         // all currencies in the base or each in its own money -- so the two choices are the
         // browser's to keep, like the other pages' dropdowns, and a change costs no visit.
@@ -24,8 +66,7 @@ class CashFlowController extends Controller
         $seen = [];
 
         foreach (['due' => true, 'charged' => false] as $card => $onDueDate) {
-            // today() is Hong Kong's, so the current month turns over when the app's day does.
-            $both = CashFlow::both(today(), onDueDate: $onDueDate);
+            $both = CashFlow::both($window, onDueDate: $onDueDate);
             $seen = array_merge($seen, $both['currencies']);
             $unconverted = $both['combined']['unconverted'];
 
@@ -50,6 +91,9 @@ class CashFlowController extends Controller
             'currencies' => $currencies,
             'base' => Fx::BASE->value,
             'months' => CashFlow::MONTHS,
+            'since' => $since,
+            'back' => $back,
+            'furthest' => $furthest,
         ]);
     }
 
