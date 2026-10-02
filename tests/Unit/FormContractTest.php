@@ -98,8 +98,9 @@ class FormContractTest extends TestCase
 
         // A loan's tags, written by loans:tag and kept through an edit as the links are.
         'meta_data.loan',
-        'meta_data.loan_principal',
+        'meta_data.loan_repaid',
         'meta_data.loan_borrowed',
+        'meta_data.loan_interest',
         'meta_data.loan_repaid_before',
     ];
 

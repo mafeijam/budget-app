@@ -45,14 +45,21 @@ class LoanTest extends TestCase
         $this->artisan('loans:tag')->assertSuccessful();
         $this->assertSame('0.0000', (new NetWorth)->on('2019-01-31')['loans'], 'A dry run writes nothing.');
 
+        // A row an earlier run tagged with the principal alone loses that key.
+        $old = Transaction::where('type', 'withdraw')->orderBy('date')->first();
+        $old->meta()->create(['meta' => ['loan' => 'HSBC TAX LOAN', 'loan_principal' => '11250']]);
+
         $this->artisan('loans:tag', ['--apply' => true])->assertSuccessful();
 
-        // 270,000 borrowed and one 11,250 repaid; the other 324 of the payment was interest.
+        $this->assertSame(['loan' => 'HSBC TAX LOAN', 'loan_repaid' => '11574'], $old->fresh('meta')->meta->meta->getArrayCopy());
+
+        // 270,000 borrowed with 7,776 of interest, all owed from the day it was, less one
+        // whole 11,574 instalment.
         $february = (new NetWorth)->on('2019-02-28');
-        $this->assertSame('258750.0000', $february['loans']);
+        $this->assertSame('266202.0000', $february['loans']);
         $this->assertSame('258426.0000', $february['cash']);
-        $this->assertSame('-324.0000', $february['net_worth']);
-        $this->assertSame([['name' => 'HSBC TAX LOAN', 'ccy' => 'HKD', 'owed' => '258750.0000', 'base' => '258750.0000']], $february['loan_rows']);
+        $this->assertSame('-7776.0000', $february['net_worth']);
+        $this->assertSame([['name' => 'HSBC TAX LOAN', 'ccy' => 'HKD', 'owed' => '266202.0000', 'base' => '266202.0000']], $february['loan_rows']);
 
         $this->assertSame('0.0000', (new NetWorth)->on('2021-02-28')['loans']);
 
@@ -73,16 +80,17 @@ class LoanTest extends TestCase
 
         $first = Transaction::with('meta')->where('amount', '6250')->orderBy('date')->first();
         $this->assertSame('225000', $first->meta->meta['loan_borrowed']);
-        $this->assertSame('31250', $first->meta->meta['loan_repaid_before']);
-        $this->assertSame(31, Transaction::whereHas('meta', fn ($q) => $q->where('meta->loan', 'MASTER INSTALMENT LOAN'))->count());
+        $this->assertSame('12960', $first->meta->meta['loan_interest']);
+        $this->assertSame('33050', $first->meta->meta['loan_repaid_before']);
+        $this->assertSame(62, Transaction::whereHas('meta', fn ($q) => $q->where('meta->loan', 'MASTER INSTALMENT LOAN'))->count());
 
-        // 225,000 less instalments 1 to 5: owed from the first recorded charge, and that charge
-        // not repaid until its statement falls due in January.
-        $this->assertSame('193750.0000', (new NetWorth)->on('2016-12-31')['loans']);
-        $this->assertSame('187500.0000', (new NetWorth)->on('2017-01-31')['loans']);
+        // 225,000 and 12,960 of interest, less instalments 1 to 5 at 6,610: owed from the first
+        // recorded charge, and that charge not repaid until its statement falls due in January.
+        $this->assertSame('204910.0000', (new NetWorth)->on('2016-12-31')['loans']);
+        $this->assertSame('198300.0000', (new NetWorth)->on('2017-01-31')['loans']);
 
         // The last instalment, charged in June, is owed until its due date in July.
-        $this->assertSame('6250.0000', (new NetWorth)->on('2019-06-30')['loans']);
+        $this->assertSame('6610.0000', (new NetWorth)->on('2019-06-30')['loans']);
         $this->assertSame('0.0000', (new NetWorth)->on('2019-07-31')['loans']);
     }
 
@@ -92,7 +100,7 @@ class LoanTest extends TestCase
         Transaction::where('type', 'withdraw')->orderBy('date')->skip(10)->first()->delete();
 
         $this->artisan('loans:tag', ['--apply' => true])
-            ->expectsOutputToContain('HSBC TAX LOAN: the repayments are not instalments 1 to 24')
+            ->expectsOutputToContain('HSBC TAX LOAN: the repayments of 11574 are not instalments 1 to 24')
             ->assertFailed();
 
         $this->assertSame(0, Transaction::whereHas('meta')->count());
@@ -113,10 +121,10 @@ class LoanTest extends TestCase
             'amount' => '11574',
             'ccy' => 'HKD',
             'status' => 'posted',
-            'meta_data' => ['loan' => 'FORGED', 'loan_principal' => '1'],
+            'meta_data' => ['loan' => 'FORGED', 'loan_repaid' => '1'],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(['loan' => 'HSBC TAX LOAN', 'loan_principal' => '11250'], array_filter($row->fresh('meta')->meta->meta->getArrayCopy()));
+        $this->assertSame(['loan' => 'HSBC TAX LOAN', 'loan_repaid' => '11574'], array_filter($row->fresh('meta')->meta->meta->getArrayCopy()));
 
         $this->artisan('loans:tag', ['--untag' => true, '--apply' => true])->assertSuccessful();
         $this->assertSame('0.0000', (new NetWorth)->on('2019-03-31')['loans']);

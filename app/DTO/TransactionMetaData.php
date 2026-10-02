@@ -55,8 +55,9 @@ class TransactionMetaData extends Data
         // A loan's rows, tagged by loans:tag and read by App\Support\Loans, which says what
         // each means. Server-owned as the links above are.
         public ?string $loan = null,
-        public ?string $loan_principal = null,
+        public ?string $loan_repaid = null,
         public ?string $loan_borrowed = null,
+        public ?string $loan_interest = null,
         public ?string $loan_repaid_before = null,
     ) {}
 

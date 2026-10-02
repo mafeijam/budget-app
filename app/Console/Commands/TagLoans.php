@@ -30,32 +30,37 @@ class TagLoans extends Command
 
     /**
      * Each loan: the drawdown, or null where it predates the records; what a repayment looks
-     * like; how much of each pays the loan down, and how many there are. A pattern's group,
-     * where it has one, is the instalment's number, so a missing one is found by its gap.
+     * like; and each instalment's principal and interest, and how many there are. `amounts` are
+     * the rows one instalment is paid in, which add up to its principal and interest. A
+     * pattern's group, where it has one, is the instalment's number, so a missing one is found
+     * by its gap.
      */
     private const LOANS = [
         [
             'name' => 'HSBC TAX LOAN',
             'drawdown' => ['type' => 'deposit', 'pattern' => '/^HSBC TAX LOAN$/i'],
             // A flat 11,574 a month, of which 324 is interest: 24 x 11,250 is the 270,000.
-            'repayment' => ['type' => 'withdraw', 'pattern' => '/^HSBC TAX LOAN$/i', 'amount' => '11574'],
+            'repayment' => ['type' => 'withdraw', 'pattern' => '/^HSBC TAX LOAN$/i', 'amounts' => ['11574']],
             'principal' => '11250',
+            'interest' => '324',
             'term' => 24,
         ],
         [
             'name' => 'HSBC LOAN',
             'drawdown' => ['type' => 'deposit', 'pattern' => '/^HSBC LOAN$/i'],
-            // Its interest is a second charge of 336 under the same description, left untagged.
-            'repayment' => ['type' => 'charge', 'pattern' => '/^INSTALMENT (\d+) OF 60$/i', 'amount' => '2800'],
+            // Two charges an instalment under one description: the principal and the interest.
+            'repayment' => ['type' => 'charge', 'pattern' => '/^INSTALMENT (\d+) OF 60$/i', 'amounts' => ['2800', '336']],
             'principal' => '2800',
+            'interest' => '336',
             'term' => 60,
         ],
         [
             'name' => 'MASTER INSTALMENT LOAN',
             // Borrowed in mid-2016; the card's records start at instalment 6.
             'drawdown' => null,
-            'repayment' => ['type' => 'charge', 'pattern' => '/^INSTALMENT (\d+) OF 36$/i', 'amount' => '6250'],
+            'repayment' => ['type' => 'charge', 'pattern' => '/^INSTALMENT (\d+) OF 36$/i', 'amounts' => ['6250', '360']],
             'principal' => '6250',
+            'interest' => '360',
             'term' => 36,
         ],
     ];
@@ -89,14 +94,15 @@ class TagLoans extends Command
         }
 
         $this->table(
-            ['Loan', 'Borrowed', 'Drawdown', 'Repayments', 'Before the records', 'Principal each', 'To tag'],
+            ['Loan', 'Borrowed', 'Interest', 'Drawdown', 'Repayment rows', 'Before the records', 'Instalment', 'To tag'],
             array_map(fn (array $plan) => [
                 $plan['name'],
                 $plan['borrowed'],
+                $plan['interest'],
                 $plan['drawdown'] === null ? '-' : "#{$plan['drawdown']->id} {$plan['drawdown']->date}",
                 count($plan['repayments']).' ('.$plan['repayments'][0]->date.' to '.end($plan['repayments'])->date.')',
                 $plan['before'] === 0 ? '-' : "{$plan['before']} instalments",
-                $plan['principal'],
+                $plan['instalment'],
                 count($plan['tags']),
             ], $plans)
         );
@@ -130,9 +136,22 @@ class TagLoans extends Command
     private function plan(array $loan): array|string|null
     {
         $principal = BigDecimal::of($loan['principal']);
+        $instalment = $principal->plus($loan['interest']);
         $borrowed = $principal->multipliedBy($loan['term']);
+        $interest = BigDecimal::of($loan['interest'])->multipliedBy($loan['term']);
+        $pattern = $loan['repayment']['pattern'];
+
+        if (! BigDecimal::sum(...$loan['repayment']['amounts'])->isEqualTo($instalment)) {
+            return 'its rows do not add up to an instalment of '.$instalment.'.';
+        }
+
+        // One run per row an instalment is paid in, each checked for its own gaps.
+        $runs = array_map(
+            fn (string $amount) => $this->matching($loan['name'], $loan['repayment']['type'], $pattern, $amount)->values(),
+            $loan['repayment']['amounts'],
+        );
+        $repayments = collect($runs)->flatten(1);
         $drawdown = null;
-        $repayments = $this->matching($loan['name'], $loan['repayment']['type'], $loan['repayment']['pattern'], $loan['repayment']['amount'])->values();
 
         if ($loan['drawdown'] !== null) {
             $found = $this->matching($loan['name'], $loan['drawdown']['type'], $loan['drawdown']['pattern']);
@@ -156,47 +175,58 @@ class TagLoans extends Command
             return $drawdown === null ? null : 'no repayments match.';
         }
 
-        // Numbered where the description numbers them, otherwise in date order from the first.
-        $numbers = $repayments->map(fn (Transaction $row) => preg_match($loan['repayment']['pattern'], $row->description, $m) && isset($m[1])
-            ? (int) $m[1]
-            : null);
-        $numbers = $numbers->contains(null) ? $repayments->keys()->map(fn (int $i) => $i + 1) : $numbers;
-        $before = $numbers->min() - 1;
+        $before = null;
 
-        if ($drawdown !== null && $before > 0) {
-            return "the drawdown is recorded but the first repayment is instalment {$numbers->min()}.";
+        foreach ($runs as $i => $run) {
+            // Numbered where the description numbers them, otherwise in date order from the first.
+            $numbers = $run->map(fn (Transaction $row) => preg_match($pattern, trim((string) $row->description), $m) && isset($m[1])
+                ? (int) $m[1]
+                : null);
+            $numbers = $numbers->isEmpty() || $numbers->contains(null) ? $run->keys()->map(fn (int $k) => $k + 1) : $numbers;
+            $first = $numbers->min() ?? $loan['term'] + 1;
+            $before ??= $first - 1;
+            $amount = $loan['repayment']['amounts'][$i];
+
+            if ($numbers->sort()->values()->all() !== range($before + 1, $loan['term'])) {
+                return "the repayments of {$amount} are not instalments ".($before + 1)." to {$loan['term']}, once each: found "
+                    .$numbers->count().($numbers->isEmpty() ? '' : ' numbered '.$numbers->sort()->implode(', ')).'.';
+            }
         }
 
-        if ($numbers->sort()->values()->all() !== range($before + 1, $loan['term'])) {
-            return "the repayments are not instalments {$numbers->min()} to {$loan['term']}, once each: found "
-                .$numbers->count().' numbered '.$numbers->sort()->implode(', ').'.';
+        if ($drawdown !== null && $before > 0) {
+            return 'the drawdown is recorded but the first repayment is instalment '.($before + 1).'.';
         }
 
         $tags = [];
 
         if ($drawdown !== null) {
-            $tags[] = [$drawdown, ['loan' => $loan['name']]];
+            $tags[] = [$drawdown, ['loan' => $loan['name'], 'loan_interest' => (string) $interest]];
         }
 
-        foreach ($repayments as $i => $row) {
-            $tag = ['loan' => $loan['name'], 'loan_principal' => (string) $principal];
-
-            // The first recorded one carries what was owed when the records start.
-            if ($drawdown === null && $i === 0) {
-                $tag['loan_borrowed'] = (string) $borrowed;
-                $tag['loan_repaid_before'] = (string) $principal->multipliedBy($before);
+        foreach ($runs as $i => $run) {
+            foreach ($run as $row) {
+                $tags[$row->id] = [$row, ['loan' => $loan['name'], 'loan_repaid' => $loan['repayment']['amounts'][$i]]];
             }
+        }
 
-            $tags[] = [$row, $tag];
+        // The first recorded principal carries what was owed when the records start.
+        if ($drawdown === null) {
+            $first = $runs[0]->first();
+            $tags[$first->id][1] += [
+                'loan_borrowed' => (string) $borrowed,
+                'loan_interest' => (string) $interest,
+                'loan_repaid_before' => (string) $instalment->multipliedBy($before),
+            ];
         }
 
         return [
             'name' => $loan['name'],
             'borrowed' => (string) $borrowed,
+            'interest' => (string) $interest,
             'drawdown' => $drawdown,
-            'repayments' => $repayments->all(),
+            'repayments' => $repayments->sortBy('date')->values()->all(),
             'before' => $before,
-            'principal' => (string) $principal,
+            'instalment' => (string) $instalment,
             'tags' => array_values(array_filter($tags, fn (array $pair) => ! $this->has($pair[0], $pair[1]))),
         ];
     }
@@ -226,13 +256,13 @@ class TagLoans extends Command
     {
         $bag = $row->meta?->meta?->getArrayCopy() ?? [];
 
-        return array_intersect_key($bag, array_flip(Loans::KEYS)) == $tag;
+        return array_intersect_key($bag, array_flip([...Loans::KEYS, ...Loans::RETIRED])) == $tag;
     }
 
     /** @param  array<string, string>  $tag */
     private function write(Transaction $row, array $tag): void
     {
-        $bag = array_diff_key($row->meta?->meta?->getArrayCopy() ?? [], array_flip(Loans::KEYS));
+        $bag = array_diff_key($row->meta?->meta?->getArrayCopy() ?? [], array_flip([...Loans::KEYS, ...Loans::RETIRED]));
         $row->meta()->updateOrCreate(['id' => $row->meta?->id], ['meta' => [...$bag, ...$tag]]);
     }
 
