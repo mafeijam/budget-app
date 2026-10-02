@@ -166,7 +166,12 @@
               <td class="text-right money text-weight-bold" :class="signClass(month.net)">
                 {{ money(month.net) }}
               </td>
-              <td class="text-right money text-grey-7">{{ money(month.invested) }}</td>
+              <td
+                class="text-right money"
+                :class="Number(month.invested) === 0 ? 'text-grey-5' : 'text-primary'"
+              >
+                {{ money(month.invested) }}
+              </td>
               <td class="text-right">
                 <q-icon
                   v-if="month.categories.length"
