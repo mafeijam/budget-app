@@ -8,6 +8,7 @@ use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\Fx;
+use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -28,6 +29,13 @@ use Illuminate\Support\Facades\DB;
  *   FROM SAVING" on the 3rd: paired by the account each names, the amount, and three days at
  *   most, the nearest first. An amount alone a day apart is not enough -- it paired a transfer
  *   with a card payment.
+ *
+ * - **A transfer on one day**, a withdrawal and a deposit of the same amount on two accounts
+ *   in one currency. CashFlow already reads these as transfers, but nothing links the two
+ *   rows, so the list cannot open them as one. Paired one to one, and only where it is
+ *   plain which deposit a withdrawal went to: the one the description names, or the only
+ *   one there is. Two equal transfers the same day with nothing to tell them apart are
+ *   reported and left.
  *
  * Then trades:link-cash, for the trades whose bank row was entered apart from them. Without
  * --apply nothing is written, and a second run finds nothing to do: only unpaired rows are read.
@@ -51,6 +59,7 @@ class PairTransfers extends Command
         $cash = Account::query()->where('type', AccountType::Cash->value)->orderBy('id')->get();
         $exchanges = $this->exchanges($cash);
         $transfers = $this->transfers($cash);
+        [$sameDay, $unclear] = $this->sameDay($cash);
 
         $this->line('Exchanges into another currency:');
         $this->table(
@@ -68,6 +77,20 @@ class PairTransfers extends Command
                 $t[0]->id, $t[0]->date, $t[0]->account->name, $t[1]->id, $t[1]->date, $t[1]->account->name, $t[0]->amount,
             ], $transfers)
         );
+
+        $this->line('Transfers on one day, not linked yet:');
+        $this->table(
+            ['Out', 'Date', 'From', 'In', 'To', 'Amount'],
+            array_map(fn (array $t) => [
+                $t[0]->id, $t[0]->date, $t[0]->account->name, $t[1]->id, $t[1]->account->name, "{$t[0]->amount} {$t[0]->account->ccy}",
+            ], $sameDay)
+        );
+
+        foreach ($unclear as $row) {
+            $this->warn("Row {$row->id} ({$row->date}, {$row->amount} {$row->account->ccy}, {$row->account->name}) has more than one same-day opposite and nothing to tell which: left unpaired.");
+        }
+
+        $transfers = [...$transfers, ...$sameDay];
 
         $this->line(sprintf('%d exchange%s and %d transfer%s to pair.', count($exchanges), count($exchanges) === 1 ? '' : 's', count($transfers), count($transfers) === 1 ? '' : 's'));
 
@@ -192,6 +215,52 @@ class PairTransfers extends Command
         }
 
         return $pairs;
+    }
+
+    /**
+     * Each unpaired withdrawal with the unpaired deposit of the same day, amount and currency
+     * on another cash account: the one whose description names the withdrawal's account, or
+     * the only candidate. A withdrawal with several and no name to choose by is returned
+     * apart, unpaired.
+     *
+     * @param  Collection<int, Account>  $cash
+     * @return array{0: list<array{0: Transaction, 1: Transaction}>, 1: list<Transaction>}
+     */
+    private function sameDay(Collection $cash): array
+    {
+        $deposits = $this->unpaired($cash, TransactionType::Deposit);
+        $claimed = [];
+        $pairs = [];
+        $unclear = [];
+
+        foreach ($this->unpaired($cash, TransactionType::Withdraw) as $out) {
+            $candidates = $deposits->filter(fn (Transaction $in) => ! isset($claimed[$in->id])
+                && $in->date === $out->date
+                && $in->account_id !== $out->account_id
+                && $in->account->ccy === $out->account->ccy
+                && BigDecimal::of($in->amount)->isEqualTo($out->amount))->values();
+
+            if ($candidates->isEmpty()) {
+                continue;
+            }
+
+            $from = preg_quote(mb_strtoupper($out->account->name), '/');
+            $named = $candidates->filter(fn (Transaction $in) => preg_match("/\\b{$from}\\b/u", mb_strtoupper((string) $in->description))
+                || preg_match('/\\b'.preg_quote(mb_strtoupper($in->account->name), '/').'\\b/u', mb_strtoupper((string) $out->description)));
+
+            $in = $candidates->count() === 1 ? $candidates->first() : ($named->count() === 1 ? $named->first() : null);
+
+            if ($in === null) {
+                $unclear[] = $out;
+
+                continue;
+            }
+
+            $claimed[$in->id] = true;
+            $pairs[] = [$out, $in];
+        }
+
+        return [$pairs, $unclear];
     }
 
     /**

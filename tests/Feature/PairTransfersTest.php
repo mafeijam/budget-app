@@ -54,14 +54,49 @@ class PairTransfersTest extends TestCase
 
     public function test_two_same_day_transfers_a_day_apart_are_not_crossed(): void
     {
-        // Each has its partner on its own day, which CashFlow already reads as a transfer.
-        // Paired across the days, the 10th's withdrawal took the 11th's deposit.
-        $this->row($this->saving, 'withdraw', '2021-06-10', '50000', 'TRANSFER TO FUTU');
-        $this->row($this->futu, 'deposit', '2021-06-10', '50000', 'TRANSFER FROM SAVING');
-        $this->row($this->saving, 'withdraw', '2021-06-11', '50000', 'TRANSFER TO FUTU');
-        $this->row($this->futu, 'deposit', '2021-06-11', '50000', 'TRANSFER FROM SAVING');
+        // Each has its partner on its own day. Paired across the days, the 10th's withdrawal
+        // took the 11th's deposit; each is paired within its day instead.
+        $out10 = $this->row($this->saving, 'withdraw', '2021-06-10', '50000', 'TRANSFER TO FUTU');
+        $in10 = $this->row($this->futu, 'deposit', '2021-06-10', '50000', 'TRANSFER FROM SAVING');
+        $out11 = $this->row($this->saving, 'withdraw', '2021-06-11', '50000', 'TRANSFER TO FUTU');
+        $in11 = $this->row($this->futu, 'deposit', '2021-06-11', '50000', 'TRANSFER FROM SAVING');
 
-        $this->artisan('transfers:pair', ['--apply' => true])->expectsOutputToContain('0 exchanges and 0 transfers to pair.')->assertSuccessful();
+        $this->artisan('transfers:pair', ['--apply' => true])->expectsOutputToContain('0 exchanges and 2 transfers to pair.')->assertSuccessful();
+
+        $this->assertSame($in10->id, $out10->fresh()->meta->meta['paired_transaction_id']);
+        $this->assertSame($in11->id, $out11->fresh()->meta->meta['paired_transaction_id']);
+    }
+
+    public function test_a_same_day_transfer_is_linked_so_the_list_opens_it_as_one(): void
+    {
+        $advance = Account::create(['name' => 'ADVANCE', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        // The only candidate, whatever it is called.
+        $out = $this->row($this->saving, 'withdraw', '2018-01-01', '24000', 'ATM');
+        $in = $this->row($advance, 'deposit', '2018-01-01', '24000', 'CASH IN');
+
+        // Two equal deposits the same day: the one naming the withdrawal's account.
+        $two = $this->row($this->saving, 'withdraw', '2018-02-01', '500', 'TRANSFER TO FUTU');
+        $this->row($advance, 'deposit', '2018-02-01', '500', 'SALARY');
+        $named = $this->row($this->futu, 'deposit', '2018-02-01', '500', 'TRANSFER FROM SAVING');
+
+        // Two and nothing to tell them apart: left, and said so.
+        $unclear = $this->row($this->saving, 'withdraw', '2018-03-01', '700', 'MOVE');
+        $this->row($advance, 'deposit', '2018-03-01', '700', 'IN');
+        $this->row($this->futu, 'deposit', '2018-03-01', '700', 'IN');
+
+        // Out and back on one account is not a transfer between two.
+        $this->row($this->futu, 'withdraw', '2018-04-01', '90', 'OUT');
+        $this->row($this->futu, 'deposit', '2018-04-01', '90', 'BACK');
+
+        $this->artisan('transfers:pair', ['--apply' => true])
+            ->expectsOutputToContain("Row {$unclear->id} (2018-03-01")
+            ->expectsOutputToContain('0 exchanges and 2 transfers to pair.')
+            ->assertSuccessful();
+
+        $this->assertSame($in->id, $out->fresh()->meta->meta['paired_transaction_id']);
+        $this->assertSame($named->id, $two->fresh()->meta->meta['paired_transaction_id']);
+        $this->assertNull($unclear->fresh()->meta);
     }
 
     public function test_an_amount_a_day_apart_without_the_accounts_named_is_not_a_transfer(): void
