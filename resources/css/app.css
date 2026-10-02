@@ -2252,6 +2252,22 @@ body {
   padding: 0 6px;
 }
 
+/*
+  A fixed width, so nothing in the row moves when a month is picked: "All" and "Today" are
+  narrower than a month, and the toolbar is right-aligned, so every arrow and the reset slid
+  a sixth of an inch to the left the moment a value became a date. Wide enough for the widest
+  month at this size, with the caret pushed to the same edge every time so the pair of arrows
+  round each value holds still.
+*/
+.app-toolbar__range {
+  width: 108px;
+}
+
+.app-toolbar__range .q-btn__content {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+}
+
 /* An on-off chip: grey when off, the app's tint when on. */
 .app-toolbar__chip {
   border-radius: 8px;

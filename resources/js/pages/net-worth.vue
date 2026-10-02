@@ -133,7 +133,7 @@
               flat
               dense
               no-caps
-              class="app-toolbar__pick q-px-sm"
+              class="app-toolbar__pick app-toolbar__range q-px-sm"
               icon-right="expand_more"
               @click="openPicker('from')"
             >
@@ -194,7 +194,7 @@
               flat
               dense
               no-caps
-              class="app-toolbar__pick q-px-sm"
+              class="app-toolbar__pick app-toolbar__range q-px-sm"
               icon-right="expand_more"
               @click="openPicker('to')"
             >
