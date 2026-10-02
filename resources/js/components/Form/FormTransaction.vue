@@ -437,7 +437,7 @@
             :false-value="null"
             label="One-off"
             color="primary"
-            dense
+            size="lg"
           />
         </template>
       </q-field>
@@ -549,7 +549,7 @@
                 class="col-6"
                 label="No cash side"
                 color="primary"
-                dense
+                size="lg"
                 :error="!!form.errors['meta_data.no_cash']"
                 :error-message="form.errors['meta_data.no_cash']"
               />

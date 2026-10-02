@@ -241,6 +241,7 @@
               class="col-12"
               label="Active"
               color="primary"
+              size="lg"
               :error="!!form.errors.active"
               :error-message="form.errors.active"
             />
