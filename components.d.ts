@@ -36,5 +36,6 @@ declare module 'vue' {
     RecurringFindDialog: typeof import('./resources/js/components/RecurringFindDialog.vue')['default']
     SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
     TransactionFilters: typeof import('./resources/js/components/TransactionFilters.vue')['default']
+    TransferDialog: typeof import('./resources/js/components/TransferDialog.vue')['default']
   }
 }

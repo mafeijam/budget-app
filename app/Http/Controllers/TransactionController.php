@@ -19,6 +19,7 @@ use App\Support\CardStatement;
 use App\Support\CashFlow;
 use App\Support\Positions;
 use App\Support\TradeCash;
+use App\Support\Transfer;
 use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
@@ -1048,6 +1049,7 @@ class TransactionController extends Controller
         $partner = $pairedId === null ? null : Transaction::with(['meta', 'account'])->find($pairedId);
         $period = $this->settlementPeriod($transaction, $partner);
         $cashSide = TradeCash::isTrade($transaction) ? TradeCash::describe($transaction) : null;
+        $isTransfer = Transfer::isHalf($transaction->loadMissing('account'), $partner);
 
         // A settlement's two rows go together or not at all.
         $rows = $partner === null ? [$transaction] : [$transaction, $partner];
@@ -1080,6 +1082,10 @@ class TransactionController extends Controller
 
         if ($cashSide !== null) {
             return back()->with('message', "Trade {$cashSide} deleted with its cash side: 2 transactions");
+        }
+
+        if ($isTransfer) {
+            return back()->with('message', 'Transfer deleted in full: 2 transactions');
         }
 
         return back()->with('message', $period === null
@@ -1472,8 +1478,12 @@ class TransactionController extends Controller
                 'due_date' => $other->meta?->meta['due_date'] ?? null,
                 'kind' => match (true) {
                     TradeCash::isTrade($other), TradeCash::isTrade($row) => 'trade',
+                    Transfer::isHalf($row, $other) => 'transfer',
                     default => 'settlement',
                 },
+                // For the transfer dialog, which opens on both halves.
+                'account_id' => $other->account_id,
+                'type' => $other->type,
                 // For figureLock(); stripped before the page gets it.
                 'row' => $other,
             ];

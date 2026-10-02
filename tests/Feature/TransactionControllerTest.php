@@ -1447,6 +1447,8 @@ class TransactionControllerTest extends TestCase
                     'account_name' => 'Bank',
                     'due_date' => null,
                     'kind' => 'settlement',
+                    'account_id' => $this->bank->id,
+                    'type' => 'withdraw',
                 ],
                 $transfer->id => [
                     'id' => $payment->id,
@@ -1457,6 +1459,8 @@ class TransactionControllerTest extends TestCase
                     'account_name' => 'Card',
                     'due_date' => '2026-02-09',
                     'kind' => 'settlement',
+                    'account_id' => $this->card->id,
+                    'type' => 'payment',
                 ],
             ])
         );

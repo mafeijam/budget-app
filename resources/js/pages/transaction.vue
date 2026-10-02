@@ -2,6 +2,8 @@
   <div class="column no-wrap q-gutter-md">
     <FormTransaction :options="options" />
 
+    <TransferDialog ref="transferDialog" />
+
     <CardStatements
       :groups="statements"
       :banks="cardBanks"
@@ -13,6 +15,18 @@
       <template #top>
         <TransactionFilters ref="filterBar" title="Transactions">
           <template #actions>
+            <q-btn
+              unelevated
+              no-caps
+              class="app-create-btn app-btn text-weight-bold q-mr-sm"
+              icon="sync_alt"
+              label="Transfer"
+              @click="transferDialog.show()"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                Move money between two cash accounts, or exchange it into another currency
+              </q-tooltip>
+            </q-btn>
             <CreateBtn label="New transaction" />
           </template>
         </TransactionFilters>
@@ -23,8 +37,16 @@
         <q-td :props="cell">
           <div class="row items-center no-wrap">
             <span class="app-tx-icon q-mr-sm" :class="`app-tx-icon--${directionName(cell.row)}`">
-              <q-icon :name="typeIcons[cell.row.type] ?? 'help_outline'" size="16px" />
-              <q-tooltip :delay="500" :offset="[0, 6]">{{ cell.row.type }}</q-tooltip>
+              <!-- A transfer's half by what it is, not its type: a withdrawal's cart reads as spent. -->
+              <q-icon
+                :name="
+                  transferOf(cell.row) ? 'sync_alt' : (typeIcons[cell.row.type] ?? 'help_outline')
+                "
+                size="16px"
+              />
+              <q-tooltip :delay="500" :offset="[0, 6]">{{
+                transferOf(cell.row) ? `${cell.row.type}, one half of a transfer` : cell.row.type
+              }}</q-tooltip>
             </span>
             <div class="app-tx-what">
               <div class="row items-center no-wrap">
@@ -82,7 +104,7 @@
 
       <template #body-cell-action="cell">
         <q-td :props="cell">
-          <AppTableActions :cell="cell" />
+          <AppTableActions :cell="cell" :edit="transferOf(cell.row) ? editTransfer : null" />
         </q-td>
       </template>
     </AppTable>
@@ -167,6 +189,17 @@
 
 <script setup>
 const filterBar = ref(null)
+
+const transferDialog = ref(null)
+
+// The other half of a transfer, from the counterparts the server sends with the page.
+const transferOf = row => {
+  const other = usePage().props.linked?.[row.id]
+
+  return other?.kind === 'transfer' ? other : null
+}
+
+const editTransfer = row => transferDialog.value.show(row, transferOf(row))
 
 const totals = computed(() => usePage().props.totals ?? [])
 
@@ -321,7 +354,11 @@ const metaChips = row => {
     const other = usePage().props.linked?.[row.id]
 
     chips.push({
-      label: other ? `Settles with ${other.account_name}` : 'Settlement, other half gone',
+      label: !other
+        ? 'Paired, other half gone'
+        : other.kind === 'transfer'
+          ? `${row.type === 'withdraw' ? 'To' : 'From'} ${other.account_name}`
+          : `Settles with ${other.account_name}`,
       class: 'app-tint app-tint--info',
     })
 

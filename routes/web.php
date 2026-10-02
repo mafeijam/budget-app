@@ -11,6 +11,7 @@ use App\Http\Controllers\NetWorthController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\RecurringTransactionController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\TransferController;
 use App\Http\Controllers\YearReviewController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +61,10 @@ Route::delete('transaction-templates/{transactionTemplate}', [TransactionControl
 
 Route::resource('accounts', AccountController::class)->except('show', 'edit');
 Route::resource('categories', CategoryController::class)->except('show', 'edit');
+// Two rows written as one: there is no transfer row of its own to show or delete, and either
+// half names the pair to rewrite.
+Route::post('transfers', [TransferController::class, 'store'])->name('transfers.store');
+Route::put('transfers/{transaction}', [TransferController::class, 'update'])->name('transfers.update');
 Route::resource('transactions', TransactionController::class)->except('show', 'edit');
 // Before the resource, or `run` is read as a rule's id.
 Route::post('recurring/run', [RecurringTransactionController::class, 'run'])->name('recurring.run');

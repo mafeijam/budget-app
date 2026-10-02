@@ -24,7 +24,15 @@
         statusLocked ? lock.message : 'Post'
       }}</q-tooltip>
     </q-btn>
-    <q-btn icon="edit" flat round size="sm" color="grey-7" dense @click="setEdit(cell.row)">
+    <q-btn
+      icon="edit"
+      flat
+      round
+      size="sm"
+      color="grey-7"
+      dense
+      @click="edit ? edit(cell.row) : setEdit(cell.row)"
+    >
       <q-tooltip :delay="500" :offset="[0, 6]">Edit</q-tooltip>
     </q-btn>
     <!-- Grey until hovered: a red icon on every row outshouts the figures. -->
@@ -52,6 +60,8 @@ const props = defineProps({
     type: Object,
     default: Object,
   },
+  // A row edited somewhere other than the page's form: a transfer's half opens its dialog.
+  edit: { type: Function, default: null },
 })
 
 const pagination = inject('pagination')

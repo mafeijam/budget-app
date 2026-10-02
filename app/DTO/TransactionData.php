@@ -12,6 +12,7 @@ use App\Support\CardStatement;
 use App\Support\CardStatementCycle;
 use App\Support\Positions;
 use App\Support\TradeCash;
+use App\Support\Transfer;
 use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
@@ -421,6 +422,17 @@ class TransactionData extends Data
                     ."{$words} follow the trade. Edit the trade instead.",
                 'refusal' => "This {$row->type} is the cash side of the trade {$other}, so its %s "
                     .'cannot be changed here. Edit the trade instead.',
+            ];
+        }
+
+        // Both halves are rewritten together by the transfer dialog, which the page opens instead.
+        if (Transfer::isHalf($row, $partner)) {
+            return [
+                'fields' => $fields,
+                'message' => "This {$row->type} is one half of a transfer, so its {$words} "
+                    .'change with the other half. Edit it as a transfer.',
+                'refusal' => "This {$row->type} is one half of a transfer, so its %s cannot be "
+                    .'changed on its own. Edit it as a transfer.',
             ];
         }
 
