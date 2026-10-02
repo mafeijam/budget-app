@@ -66,7 +66,7 @@ const menus = computed(() => {
     {
       heading: 'Records',
       items: [
-        item('Transactions', 'transaction', 'paid', '/transactions'),
+        item('Transactions', 'transaction', 'receipt_long', '/transactions'),
         item('Recurring', 'recurring', 'event_repeat', '/recurring'),
       ],
     },
@@ -85,7 +85,7 @@ const menus = computed(() => {
       heading: 'Settings',
       items: [
         item('Accounts', 'account', 'account_balance', '/accounts'),
-        item('Categories', 'category', 'category', '/categories'),
+        item('Categories', 'category', 'sell', '/categories'),
       ],
     },
   ]
