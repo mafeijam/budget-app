@@ -61,6 +61,11 @@ return [
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
+            // For backup:run. A consistent snapshot without locking the tables, which
+            // only holds while every table is InnoDB.
+            'dump' => [
+                'use_single_transaction',
+            ],
         ],
 
         /*

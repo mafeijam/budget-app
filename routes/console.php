@@ -19,3 +19,8 @@ Schedule::command('prices:fetch')->twiceDailyAt(6, 18, 30)->timezone('Asia/Hong_
 // Just after midnight in Hong Kong, the day today() turns over. A missed run catches up
 // on the next, and saving a rule records what is due at once.
 Schedule::command('recurring:record')->dailyAt('00:05')->timezone('Asia/Hong_Kong');
+
+// A dump of the database into storage/app/backups, after the night's recurring rows are
+// written. Retention is in config/backup.php; failures go to the log, not to mail.
+Schedule::command('backup:clean')->dailyAt('01:00')->timezone('Asia/Hong_Kong');
+Schedule::command('backup:run --only-db')->dailyAt('01:30')->timezone('Asia/Hong_Kong');

@@ -112,7 +112,7 @@ Signing out of one device leaves the others signed in. Only `login:revoke` ends 
 
 ### Scheduled jobs
 
-Two commands run from the scheduler, which does nothing unless something calls
+These run from the scheduler, which does nothing unless something calls
 `schedule:run` every minute:
 
 ```bash
@@ -123,6 +123,25 @@ Two commands run from the scheduler, which does nothing unless something calls
 - `recurring:record` at 00:05 Hong Kong time, for the recurring transactions due
   that day. A missed run catches up on the next one, and saving a rule records
   whatever is already due, so the page works without cron and only goes stale.
+- `backup:run --only-db` at 01:30 Hong Kong time, after `backup:clean` at 01:00, from
+  [spatie/laravel-backup](https://spatie.be/docs/laravel-backup/v10/introduction).
+  Needs PHP's `zip` extension (`php8.3-zip`) and `mysqldump`. Without cron there are
+  no backups at all, and nothing says so.
+
+Each backup is a zip holding a gzipped `mysqldump` of the database `.env` names,
+written twice: to `storage/app/backups/budgetV2/`, and to `/mnt/pc/budgetV2/` on the
+PC's share (`BACKUP_PC_ROOT` in `.env` moves it). A copy that fails, such as the PC
+being off, leaves the other standing. No mail is sent; success and failure are written to
+`storage/logs/laravel.log` as `[backup] …`. Each place keeps 7 days of backups
+(`config/backup.php`), and `backup:clean` deletes anything older but never the newest.
+
+```bash
+php artisan backup:run --only-db    # take one now
+php artisan backup:list             # how many, how old, how large
+
+# Restore: this replaces what is in the database.
+unzip -p storage/app/backups/budgetV2/<file>.zip 'db-dumps/*.sql.gz' | gunzip | mysql budget_v2_testing
+```
 
 ### Tidying the ledger
 
