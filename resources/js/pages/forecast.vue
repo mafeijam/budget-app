@@ -436,7 +436,7 @@
 
       <q-separator />
 
-      <q-markup-table v-if="soon.length" flat dense>
+      <q-markup-table v-if="soon.length" flat dense class="app-head-table">
         <thead>
           <tr class="text-grey-7">
             <th class="text-left" colspan="4" />

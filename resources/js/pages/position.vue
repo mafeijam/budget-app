@@ -225,7 +225,7 @@
         v-if="view.rows.length"
         flat
         dense
-        class="app-positions"
+        class="app-positions app-head-table"
         :style="{ '--app-sticky-top': `${barHeight}px` }"
       >
         <thead>

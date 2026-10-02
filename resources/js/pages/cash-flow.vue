@@ -142,7 +142,7 @@
 
       <q-separator />
 
-      <q-markup-table flat dense class="app-flow-table">
+      <q-markup-table flat dense class="app-flow-table app-head-table">
         <thead>
           <tr class="text-grey-7">
             <th class="text-left">Month</th>
