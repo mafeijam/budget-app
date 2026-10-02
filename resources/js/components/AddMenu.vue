@@ -12,8 +12,7 @@
       label="Transaction"
       :loading="loading === 'transaction'"
       @click="open(forms[0])"
-    >
-    </q-btn>
+    />
     <q-btn
       unelevated
       color="primary"
