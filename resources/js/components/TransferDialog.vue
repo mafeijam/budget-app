@@ -29,13 +29,13 @@
 
       <q-form class="q-px-md" @submit="submit">
         <!-- Plain cols, not col-sm: the breakpoints follow the screen, not this narrow dialog. -->
-        <div class="row q-col-gutter-sm items-start">
+        <div class="row q-col-gutter-md items-start">
           <!-- The two accounts on a line of their own, the swap between them. -->
           <div class="col-12">
             <div class="row items-start no-wrap app-transfer__accounts">
               <q-select
                 v-model="form.from_account_id"
-                :options="accounts"
+                :options="accountOptions"
                 class="col"
                 label="From"
                 outlined
@@ -44,10 +44,21 @@
                 :error="!!form.errors.from_account_id"
                 :error-message="form.errors.from_account_id"
               >
+                <template #prepend>
+                  <q-icon name="account_balance" color="grey-6" />
+                </template>
                 <template #option="scope">
-                  <q-item v-bind="scope.itemProps">
+                  <q-item-label
+                    v-if="scope.opt.heading"
+                    header
+                    class="app-filter-group q-py-xs"
+                    v-bind="scope.itemProps"
+                  >
+                    {{ scope.opt.label }}
+                  </q-item-label>
+                  <q-item v-else v-bind="scope.itemProps" dense>
                     <q-item-section>{{ scope.opt.label }}</q-item-section>
-                    <q-item-section side>{{ scope.opt.ccy }}</q-item-section>
+                    <q-item-section side class="text-caption">{{ scope.opt.ccy }}</q-item-section>
                   </q-item>
                 </template>
               </q-select>
@@ -60,7 +71,7 @@
 
               <q-select
                 v-model="form.to_account_id"
-                :options="accounts"
+                :options="accountOptions"
                 class="col"
                 label="To"
                 outlined
@@ -69,26 +80,43 @@
                 :error="!!form.errors.to_account_id"
                 :error-message="form.errors.to_account_id"
               >
+                <template #prepend>
+                  <q-icon name="account_balance" color="grey-6" />
+                </template>
                 <template #option="scope">
-                  <q-item
+                  <q-item-label
+                    v-if="scope.opt.heading"
+                    header
+                    class="app-filter-group q-py-xs"
                     v-bind="scope.itemProps"
+                  >
+                    {{ scope.opt.label }}
+                  </q-item-label>
+                  <q-item
+                    v-else
+                    v-bind="scope.itemProps"
+                    dense
                     :disable="scope.opt.value === form.from_account_id"
                   >
                     <q-item-section>{{ scope.opt.label }}</q-item-section>
-                    <q-item-section side>{{ scope.opt.ccy }}</q-item-section>
+                    <q-item-section side class="text-caption">{{ scope.opt.ccy }}</q-item-section>
                   </q-item>
                 </template>
               </q-select>
             </div>
           </div>
 
+          <!-- The amount reads largest with its currency in front, as the transaction
+               form's does; the received figure the same when the accounts differ. -->
           <q-input
             v-model="form.amount"
-            :class="exchange ? 'col-6' : 'col-12'"
+            :class="exchange ? 'col-6 app-form-amount' : 'col-12 app-form-amount'"
             :label="exchange ? 'Sent' : 'Amount'"
             outlined
-            inputmode="decimal"
-            :suffix="from?.ccy"
+            type="number"
+            step="0.01"
+            min="0"
+            :prefix="fromPrefix"
             :error="!!form.errors.amount"
             :error-message="form.errors.amount"
           />
@@ -98,11 +126,13 @@
           <q-input
             v-if="exchange"
             v-model="form.amount_in"
-            class="col-6"
+            class="col-6 app-form-amount"
             label="Received"
             outlined
-            inputmode="decimal"
-            :suffix="to?.ccy"
+            type="number"
+            step="0.01"
+            min="0"
+            :prefix="toPrefix"
             :hint="rateHint"
             :error="!!form.errors.amount_in"
             :error-message="form.errors.amount_in"
@@ -116,7 +146,11 @@
             :hint="form.description || !defaultDescription ? '' : `Empty: ${defaultDescription}`"
             :error="!!form.errors.description"
             :error-message="form.errors.description"
-          />
+          >
+            <template #prepend>
+              <q-icon name="notes" color="grey-6" />
+            </template>
+          </q-input>
 
           <!-- The calendar control every date here uses: a mask on q-input itself breaks. -->
           <q-input
@@ -235,9 +269,25 @@ const accounts = computed(() =>
   ),
 )
 
+// QSelect has no grouped options, so each currency is a disabled heading above its
+// accounts, as the transaction form groups its accounts under their type.
+const accountOptions = computed(() => {
+  const currencies = [...new Set(accounts.value.map(account => account.ccy))]
+
+  return currencies.flatMap(ccy => [
+    { label: ccy, value: `ccy:${ccy}`, disable: true, heading: true },
+    ...accounts.value.filter(account => account.ccy === ccy),
+  ])
+})
+
 const from = computed(() => accounts.value.find(a => a.value === form.from_account_id) ?? null)
 const to = computed(() => accounts.value.find(a => a.value === form.to_account_id) ?? null)
 const exchange = computed(() => !!from.value && !!to.value && from.value.ccy !== to.value.ccy)
+
+// The currency in front of each figure, as the transaction form's amount has it;
+// nothing until its account is picked.
+const fromPrefix = computed(() => (from.value?.ccy ? `${from.value.ccy} ` : ''))
+const toPrefix = computed(() => (to.value?.ccy ? `${to.value.ccy} ` : ''))
 
 // For reading only, as the cash flow page's shares are: the figures sent are the strings typed.
 const rateHint = computed(() => {
