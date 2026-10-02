@@ -510,22 +510,26 @@
                      currency computed over another's cost agrees with the columns beside it
                      only by accident. -->
                 <div class="text-right money" :class="signClass(gain(broker))">
-                  <div class="text-weight-medium">
-                    {{
-                      broker.converted
-                        ? `${broker.ccy} ${money(broker.unrealised)}`
-                        : money(gain(broker))
-                    }}
+                  <!-- The share on the figure's own line, ahead of it, so the figures keep one
+                       right edge down the column. -->
+                  <div>
+                    <span class="text-caption q-mr-sm">
+                      {{
+                        broker.converted
+                          ? percent(broker.unrealised, broker.cost)
+                          : percent(gain(broker), broker.cost_base ?? broker.cost)
+                      }}
+                    </span>
+                    <span class="text-weight-medium">
+                      {{
+                        broker.converted
+                          ? `${broker.ccy} ${money(broker.unrealised)}`
+                          : money(gain(broker))
+                      }}
+                    </span>
                   </div>
                   <div v-if="broker.converted" class="text-caption text-grey-6">
                     {{ base }} {{ money(broker.unrealised_base) }}
-                  </div>
-                  <div class="text-caption">
-                    {{
-                      broker.converted
-                        ? percent(broker.unrealised, broker.cost)
-                        : percent(gain(broker), broker.cost_base ?? broker.cost)
-                    }}
                   </div>
                 </div>
               </div>
@@ -563,18 +567,20 @@
                   class="text-right money text-weight-medium"
                   :class="signClass(group.unrealised)"
                 >
-                  <template v-if="group.base">{{ money(group.unrealised) }}</template>
-                  <template v-else>
-                    <div>{{ group.ccy }} {{ money(group.unrealisedOwn) }}</div>
-                    <div class="text-caption text-grey-6 money">{{ money(group.unrealised) }}</div>
-                  </template>
                   <!-- Against the run's cost in the same currency, as each row's share is. -->
-                  <div class="text-caption text-weight-regular">
-                    {{
-                      group.base
-                        ? percent(group.unrealised, group.cost)
-                        : percent(group.unrealisedOwn, group.costOwn)
-                    }}
+                  <div>
+                    <span class="text-caption text-weight-regular q-mr-sm">
+                      {{
+                        group.base
+                          ? percent(group.unrealised, group.cost)
+                          : percent(group.unrealisedOwn, group.costOwn)
+                      }}
+                    </span>
+                    <template v-if="group.base">{{ money(group.unrealised) }}</template>
+                    <template v-else>{{ group.ccy }} {{ money(group.unrealisedOwn) }}</template>
+                  </div>
+                  <div v-if="!group.base" class="text-caption text-grey-6 money">
+                    {{ money(group.unrealised) }}
                   </div>
                 </span>
               </div>
