@@ -12,12 +12,27 @@
         >
           <!-- The figure and its line open the net worth page; a row below opens its own. -->
           <q-card-section class="q-pb-none app-home-link" @click="go('/net-worth')">
-            <div class="text-subtitle1 text-weight-medium text-grey-8">{{ figure.label }}</div>
-            <div class="text-h5 text-weight-bold money" :class="figure.class">
-              {{ base }} {{ money(figure.value) }}
+            <!-- The label, and the net worth page's change pill at the top right; wrapping
+                 under the label where two cards across leave no room beside it. -->
+            <div class="row items-center justify-between app-change-row">
+              <div class="text-subtitle1 text-weight-medium text-grey-8">{{ figure.label }}</div>
+              <q-badge
+                v-if="figure.change"
+                class="app-change"
+                :class="
+                  figure.change.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'
+                "
+              >
+                <q-icon :name="figure.change.up ? 'trending_up' : 'trending_down'" size="14px" />
+                <span class="money">{{ signed(figure.change.amount) }}</span>
+                <span v-if="figure.change.pct" class="app-change__pct">{{
+                  figure.change.pct
+                }}</span>
+                <q-tooltip :delay="300" :offset="[0, 6]">vs last month's end</q-tooltip>
+              </q-badge>
             </div>
-            <div class="text-caption q-mt-xs" :class="figure.noteClass">
-              {{ figure.note ?? trendCaption }}
+            <div class="app-home-figure text-weight-bold money" :class="figure.class">
+              {{ base }} {{ money(figure.value) }}
             </div>
           </q-card-section>
           <!--
@@ -214,7 +229,7 @@
 
           <div class="text-caption text-grey-7 q-mt-sm">Likely net</div>
           <div class="row items-baseline no-wrap">
-            <div class="text-h5 text-weight-bold money" :class="signClass(col.net)">
+            <div class="app-home-figure text-weight-bold money" :class="signClass(col.net)">
               {{ col.forecast ? '≈ ' : '' }}{{ signed(col.net) }}
             </div>
             <div
@@ -432,8 +447,11 @@ const signClass = value =>
   negative(value) ? 'text-negative' : isZero(value) ? '' : 'text-positive'
 
 // A share for reading, not money: rounded to one place.
+// `|| 0` on the rounded figure: a small loss rounds to -0.0, which printed as a loss of nothing.
 const percent = (part, whole) =>
-  Number(whole) ? `${((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)}%` : ''
+  Number(whole)
+    ? `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
+    : ''
 
 // The net worth chart's colours, so a line here is the same line there.
 const colours = { net_worth: '#475569', cash: '#059669', cards: '#e11d48', value: '#2563eb' }
@@ -454,10 +472,7 @@ const headlineFigures = computed(() => {
     const change = h.change[key]
     const pct = percent(change, h.last_month[key])
 
-    return {
-      note: `${signed(change)}${pct ? ` (${pct})` : ''} on last month`,
-      noteClass: signClass(change),
-    }
+    return { change: { amount: change, up: !negative(change), pct } }
   }
 
   const emptyCash = cashItems.value.length - heldCash.value.length

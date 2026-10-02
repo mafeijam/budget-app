@@ -281,6 +281,25 @@ body {
   }
 }
 
+/* Home's lead figures, a step up from text-h5: the headline cards and each month's net. */
+.app-home-figure {
+  font-size: 1.875rem;
+  line-height: 2.4rem;
+  letter-spacing: -0.01em;
+}
+
+/* In a headline card, as large as the card is wide allows: "HKD 2,199,326.09" fits on one
+   line at four across on a laptop, where a fixed 30px wraps it, and still reaches 30px. */
+.app-home-headline__card {
+  container-type: inline-size;
+}
+
+.app-home-headline .app-home-figure {
+  font-size: clamp(1.1rem, 9.5cqi, 1.875rem);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 /* Home: four headline figures across, two on a phone. */
 .app-home-headline {
   display: grid;
@@ -319,13 +338,6 @@ body {
   margin-top: auto;
   height: 88px;
   padding-top: 8px;
-}
-
-@media (max-width: 599px) {
-  .app-home-headline .text-h5 {
-    font-size: 1.15rem;
-    line-height: 1.6rem;
-  }
 }
 
 .app-home-link {
@@ -1394,6 +1406,10 @@ body {
   padding: 4px 8px;
   font-size: 0.8rem;
   font-weight: 500;
+}
+
+.app-change-row {
+  gap: 4px 8px;
 }
 
 .app-change__pct {

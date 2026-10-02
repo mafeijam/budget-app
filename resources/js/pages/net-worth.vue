@@ -522,8 +522,11 @@ const brokerageGroups = computed(() =>
 )
 
 // Shares and percentages are for reading, not money, so floats are fine here.
+// `|| 0` on the rounded figure: a small loss rounds to -0.0, which printed as a loss of nothing.
 const percent = (part, whole) =>
-  Number(whole) === 0 ? null : `${((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)}%`
+  Number(whole) === 0
+    ? null
+    : `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
 
 const share = part => percent(part, props.current.net_worth) ?? '—'
 
