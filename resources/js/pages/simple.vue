@@ -215,13 +215,18 @@ const parts = computed(() => [
   },
 ])
 
-// Largest first on what each is worth in the base currency, as the home page orders them; an
-// empty account is counted rather than listed.
+// Held in HKD first, then USD, then the rest by code, and largest first within each, on what
+// it is worth in the base currency. An empty account is counted rather than listed.
+const leading = ['HKD', 'USD']
+const rank = ccy => (leading.includes(ccy) ? leading.indexOf(ccy) : leading.length)
+
 const held = computed(() =>
   props.cash
     .filter(account => !isZero(account.balance))
     .map(account => ({ ...account, total: account.base ?? account.balance }))
-    .sort(byAmountDescending),
+    .sort(
+      (a, b) => rank(a.ccy) - rank(b.ccy) || a.ccy.localeCompare(b.ccy) || byAmountDescending(a, b),
+    ),
 )
 
 const emptyCount = computed(() => props.cash.length - held.value.length)
