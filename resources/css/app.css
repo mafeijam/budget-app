@@ -2835,6 +2835,32 @@ body {
   margin-top: 8px;
 }
 
+/* And smaller on a phone, after the rules it overrides: at full size one month's figure and bars
+   filled the screen, and the two months stacked were most of the page. */
+@media (max-width: 599px) {
+  .app-months__col {
+    padding: 8px 12px;
+  }
+
+  .app-months .app-home-figure {
+    font-size: 1.375rem;
+    line-height: 1.8rem;
+  }
+
+  .app-months .app-outlook__track {
+    height: 8px;
+    border-radius: 4px;
+  }
+
+  .app-months__bar {
+    grid-template-columns: 28px 1fr 84px;
+  }
+
+  .app-months__bar + .app-months__bar {
+    margin-top: 4px;
+  }
+}
+
 .app-months__swatch {
   display: inline-block;
   width: 10px;
