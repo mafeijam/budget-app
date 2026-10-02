@@ -102,6 +102,12 @@ The first `login:enrol` creates the user. Set `QR_LOGIN_URL` in `.env` to the
 address a phone reaches the app on, such as `http://192.168.50.52:9007`: without
 it the link uses `APP_URL`, and a phone cannot reach `localhost` or a `.test` name.
 
+Any other device signs in from its sign-in page: it shows a QR code and a two-digit
+code, the phone scans it, shows the same code with the device's browser and address,
+and approves or denies. The code lasts two minutes and the page replaces it on its
+own. Only the browser showing the code can finish the sign-in, so a photo of it is
+no use to anyone.
+
 Signing out of one device leaves the others signed in. Only `login:revoke` ends them all.
 
 ### Scheduled jobs

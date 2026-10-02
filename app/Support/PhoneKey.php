@@ -3,8 +3,13 @@
 namespace App\Support;
 
 use App\Models\User;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\PlainTextRenderer;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -19,6 +24,8 @@ use Illuminate\Support\Str;
 class PhoneKey
 {
     public const ENROL_MINUTES = 10;
+
+    public const REQUEST_SECONDS = 120;
 
     public static function enrolment(User $user): string
     {
@@ -51,6 +58,109 @@ class PhoneKey
         $id = Cache::pull($key);
 
         return $id === null ? null : User::find($id);
+    }
+
+    /**
+     * A sign-in a computer asks for and a key approves. The computer keeps the token in its
+     * own session and finishes the sign-in itself, so a photo of its QR code lets nobody else
+     * in: the photographer's phone is not a key, and their browser does not hold the session.
+     *
+     * @return array{0: string, 1: array{code: string, device: string, ip: ?string, status: string, user_id: ?int, expires_at: int}}
+     */
+    public static function request(Request $request): array
+    {
+        $token = Str::random(40);
+        $expires = now()->addSeconds(self::REQUEST_SECONDS);
+
+        $entry = [
+            // Shown on both screens, so a code someone sent you to approve does not match yours.
+            'code' => sprintf('%02d', random_int(0, 99)),
+            'device' => self::device((string) $request->userAgent()),
+            'ip' => $request->ip(),
+            'status' => 'pending',
+            'user_id' => null,
+            'expires_at' => $expires->getTimestamp(),
+        ];
+
+        Cache::put(self::key('login', $token), $entry, $expires);
+
+        return [$token, $entry];
+    }
+
+    public static function pending(string $token): ?array
+    {
+        return Cache::get(self::key('login', $token));
+    }
+
+    /**
+     * Approve or deny once: a second answer, or one after the code expired, changes nothing.
+     */
+    public static function answer(string $token, User $user, bool $approve): bool
+    {
+        $entry = self::pending($token);
+
+        if ($entry === null || $entry['status'] !== 'pending') {
+            return false;
+        }
+
+        $entry['status'] = $approve ? 'approved' : 'denied';
+        $entry['user_id'] = $approve ? $user->id : null;
+
+        Cache::put(self::key('login', $token), $entry, Carbon::createFromTimestamp($entry['expires_at']));
+
+        return true;
+    }
+
+    /**
+     * The user an approved request signs in, spending it.
+     */
+    public static function claim(string $token): ?User
+    {
+        $entry = self::pending($token);
+
+        if ($entry === null || $entry['status'] !== 'approved') {
+            return null;
+        }
+
+        Cache::forget(self::key('login', $token));
+
+        return User::find($entry['user_id']);
+    }
+
+    /**
+     * An SVG data URI, for an img rather than v-html.
+     */
+    public static function qr(string $url): string
+    {
+        $svg = (new Writer(new ImageRenderer(new RendererStyle(240, 2), new SvgImageBackEnd)))->writeString($url);
+
+        return 'data:image/svg+xml;base64,'.base64_encode($svg);
+    }
+
+    /**
+     * Enough of the user agent to tell the computer on the phone's screen from one that is not
+     * yours. Android before Linux and iOS before macOS, since each agent names the other too.
+     */
+    private static function device(string $agent): string
+    {
+        $browser = match (true) {
+            str_contains($agent, 'Edg/') => 'Edge',
+            str_contains($agent, 'Firefox/') => 'Firefox',
+            str_contains($agent, 'Chrome/') => 'Chrome',
+            str_contains($agent, 'Safari/') => 'Safari',
+            default => 'A browser',
+        };
+
+        $system = match (true) {
+            str_contains($agent, 'Android') => 'Android',
+            str_contains($agent, 'iPhone'), str_contains($agent, 'iPad') => 'iOS',
+            str_contains($agent, 'Windows') => 'Windows',
+            str_contains($agent, 'Mac OS X') => 'macOS',
+            str_contains($agent, 'Linux') => 'Linux',
+            default => null,
+        };
+
+        return $system === null ? $browser : "{$browser} on {$system}";
     }
 
     /**

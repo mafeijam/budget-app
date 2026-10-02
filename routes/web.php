@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\ApproveController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DividendController;
@@ -17,16 +18,22 @@ use App\Http\Controllers\TransferController;
 use App\Http\Controllers\YearReviewController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('login', [LoginController::class, 'show'])->middleware('guest')->name('login');
+Route::middleware('guest')->group(function () {
+    Route::get('login', [LoginController::class, 'show'])->name('login');
+    Route::post('login', [LoginController::class, 'store'])->middleware('throttle:20,1');
+});
 
 // Open to a signed-in device too: enrolling again only signs it in again.
 Route::get('enrol/{token}', [EnrolController::class, 'show'])->name('enrol');
 Route::post('enrol/{token}', [EnrolController::class, 'store'])->middleware('throttle:10,1');
 
+Route::get('approve/{token}', [ApproveController::class, 'show'])->name('approve');
+
 // auth.session ends every session and remember cookie when the password changes, which is how
 // login:revoke signs out a lost phone.
 Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
+    Route::post('approve/{token}', [ApproveController::class, 'update'])->middleware('throttle:20,1');
 
     Route::get('/', [HomeController::class, 'index'])->name('home');
 
