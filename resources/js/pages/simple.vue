@@ -1,5 +1,5 @@
 <template>
-  <div class="column no-wrap q-gutter-md">
+  <div class="column no-wrap q-gutter-sm">
     <q-card flat bordered>
       <q-card-section>
         <div class="text-caption text-grey-7">Net worth</div>
