@@ -148,6 +148,14 @@ body {
   app-btn opens something (Add), --positive commits it (Submit, Settle), --negative
   destroys it (Delete). No hover rules: Quasar already darkens a button on hover.
 */
+/* Cash flow: dense is Quasar's 28px row, too tight for twelve months of figures read down a
+   column. Padding rather than height: cells are baseline-aligned, so a taller cell would
+   leave its text at the top. The opened breakdown row sets its own padding and is left out. */
+.app-flow-table tbody tr:not(.app-flow-breakdown) > td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 /* Cash flow: a month's spending by category, indented under the month it opened from. */
 .app-flow-breakdown > td {
   background: var(--app-header-bg);
