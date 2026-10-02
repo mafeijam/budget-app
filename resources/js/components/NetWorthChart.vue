@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="row items-center q-gutter-md text-caption text-grey-8 q-mb-sm">
-      <div v-for="series in legend" :key="series.key" class="row items-center no-wrap">
+      <div v-for="series in shownLegend" :key="series.key" class="row items-center no-wrap">
         <span
           :class="series.area ? 'cash-flow-chart__swatch' : 'cash-flow-chart__line'"
           :style="{ background: series.colour }"
@@ -50,6 +50,7 @@
         <!-- Fills first, so the lines and the marker sit on top of them. -->
         <path :d="area('value')" :fill="colours.value" fill-opacity="0.16" />
         <path :d="area('cash')" :fill="colours.cash" fill-opacity="0.18" />
+        <path v-if="owing" :d="area('loans')" :fill="colours.loans" fill-opacity="0.2" />
         <path
           v-for="(piece, i) in gaps"
           :key="`gap-${i}`"
@@ -59,7 +60,7 @@
         />
 
         <polyline
-          v-for="series in lines"
+          v-for="series in shownLines"
           :key="series.key"
           :points="line(series.key)"
           fill="none"
@@ -139,11 +140,16 @@ const money = useMoney()
 // hairline along zero, and paying a third of the plot's height for a line too small to read
 // costs the four series that are legible more than the debt's absence does. It is the
 // Cash card's total row instead.
+//
+// A loan does take one, below zero: it is subtracted from net worth, unlike the cards, and at
+// a few hundred thousand it reads. Drawn downwards with a fill, so it reads as a debt against
+// the cash and stocks above rather than as one more thing held.
 const colours = {
   net_worth: '#475569',
   cash: '#059669',
   value: '#2563eb',
   cost: '#e11d48',
+  loans: '#d97706',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
 }
@@ -153,6 +159,7 @@ const legend = [
   { key: 'cash', label: 'Cash', colour: colours.cash, area: true },
   { key: 'value', label: 'Stock value', colour: colours.value, area: true },
   { key: 'cost', label: 'Stock cost', colour: colours.cost },
+  { key: 'loans', label: 'Loans owed', colour: colours.loans, area: true },
 ]
 
 const bands = [
@@ -165,8 +172,14 @@ const lines = [
   { key: 'cost', colour: colours.cost, dashed: true },
   { key: 'cash', colour: colours.cash },
   { key: 'value', colour: colours.value },
+  { key: 'loans', colour: colours.loans },
   { key: 'net_worth', colour: colours.net_worth },
 ]
+
+// The loan only where the window has one: a legend entry for a line flat on zero says nothing.
+const owing = computed(() => points.value.some(point => point.numbers.loans !== 0))
+const shownLegend = computed(() => legend.filter(series => series.key !== 'loans' || owing.value))
+const shownLines = computed(() => lines.filter(series => series.key !== 'loans' || owing.value))
 
 const width = 960
 const height = 300
@@ -211,6 +224,7 @@ const points = computed(() =>
       cash: Number(point.cash),
       value: Number(point.value),
       cost: Number(point.cost),
+      loans: -Number(point.loans ?? 0),
     },
     short: (props.months === 12 ? yearDate : shortDate).format(asDate(point.date)),
     long: longDate.format(asDate(point.date)),
@@ -270,7 +284,7 @@ const curve = key =>
   )
 
 const curves = computed(() =>
-  Object.fromEntries(['net_worth', 'cash', 'value', 'cost'].map(key => [key, curve(key)])),
+  Object.fromEntries(['net_worth', 'cash', 'value', 'cost', 'loans'].map(key => [key, curve(key)])),
 )
 
 const line = key => curves.value[key].map(([px, value]) => `${px},${y(value)}`).join(' ')
@@ -353,9 +367,10 @@ const label = computed(() => `Net worth, cash, stock value and stock cost, in ${
 const tooltipRows = computed(() => {
   const point = points.value[hovered.value]
 
-  return legend.map(series => ({
+  return shownLegend.value.map(series => ({
     label: series.label,
-    value: money(point[series.key]),
+    // Owed is below zero, as the cards page shows it.
+    value: money(series.key === 'loans' ? minus('0', point.loans ?? '0') : point[series.key]),
     colour: series.colour,
   }))
 })
