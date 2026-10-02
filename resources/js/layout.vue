@@ -64,15 +64,7 @@ const menus = computed(() => {
   // Positions is a report: it is worked out from trades, and nothing is entered on it.
   return [
     {
-      items: [
-        item('Home', 'index', 'dashboard', '/'),
-        {
-          label: 'Simple view',
-          icon: 'smartphone',
-          active: false,
-          to: () => showHomeView('simple'),
-        },
-      ],
+      items: [item('Home', 'index', 'dashboard', '/')],
     },
     {
       heading: 'Records',
@@ -85,7 +77,7 @@ const menus = computed(() => {
       heading: 'Reports',
       items: [
         item('Positions', 'position', 'show_chart', '/positions'),
-        item('Dividends', 'dividend', 'savings', '/dividends'),
+        item('Dividends', 'dividend', 'paid', '/dividends'),
         item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
         item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
         item('Forecast', 'forecast', 'query_stats', '/forecast'),
