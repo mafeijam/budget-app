@@ -59,7 +59,9 @@ class LoanTest extends TestCase
         $this->assertSame('266202.0000', $february['loans']);
         $this->assertSame('258426.0000', $february['cash']);
         $this->assertSame('-7776.0000', $february['net_worth']);
-        $this->assertSame([['name' => 'HSBC TAX LOAN', 'ccy' => 'HKD', 'owed' => '266202.0000', 'base' => '266202.0000']], $february['loan_rows']);
+        $this->assertSame([[
+            'name' => 'HSBC TAX LOAN', 'ccy' => 'HKD', 'owed' => '266202.0000', 'total' => '277776.0000', 'ends' => '2021-01-28', 'base' => '266202.0000',
+        ]], $february['loan_rows']);
 
         $this->assertSame('0.0000', (new NetWorth)->on('2021-02-28')['loans']);
 

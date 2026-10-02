@@ -262,6 +262,8 @@ class NetWorth
                 'name' => $loan['name'],
                 'ccy' => $loan['ccy'],
                 'owed' => (string) $loan['owed']->toScale(4),
+                'total' => (string) $loan['total']->toScale(4),
+                'ends' => $loan['ends'],
                 'base' => $base === null ? null : (string) $base->toScale(4),
             ];
         }

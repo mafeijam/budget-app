@@ -36,6 +36,9 @@ class Loans
     /** @var list<array{loan: string, date: string, ccy: string, change: BigDecimal}> oldest first */
     private array $moves = [];
 
+    /** @var array<string, array{total: BigDecimal, ends: string}> name => the whole sum to pay, and the day the last of it falls */
+    private array $terms = [];
+
     public function __construct()
     {
         $rows = self::tagged()
@@ -51,8 +54,12 @@ class Loans
                 'loan' => $bag['loan'], 'date' => $date, 'ccy' => $row->account->ccy, 'change' => $change,
             ];
 
+            $this->terms[$bag['loan']] ??= ['total' => BigDecimal::zero(), 'ends' => $row->date];
+
             // Owed from the day the records start, not from the payment that states it.
             if (isset($bag['loan_borrowed'])) {
+                $this->terms[$bag['loan']]['total'] = BigDecimal::of($bag['loan_borrowed'])->plus($bag['loan_interest'] ?? '0');
+
                 $move($row->date, BigDecimal::of($bag['loan_borrowed'])
                     ->plus($bag['loan_interest'] ?? '0')
                     ->minus($bag['loan_repaid_before'] ?? '0'));
@@ -60,7 +67,9 @@ class Loans
 
             if (! isset($bag['loan_repaid'])) {
                 // A card states its own amount, so a drawdown onto one is card_amount.
-                $move($row->date, BigDecimal::of($bag['card_amount'] ?? $row->amount)->plus($bag['loan_interest'] ?? '0'));
+                $borrowed = BigDecimal::of($bag['card_amount'] ?? $row->amount)->plus($bag['loan_interest'] ?? '0');
+                $this->terms[$bag['loan']]['total'] = $borrowed;
+                $move($row->date, $borrowed);
 
                 continue;
             }
@@ -69,7 +78,9 @@ class Loans
                the cash, not on the day it is charged. Net worth leaves card debt out, so on
                the charge date the instalment came off the loan and went nowhere, and net worth
                read a month of it high. */
-            $move($bag['due_date'] ?? $row->date, BigDecimal::of($bag['loan_repaid'])->negated());
+            $day = $bag['due_date'] ?? $row->date;
+            $this->terms[$bag['loan']]['ends'] = max($this->terms[$bag['loan']]['ends'], $day);
+            $move($day, BigDecimal::of($bag['loan_repaid'])->negated());
         }
 
         // A due date is weeks after the charge, so the moves are put back in date order for
@@ -84,10 +95,11 @@ class Loans
     }
 
     /**
-     * Each loan still owed at the end of a day, in its own currency. A loan paid off is left
-     * out, so an empty list is nothing owed.
+     * Each loan still owed at the end of a day, in its own currency, with the whole sum it pays
+     * and the day its last repayment falls. A loan paid off is left out, so an empty list is
+     * nothing owed.
      *
-     * @return list<array{name: string, ccy: string, owed: BigDecimal}>
+     * @return list<array{name: string, ccy: string, owed: BigDecimal, total: BigDecimal, ends: string}>
      */
     public function owedOn(string $day): array
     {
@@ -98,7 +110,7 @@ class Loans
                 break;
             }
 
-            $owed[$move['loan']] ??= ['name' => $move['loan'], 'ccy' => $move['ccy'], 'owed' => BigDecimal::zero()];
+            $owed[$move['loan']] ??= ['name' => $move['loan'], 'ccy' => $move['ccy'], 'owed' => BigDecimal::zero(), ...$this->terms[$move['loan']]];
             $owed[$move['loan']]['owed'] = $owed[$move['loan']]['owed']->plus($move['change']);
         }
 
