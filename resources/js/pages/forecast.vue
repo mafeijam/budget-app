@@ -149,6 +149,20 @@
         <!-- On the chart it changes, as the cash flow page keeps its: the toggle draws the
              pale second line, and the horizon is the one the figures below count to. -->
         <div class="col-auto app-toolbar row items-center">
+          <!-- First, as on the net worth page: it undoes the controls after it, not the page. -->
+          <q-btn
+            flat
+            round
+            dense
+            size="sm"
+            icon="restart_alt"
+            color="grey-8"
+            :disable="!whatIfOn"
+            @click="resetWhatIf"
+          >
+            <q-tooltip :delay="500" :offset="[0, 6]">Back to the typical month</q-tooltip>
+          </q-btn>
+          <q-separator vertical inset class="q-mx-sm" />
           <q-toggle
             v-model="withTypical"
             label="Typical spending"
@@ -186,18 +200,6 @@
             class="q-px-sm"
           />
           <q-toggle v-model="noIncome" label="No income" dense color="negative" class="q-px-sm" />
-          <q-btn
-            flat
-            round
-            dense
-            size="sm"
-            icon="restart_alt"
-            color="primary"
-            :disable="!whatIfOn"
-            @click="resetWhatIf"
-          >
-            <q-tooltip>Back to the typical month</q-tooltip>
-          </q-btn>
           <!-- The sums under the chart: a place to check an estimate from, not to read every visit. -->
           <q-toggle
             v-model="showBasis"
