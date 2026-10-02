@@ -311,6 +311,7 @@
     "useToString": true,
     "useToggle": true,
     "useTransition": true,
+    "useUpcomingByDay": true,
     "useUrlSearchParams": true,
     "useUserMedia": true,
     "useVModel": true,

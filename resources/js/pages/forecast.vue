@@ -427,61 +427,88 @@
     </q-card>
 
     <q-card flat bordered>
-      <q-card-section>
+      <!-- As the home page's Coming up is drawn, with the balance each event leaves beside it. -->
+      <q-card-section class="row items-center q-pb-sm app-panel-head">
+        <q-icon name="upcoming" size="sm" color="grey-6" class="q-mr-sm" />
         <div class="text-subtitle1 text-weight-medium">Next {{ upcomingDays }} days</div>
-        <div class="text-caption text-grey-7">
+        <div class="text-caption text-grey-7 q-ml-sm">
           What is known to move cash, earliest first, and the balance each leaves.
         </div>
       </q-card-section>
 
-      <q-separator />
+      <div v-if="soon.length" class="app-soon__ledger">
+        <div class="app-soon__ledger-body" :class="{ 'app-soon--typical': withTypical }">
+          <div class="app-soon__labels">
+            <div class="app-soon__date" />
+            <div class="col app-soon__row app-soon__row--ledger">
+              <span />
+              <span />
+              <span class="text-right">Amount</span>
+              <span class="text-right">Balance after</span>
+              <span v-if="withTypical" class="text-right">With typical</span>
+              <span />
+            </div>
+          </div>
 
-      <q-markup-table v-if="soon.length" flat dense class="app-head-table">
-        <thead>
-          <tr class="text-grey-7">
-            <th class="text-left" colspan="4" />
-            <th class="text-right">Amount</th>
-            <th class="text-right">Balance after</th>
-            <th v-if="withTypical" class="text-right">With typical</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(event, i) in soon" :key="i">
-            <td class="text-grey-8" style="width: 110px">{{ formatDate(event.date) }}</td>
-            <td style="width: 110px">
-              <q-badge v-bind="kinds[event.kind]" />
-            </td>
-            <td>{{ event.description }}</td>
-            <td class="text-grey-7">{{ event.account }}</td>
-            <td class="text-right money text-weight-medium" :class="signClass(event.amount)">
-              {{ signed(event.amount) }}
-              <span class="text-caption text-grey-7">{{ event.ccy }}</span>
-            </td>
-            <!-- An estimate moves only the typical line, so it has no known balance of its own. -->
-            <td v-if="event.estimate" class="text-right text-grey-5">—</td>
-            <td v-else class="text-right money" :class="lowClass(event.balance)">
-              {{ money(event.balance) }}
-            </td>
-            <td v-if="withTypical" class="text-right money app-text-estimate">
-              {{ money(event.with_typical) }}
-            </td>
-            <td class="text-right" style="width: 48px">
-              <q-btn
-                flat
-                dense
-                round
-                size="sm"
-                color="grey-7"
-                icon="open_in_new"
-                @click="open(event)"
+          <div v-for="day in soonByDay" :key="day.date" class="app-soon__day">
+            <div class="app-soon__date">
+              <span class="app-soon__date-num">{{ day.num }}</span>
+              <span class="text-caption text-grey-7 q-ml-xs">{{ day.month }}</span>
+            </div>
+            <div class="col">
+              <div
+                v-for="event in day.events"
+                :key="event.key"
+                class="app-soon__row app-soon__row--ledger"
               >
-                <q-tooltip :delay="500" :offset="[0, 6]">{{ openLabel(event) }}</q-tooltip>
-              </q-btn>
-            </td>
-          </tr>
-        </tbody>
-      </q-markup-table>
+                <div class="app-soon__kind" :class="`app-soon__kind--${event.tone}`">
+                  <q-icon :name="event.icon" size="16px" />
+                </div>
+                <div class="ellipsis">
+                  <div class="row items-center no-wrap">
+                    <span class="app-attn__title text-grey-9 ellipsis">{{ event.title }}</span>
+                    <q-badge
+                      v-if="event.estimate"
+                      class="app-tint app-tint--muted q-ml-sm"
+                      label="expected"
+                    />
+                  </div>
+                  <div class="text-caption text-grey-6 ellipsis">
+                    {{ event.kindLabel }} · {{ event.account }}
+                  </div>
+                </div>
+                <span class="app-attn__amount money">
+                  <span :class="event.estimate ? 'app-text-estimate' : signClass(event.amount)">
+                    {{ signed(event.amount) }}
+                  </span>
+                  <span class="text-caption text-grey-7 q-ml-xs">{{ event.ccy }}</span>
+                </span>
+                <!-- An estimate moves only the typical line, so it has no known balance of its own. -->
+                <span v-if="event.estimate" class="app-attn__amount text-grey-5">—</span>
+                <span v-else class="app-attn__amount money" :class="lowClass(event.balance)">
+                  {{ money(event.balance) }}
+                </span>
+                <span v-if="withTypical" class="app-attn__amount money app-text-estimate">
+                  {{ money(event.with_typical) }}
+                </span>
+                <div class="text-right">
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    color="grey-7"
+                    icon="open_in_new"
+                    @click="open(event)"
+                  >
+                    <q-tooltip :delay="500" :offset="[0, 6]">{{ openLabel(event) }}</q-tooltip>
+                  </q-btn>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <q-card-section v-else class="text-grey-6"
         >Nothing known in the next {{ upcomingDays }} days.</q-card-section
       >
@@ -889,15 +916,8 @@ const figures = section => {
   ]
 }
 
-const kinds = {
-  scheduled: { label: 'scheduled', class: 'app-tint app-tint--info' },
-  pending: { label: 'pending', class: 'app-tint app-tint--warning' },
-  recurring: { label: 'recurring', class: 'app-tint app-tint--positive' },
-  statement: { label: 'card statement', class: 'app-tint app-tint--negative' },
-  'expected dividend': { label: 'expected dividend', class: 'app-tint app-tint--muted' },
-  'expected bonus': { label: 'expected bonus', class: 'app-tint app-tint--muted' },
-  'expected double pay': { label: 'expected double pay', class: 'app-tint app-tint--muted' },
-}
+const upcomingByDay = useUpcomingByDay()
+const soonByDay = computed(() => upcomingByDay(soon.value))
 
 const openLabel = event =>
   event.estimate

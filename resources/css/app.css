@@ -447,6 +447,58 @@ body {
   color: #d97706;
 }
 
+/*
+  The forecast's Next 30 days, drawn as Coming up is with the balance each event leaves added
+  on the right. The columns are fixed rather than auto: each row is its own grid, so auto
+  columns would size to that row's figures and the labels above would sit over nothing. A
+  narrow window scrolls the ledger instead of squeezing the figures.
+*/
+.app-soon__ledger {
+  overflow-x: auto;
+}
+
+.app-soon__ledger-body {
+  min-width: 720px;
+}
+
+.app-soon__day > .col,
+.app-soon__labels > .col {
+  min-width: 0;
+}
+
+.app-soon__row--ledger {
+  grid-template-columns: 28px minmax(0, 1fr) 150px 130px 32px;
+}
+
+.app-soon--typical .app-soon__row--ledger {
+  grid-template-columns: 28px minmax(0, 1fr) 150px 130px 130px 32px;
+}
+
+/* The column labels, in the tint and type of an AppTable header. */
+.app-soon__labels {
+  display: flex;
+  gap: 12px;
+  padding: 6px 16px;
+  background: var(--app-header-bg);
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.app-soon__labels .app-soon__date {
+  height: auto;
+  margin-top: 0;
+}
+
+.app-soon__labels .app-soon__row {
+  padding: 0;
+}
+
+.app-soon__labels .app-soon__row:hover {
+  background: none;
+}
+
 .app-attn__when {
   font-size: 12px;
   font-weight: 600;
