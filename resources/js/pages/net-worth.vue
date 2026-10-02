@@ -90,23 +90,45 @@
           </div>
         </div>
 
-        <div class="col-auto row items-center no-wrap q-gutter-sm">
-          <!-- Put back to the window's end, beside the controls that moved the window rather
-               than up on the page heading, where it read as though it undid the whole page. -->
-          <q-btn
-            v-if="at"
-            class="text-weight-bold app-btn"
-            unelevated
-            no-caps
-            icon="today"
-            :label="`Back to ${to ? monthLabel(to) : 'today'}`"
-            @click="visit({ at: null })"
-          />
-
-          <!-- The Positions page's toolbar, so the pages' controls read alike. Both ends of
-               the window in one box, divided: they are one range, and a reader should not
-               have to know they are two controls. -->
+        <div class="col-auto">
+          <!-- One surface, one baseline. These were three differently styled groups, which
+               read as three unrelated controls rather than one set of options for one chart:
+               the range has to look like a range, and the reset has to sit beside what it
+               undoes rather than up on the page heading, where it read as though it undid the
+               whole page. -->
           <div class="app-toolbar row items-center no-wrap">
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="restart_alt"
+              color="grey-8"
+              :disable="!moved"
+              @click="visit({ from: null, to: null, at: null })"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">Show the whole ledger</q-tooltip>
+            </q-btn>
+
+            <q-separator vertical inset class="q-mx-sm" />
+
+            <!-- Each end steps a month either side, as the Dividends page steps a year, and
+                 opens its own month grid from the middle. The value alone says which end is
+                 which: it is the left of the pair. -->
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_left"
+              color="grey-8"
+              :disable="!steps.from.back"
+              @click="stepBy('from', 'back')"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">{{
+                shortMonthLabel(steps.from.back)
+              }}</q-tooltip>
+            </q-btn>
             <q-btn
               flat
               dense
@@ -115,23 +137,12 @@
               icon-right="expand_more"
               @click="openPicker('from')"
             >
-              <div class="row items-center no-wrap">
-                <q-icon
-                  name="event"
-                  size="20px"
-                  :color="from ? 'primary' : 'grey-7'"
-                  class="q-mr-sm"
-                />
-                <div class="column items-start">
-                  <span class="text-caption text-grey-6 app-toolbar__label">From</span>
-                  <span
-                    class="text-body2 text-weight-bold"
-                    :class="from ? 'text-primary' : 'text-grey-9'"
-                  >
-                    {{ from ? monthLabel(from) : 'All' }}
-                  </span>
-                </div>
-              </div>
+              <span
+                class="text-body2 text-weight-bold"
+                :class="from ? 'text-primary' : 'text-grey-9'"
+              >
+                {{ from ? shortMonthLabel(from) : 'All' }}
+              </span>
               <q-menu :offset="[0, 8]">
                 <q-date
                   :key="opens.from"
@@ -148,9 +159,37 @@
                 />
               </q-menu>
             </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_right"
+              color="grey-8"
+              :disable="!steps.from.forward"
+              @click="stepBy('from', 'forward')"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">
+                {{ shortMonthLabel(steps.from.forward) }}
+              </q-tooltip>
+            </q-btn>
 
-            <q-separator vertical inset class="q-mx-xs" />
+            <span class="app-toolbar__dash">–</span>
 
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_left"
+              color="grey-8"
+              :disable="!steps.to.back"
+              @click="stepBy('to', 'back')"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">{{
+                shortMonthLabel(steps.to.back)
+              }}</q-tooltip>
+            </q-btn>
             <q-btn
               flat
               dense
@@ -159,23 +198,12 @@
               icon-right="expand_more"
               @click="openPicker('to')"
             >
-              <div class="row items-center no-wrap">
-                <q-icon
-                  name="event"
-                  size="20px"
-                  :color="to ? 'primary' : 'grey-7'"
-                  class="q-mr-sm"
-                />
-                <div class="column items-start">
-                  <span class="text-caption text-grey-6 app-toolbar__label">To</span>
-                  <span
-                    class="text-body2 text-weight-bold"
-                    :class="to ? 'text-primary' : 'text-grey-9'"
-                  >
-                    {{ to ? monthLabel(to) : 'Today' }}
-                  </span>
-                </div>
-              </div>
+              <span
+                class="text-body2 text-weight-bold"
+                :class="to ? 'text-primary' : 'text-grey-9'"
+              >
+                {{ to ? shortMonthLabel(to) : 'Today' }}
+              </span>
               <q-menu :offset="[0, 8]">
                 <q-date
                   :key="opens.to"
@@ -192,9 +220,23 @@
                 />
               </q-menu>
             </q-btn>
-          </div>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_right"
+              color="grey-8"
+              :disable="!steps.to.forward"
+              @click="stepBy('to', 'forward')"
+            >
+              <q-tooltip :delay="500" :offset="[0, 6]">{{
+                shortMonthLabel(steps.to.forward)
+              }}</q-tooltip>
+            </q-btn>
 
-          <div class="app-toolbar row items-center no-wrap">
+            <q-separator vertical inset class="q-mx-sm" />
+
             <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
             <q-btn-toggle
               :model-value="months"
@@ -205,7 +247,7 @@
               toggle-color="blue-1"
               toggle-text-color="primary"
               text-color="grey-8"
-              padding="xs md"
+              padding="xs sm"
               class="app-toolbar__toggle text-weight-bold"
               @update:model-value="chooseSpacing"
             />
@@ -639,6 +681,44 @@ const choose = (end, month) =>
         : month,
   })
 
+const moved = computed(() => Boolean(props.from || props.to || props.at))
+
+const shift = (month, by) => {
+  const [year, m] = month.split('-').map(Number)
+  const date = new Date(Date.UTC(year, m - 1 + by, 1))
+
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/* The month either side of each end, or null where there is none to go to. Stepping off a
+   default starts from that default, so the arrows either side of "All" walk away from it
+   rather than doing nothing until a month has been picked. The two ends bound each other, so
+   `to` cannot be stepped back past `from`. */
+const steps = computed(() => {
+  const latest = props.today?.slice(0, 7) ?? null
+  const boundsFor = end => [
+    end === 'from' ? (props.earliest ?? null) : (props.from ?? props.earliest ?? null),
+    latest,
+  ]
+
+  const beside = (end, from) => {
+    const [low, high] = boundsFor(end)
+    const allowed = month => !((low && month < low) || (high && month > high))
+
+    return {
+      back: allowed(shift(from, -1)) ? shift(from, -1) : null,
+      forward: allowed(shift(from, 1)) ? shift(from, 1) : null,
+    }
+  }
+
+  return {
+    from: beside('from', props.from ?? props.earliest ?? latest),
+    to: beside('to', props.to ?? latest),
+  }
+})
+
+const stepBy = (end, way) => choose(end, steps.value[end][way])
+
 /* Wherever this leaves the picker, the q-date is remounted. It reads its view once at mount
    and then drops to its day grid after a month is picked, and after a year is chosen off the
    year grid -- a calendar's rule, on a control with no days. Without the remount that grid is
@@ -771,9 +851,29 @@ const monthFormat = new Intl.DateTimeFormat('en', {
   timeZone: 'UTC',
 })
 
-const monthLabel = day => {
-  const [year, month] = day.split('-').map(Number)
+const shortMonthFormat = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
 
-  return monthFormat.format(new Date(Date.UTC(year, month - 1, 1)))
+/* Null-safe, because the tooltips on the steppers name a month that is not there when the
+   arrow has nowhere to go, and the toolbar's own values are asked for on every render. */
+const monthLabel = month => {
+  if (!month) return ''
+
+  const [year, m] = month.split('-').map(Number)
+
+  return monthFormat.format(new Date(Date.UTC(year, m - 1, 1)))
+}
+
+/* The toolbar says "Nov 2018" where the caption says "November 2018": the long month twice,
+   beside the steppers and the spacing, left the caption a column of five one-word lines. */
+const shortMonthLabel = month => {
+  if (!month) return ''
+
+  const [year, m] = month.split('-').map(Number)
+
+  return shortMonthFormat.format(new Date(Date.UTC(year, m - 1, 1)))
 }
 </script>

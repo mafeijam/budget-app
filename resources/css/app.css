@@ -2246,6 +2246,12 @@ body {
   color: #94a3b8;
 }
 
+/* The net worth toolbar's two ends, read as one value either side of a dash. */
+.app-toolbar__dash {
+  color: #94a3b8;
+  padding: 0 6px;
+}
+
 /* An on-off chip: grey when off, the app's tint when on. */
 .app-toolbar__chip {
   border-radius: 8px;
