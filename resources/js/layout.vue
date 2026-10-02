@@ -9,6 +9,18 @@
         >
         <!-- Every form, from any page: it opens over the page and leaves you on it. -->
         <AddMenu />
+        <q-btn
+          dense
+          flat
+          round
+          icon="logout"
+          color="grey-8"
+          class="q-ml-sm"
+          aria-label="Sign out"
+          @click="signOut"
+        >
+          <q-tooltip>Sign out</q-tooltip>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -49,6 +61,8 @@
 const page = usePage()
 
 const show = ref(false)
+
+const signOut = () => router.post('/logout')
 
 const menus = computed(() => {
   const item = (label, component, icon, path) => ({

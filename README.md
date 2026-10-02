@@ -88,6 +88,22 @@ DB_DATABASE=budget_v2_testing php artisan db:seed --class=DevUsdTradingSeeder
 them before writing, so re-running restores the intended state rather than
 doubling every figure. That also means it undoes anything you settled by hand.
 
+### Signing in
+
+There is no password. A phone is the key: it is enrolled once from the server and
+stays signed in.
+
+```bash
+php artisan login:enrol     # prints a QR code and a link that works once, for 10 minutes
+php artisan login:revoke    # signs every device out, for a lost phone; enrol again after
+```
+
+The first `login:enrol` creates the user. Set `QR_LOGIN_URL` in `.env` to the
+address a phone reaches the app on, such as `http://192.168.50.52:9007`: without
+it the link uses `APP_URL`, and a phone cannot reach `localhost` or a `.test` name.
+
+Signing out of one device leaves the others signed in. Only `login:revoke` ends them all.
+
 ### Scheduled jobs
 
 Two commands run from the scheduler, which does nothing unless something calls

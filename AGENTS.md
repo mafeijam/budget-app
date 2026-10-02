@@ -61,8 +61,10 @@ npm init -y && npm i playwright-core@1.63.0
 node your-script.mjs
 ```
 
-There is no login to get past: `route:list` has no auth route and the
-`users` table is empty, so any page loads directly on port 9007.
+Every page but sign-in needs a signed-in user, and there is no password to
+type. Enrol the browser the way a phone is enrolled: run `php artisan
+login:enrol`, take the `/enrol/…` path from the link it prints, open it on
+port 9007 and click the button. The context is then signed in and stays so.
 
 Read the DOM rather than only screenshotting it. Asserting on the text a
 badge actually rendered names the row that broke, where a picture says only
@@ -248,6 +250,11 @@ there. `SERVER_ONLY` is the allowlist for server-owned fields — adding to it i
 deliberate act, not a fix.
 
 Page props: `assertInertia(fn (Assert $page) => $page->where(...))`.
+
+Every test starts signed in as an unsaved user, set up in `Tests\TestCase`. A
+test about signing in sets `protected bool $signedIn = false;`. The test client
+keeps the guard between requests, which a real browser does not, so a test
+that needs a fresh request calls `Auth::forgetGuards()` first.
 
 **`CardStatements.vue` and `SettleDialog.vue` have no test coverage at all.** A
 template edit there can silently delete a feature and nothing fails — a pending-row

@@ -114,4 +114,16 @@ return [
 
     'password_timeout' => 10800,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Phone key address
+    |--------------------------------------------------------------------------
+    |
+    | The address a QR code sends a phone to, such as http://192.168.50.52:9007.
+    | Unset, it is the address the computer used, or APP_URL from a command.
+    |
+    */
+
+    'key_url' => env('QR_LOGIN_URL'),
+
 ];
