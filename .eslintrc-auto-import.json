@@ -119,6 +119,7 @@
     "shallowReactive": true,
     "shallowReadonly": true,
     "shallowRef": true,
+    "showHomeView": true,
     "syncPagination": true,
     "syncRef": true,
     "syncRefs": true,

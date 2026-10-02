@@ -170,6 +170,9 @@ then currency). The cost is a larger response, so build each view from one share
   not a filter: Reset leaves it, `active` does not count it, the echoed `params.filter`
   leaves out the cookie's addition, and a link that names it wins for that visit only.
   Tests set them with `withUnencryptedCookie()`; the totals tests need it to get totals.
+  Home's choice between the phone's simple page and the full one
+  (`HomeController::VIEW_COOKIE`) is the same kind: the page is picked on the first request,
+  from the cookie or, without one, from "Mobi" in the user agent.
 - **Detail too big to ship is fetched when asked, from a small JSON endpoint built on the
   same query as the figure.** Cash flow's quick view (`GET cash-flow/transactions`, opened
   by the eye on a breakdown tile) lists the rows behind one category in one month. It uses

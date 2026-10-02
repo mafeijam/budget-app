@@ -16,6 +16,10 @@ transactions on them, and the card statements they add up to.
   transaction on the day it falls due, so it counts toward nothing until it is
   posted. A pause skips what falls due during it rather than catching up.
 - **Categories** are what spending is filed under.
+- **On a phone**, Home is a simple page instead: net worth, each account's balance,
+  what each card owes, the brokerages, this month and next, and the add button.
+  "Full site" at its foot and "Simple view" in the menu switch between the two, and
+  the choice is remembered.
 
 A statement that has been paid is fixed. A charge cannot be added to it, moved in
 or out, edited or deleted, and the two halves of a settlement stay in agreement.

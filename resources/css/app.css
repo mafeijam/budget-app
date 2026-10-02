@@ -79,6 +79,23 @@ body {
   margin: 0 auto;
 }
 
+/* The phone's simple page, read on a small screen and often outdoors: its light greys a step
+   darker, the month panel's included, and the caption grey Quasar sets on a list item's
+   second line, which the side column then lightens again for the figures under a balance. */
+.app-simple .text-grey-5,
+.app-simple .text-grey-6 {
+  color: #616161 !important;
+}
+
+.app-simple .text-grey-7 {
+  color: #424242 !important;
+}
+
+.app-simple .q-item__label--caption,
+.app-simple .q-item__section--side {
+  color: #424242;
+}
+
 @media (min-width: 1024px) {
   .app-page {
     padding: 24px 32px;
@@ -2644,6 +2661,10 @@ body {
   font-size: 0.85rem;
 }
 
+.app-add__main--alone {
+  border-radius: 8px;
+}
+
 .app-add__more {
   border-radius: 0 8px 8px 0;
   padding: 0 6px;
@@ -2735,6 +2756,20 @@ body {
 .app-months__col + .app-months__col {
   border-left: 1px solid var(--app-border);
   border-radius: 0 10px 10px 0;
+}
+
+/* One month over the other on a phone: side by side, each bar had half a screen to share
+   with its label and figure. */
+@media (max-width: 599px) {
+  .app-months {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-months__col + .app-months__col {
+    border-left: none;
+    border-top: 1px solid var(--app-border);
+    border-radius: 0 0 10px 10px;
+  }
 }
 
 /* An estimate, quieter than the month on record. */

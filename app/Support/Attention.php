@@ -118,21 +118,7 @@ class Attention
             // and drown the notices that are about this week. A year is the one bill whose
             // coming due is worth being told about before it lands.
             if ($rule->frequency === Frequency::Yearly->value && $next <= $yearlySoon) {
-                $items[] = self::item('warning', 'event_repeat',
-                    sprintf(
-                        'Yearly recurring [%s], %s %s, is due on %s, in %d days',
-                        $rule->description,
-                        self::money($rule->amount),
-                        $rule->ccy,
-                        $next,
-                        $today->diffInDays(Carbon::parse($next), false),
-                    ),
-                    '/recurring', [],
-                    ['title' => $rule->description, 'detail' => "Yearly · due {$next} · {$rule->account?->name}",
-                        'when' => 'in '.$today->diffInDays(Carbon::parse($next), false).' days',
-                        'amount' => (string) BigDecimal::of($rule->amount)->multipliedBy(
-                            TransactionType::from($rule->type)->movesBalanceOn(AccountType::Cash) ?: -1
-                        ), 'ccy' => $rule->ccy]);
+                $items[] = self::yearlyItem($rule, $next, $today);
             }
         }
 
@@ -148,6 +134,51 @@ class Attention
         }
 
         return $items;
+    }
+
+    /**
+     * The yearly rules due within YEARLY_SOON_DAYS, as items() words them, for the phone's
+     * simple page, which shows these and none of the rest: a phone is not where a pending row
+     * is posted or a stale price fetched, and a yearly bill is the one worth seeing coming.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function yearlySoon(Carbon $today): array
+    {
+        $day = $today->toDateString();
+        $soon = $today->copy()->addDays(self::YEARLY_SOON_DAYS)->toDateString();
+
+        return RecurringTransaction::query()->with('account')
+            ->where('active', true)
+            ->where('frequency', Frequency::Yearly->value)
+            ->orderBy('description')
+            ->get()
+            ->map(fn (RecurringTransaction $rule) => [$rule, $rule->nextDate()])
+            ->filter(fn (array $pair) => $pair[1] !== null && $pair[1] >= $day && $pair[1] <= $soon)
+            ->map(fn (array $pair) => self::yearlyItem($pair[0], $pair[1], $today))
+            ->values()
+            ->all();
+    }
+
+    private static function yearlyItem(RecurringTransaction $rule, string $next, Carbon $today): array
+    {
+        $days = $today->diffInDays(Carbon::parse($next), false);
+
+        return self::item('warning', 'event_repeat',
+            sprintf(
+                'Yearly recurring [%s], %s %s, is due on %s, in %d days',
+                $rule->description,
+                self::money($rule->amount),
+                $rule->ccy,
+                $next,
+                $days,
+            ),
+            '/recurring', [],
+            ['title' => $rule->description, 'detail' => "Yearly · due {$next} · {$rule->account?->name}",
+                'when' => 'in '.$days.' days',
+                'amount' => (string) BigDecimal::of($rule->amount)->multipliedBy(
+                    TransactionType::from($rule->type)->movesBalanceOn(AccountType::Cash) ?: -1
+                ), 'ccy' => $rule->ccy]);
     }
 
     /** For reading, as the page's money formatter shows it: grouped, two places. */

@@ -8,12 +8,14 @@
       no-caps
       color="primary"
       class="app-add__main text-weight-bold"
+      :class="{ 'app-add__main--alone': transactionOnly }"
       icon="add"
       label="Transaction"
       :loading="loading === 'transaction'"
       @click="open(forms[0])"
     />
     <q-btn
+      v-if="!transactionOnly"
       unelevated
       color="primary"
       class="app-add__more"
@@ -76,6 +78,11 @@ import FormTransaction from './Form/FormTransaction.vue'
 import FormAccount from './Form/FormAccount.vue'
 import FormCategory from './Form/FormCategory.vue'
 import FormRecurring from './Form/FormRecurring.vue'
+
+defineProps({
+  // The phone's: a transaction is what a phone adds, and the rest is set up at a desk.
+  transactionOnly: { type: Boolean, default: false },
+})
 
 const forms = [
   {

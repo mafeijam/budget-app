@@ -9,18 +9,7 @@
         >
         <!-- Every form, from any page: it opens over the page and leaves you on it. -->
         <AddMenu />
-        <q-btn
-          dense
-          flat
-          round
-          icon="logout"
-          color="grey-8"
-          class="q-ml-sm"
-          aria-label="Sign out"
-          @click="signOut"
-        >
-          <q-tooltip>Sign out</q-tooltip>
-        </q-btn>
+        <SignOutBtn class="q-ml-sm" />
       </q-toolbar>
     </q-header>
 
@@ -62,23 +51,6 @@ const page = usePage()
 
 const show = ref(false)
 
-const $q = useQuasar()
-
-// Only the enrolled phone asks: signing out there ends the key, and getting it back takes the
-// server. Everywhere else signing out costs a scan.
-const signOut = () => {
-  if (!page.props.keyPhone) return router.post('/logout')
-
-  $q.dialog({
-    title: 'Sign out of your key phone?',
-    message:
-      'This phone is your key. Signing out means running php artisan login:enrol on the server to get it back.',
-    cancel: { flat: true, noCaps: true, color: 'grey-8', label: 'Cancel' },
-    ok: { unelevated: true, noCaps: true, color: 'negative', label: 'Sign out' },
-    focus: 'cancel',
-  }).onOk(() => router.post('/logout'))
-}
-
 const menus = computed(() => {
   const item = (label, component, icon, path) => ({
     label,
@@ -91,7 +63,17 @@ const menus = computed(() => {
   // which are set up once and visited rarely -- so last, out of the way of the daily two.
   // Positions is a report: it is worked out from trades, and nothing is entered on it.
   return [
-    { items: [item('Home', 'index', 'dashboard', '/')] },
+    {
+      items: [
+        item('Home', 'index', 'dashboard', '/'),
+        {
+          label: 'Simple view',
+          icon: 'smartphone',
+          active: false,
+          to: () => showHomeView('simple'),
+        },
+      ],
+    },
     {
       heading: 'Records',
       items: [

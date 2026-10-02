@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Middleware\ForgetsTheHomeCache;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: [
             TransactionController::HIDE_TRANSFERS_COOKIE,
             TransactionController::TOTALS_COOKIE,
+            HomeController::VIEW_COOKIE,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

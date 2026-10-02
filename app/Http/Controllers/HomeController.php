@@ -39,6 +39,14 @@ class HomeController extends Controller
      */
     private const ONCE_FOR = 3600;
 
+    /**
+     * A choice between the home page and the phone's simple page, made by the links on each and
+     * read here: `simple` or `full`, and with neither a phone's user agent decides. A cookie
+     * rather than storage because the server picks the page on the first request, and listed
+     * in bootstrap/app.php's encryptCookies(except:), since the page writes it.
+     */
+    public const VIEW_COOKIE = 'home_view';
+
     /** How many months back the headline's lines reach. */
     private const TREND_MONTHS = 6;
 
@@ -72,6 +80,157 @@ class HomeController extends Controller
         $today = today();
         $day = $today->toDateString();
 
+        if ($this->wantsSimple($request)) {
+            return $this->simple($today);
+        }
+
+        ['cash' => $cash, 'statements' => $statements, 'brokerages' => $brokerages, 'rates' => $rates] = $this->holdings($day);
+
+        // The net worth page's figures for today, and its change since last month's end.
+        // Asked for together, since the page wants both and each was a full aggregate.
+        $worth = new NetWorth;
+        $lastMonthEnd = $today->copy()->startOfMonth()->subDay()->toDateString();
+
+        [$now, $then] = $worth->onMany([$day, $lastMonthEnd]);
+
+        // Owed in the base currency at today's rate, beside the section heading.
+        $fx = Fx::for($statements->pluck('card.ccy')->all());
+        $owed = $statements->reduce(
+            fn (BigDecimal $total, array $statement) => $total->plus($fx->toBase($statement['owed'], $statement['card']['ccy'], $day) ?? BigDecimal::zero()),
+            BigDecimal::zero()
+        );
+
+        // Carried on the key of every cached prop below. A write moves it, so the keys the
+        // browser remembers stop matching and the props are built again.
+        $mark = ForgetsTheHomeCache::mark();
+
+        return inertia('index', [
+            'cash' => $cash,
+            'brokerages' => $brokerages,
+            'statements' => $statements,
+            'base' => Fx::BASE->value,
+
+            // The rate each currency with money on this page went at today, for a row held in
+            // another to quote beside its own money.
+            'rates' => $rates,
+
+            'headline' => [
+                ...collect($now)->only(['net_worth', 'cash', 'cards', 'loans', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
+                'loan_count' => count($now['loan_rows']),
+
+                // Both keyed by the same figure the client holds, so every card's note comes
+                // from one expression and net worth stops being the special case. $then is
+                // the whole snapshot for the last month's end, so the other three were here
+                // already and only net_worth was being read out of it.
+                'change' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [
+                        $key => (string) BigDecimal::of($now[$key])->minus($then[$key]),
+                    ])->all(),
+                'last_month' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [$key => $then[$key]])->all(),
+                'owed' => (string) $owed->toScale(4),
+            ],
+            // Month ends and today's, for each headline card's line.
+            //
+            // Deferred, and it is what is left worth deferring: six period snapshots for a
+            // sparkline drawn under figures that are already on screen. Nothing waits on
+            // it, so it should not hold the page up.
+            //
+            // rescued, because a trend that cannot be computed is a missing line and not a
+            // broken page -- the headline figures are the page.
+            //
+            // Deferred and cached at once, though the cache only earns its keep on a
+            // prefetched visit: the client fetches a deferred prop by naming it, and a once
+            // prop named outright is always resolved. What makes the fetch cheap is the
+            // short circuit at the top, not once().
+            'trend' => Inertia::defer(fn () => $this->trend(), rescue: true)
+                ->once()
+                ->as("trend.{$mark}")
+                ->until(self::ONCE_FOR),
+            // The forecast and what it says. Together with the trend these are most of the
+            // page, and on a visit where the browser already has all of them none of the
+            // three closures runs, so the projection is never built at all.
+            //
+            // attention is here too, and it is the reason this works: it shares the forecast
+            // object, so while it was built every visit the other two were not buying
+            // anything. Its overdue and pending notices are worth a recomputation after an
+            // edit, and the mark is what makes an edit force one.
+            'attention' => Inertia::once(
+                fn () => Attention::items($today, $cash, $statements, $this->forecast($today), $brokerages->sum('open') > 0)
+            )->as("attention.{$mark}")->until(self::ONCE_FOR),
+            ...$this->months($today, $mark),
+            'upcoming' => Inertia::once(fn () => $this->upcoming($today)->take(self::UPCOMING_SHOWN)->values()->all())
+                ->as("upcoming.{$mark}")->until(self::ONCE_FOR),
+            // Cached with upcoming, not computed from it: a prop left out of the cache would
+            // rebuild the list to count it, which is the work being avoided.
+            'upcomingMore' => Inertia::once(fn () => max(0, $this->upcoming($today)->count() - self::UPCOMING_SHOWN))
+                ->as("upcomingMore.{$mark}")->until(self::ONCE_FOR),
+            'upcomingDays' => self::UPCOMING_DAYS,
+        ]);
+    }
+
+    /**
+     * Every phone browser names itself Mobi in its user agent and a tablet's does not, which is
+     * the line wanted: a tablet has room for the home page.
+     */
+    private function wantsSimple(Request $request): bool
+    {
+        return match ($request->cookie(self::VIEW_COOKIE)) {
+            'simple' => true,
+            'full' => false,
+            default => str_contains((string) $request->userAgent(), 'Mobi'),
+        };
+    }
+
+    /**
+     * The home page cut to what a phone is for: what is held and owed, the yearly bills coming,
+     * the month, and adding a transaction.
+     */
+    private function simple(Carbon $today)
+    {
+        $day = $today->toDateString();
+
+        ['cash' => $cash, 'statements' => $statements, 'brokerages' => $brokerages, 'rates' => $rates] = $this->holdings($day);
+
+        return inertia('simple', [
+            'cash' => $cash,
+            'statements' => $statements,
+            'brokerages' => $brokerages,
+            'base' => Fx::BASE->value,
+            'rates' => $rates,
+            'headline' => collect((new NetWorth)->on($day))
+                ->only(['net_worth', 'cash', 'cards', 'value', 'unconverted'])->all(),
+            'attention' => Attention::yearlySoon($today),
+            ...$this->months($today, ForgetsTheHomeCache::mark()),
+        ]);
+    }
+
+    /**
+     * This month and the next, for the panel both pages draw. Under the same keys on both, so a
+     * browser that has them from one page does not build the forecast again for the other.
+     */
+    private function months(Carbon $today, string $mark): array
+    {
+        return [
+            'month' => Inertia::once(fn () => $this->forecast($today)->monthOutlook()[0] ?? null)
+                ->as("month.{$mark}")->until(self::ONCE_FOR),
+            // The month after this one as the forecast has it, known and typical, with its
+            // expected dividends: the projection's own figures, so it is the forecast's month.
+            'nextMonth' => Inertia::once(fn () => collect($this->forecast($today)->projection()[0]['months'] ?? [])
+                ->first(fn (array $month) => $month['month'] > $today->format('Y-m')))
+                ->as("nextMonth.{$mark}")->until(self::ONCE_FOR),
+        ];
+    }
+
+    /**
+     * What each cash account holds, what each card owes, and what each brokerage is worth, as
+     * of today: the lists both the home page and the phone's simple page show, from one place
+     * so the two cannot disagree.
+     *
+     * @return array{cash: Collection, statements: Collection, brokerages: Collection, rates: array<string, string>}
+     */
+    private function holdings(string $day): array
+    {
         // A closed account still holding money stays, or the total could not be
         // accounted for.
         $cashAccounts = Account::query()
@@ -154,93 +313,12 @@ class HomeController extends Controller
             ->filter(fn (array $broker) => $broker['status'] === 'active' || $broker['open'] > 0)
             ->values();
 
-        // The net worth page's figures for today, and its change since last month's end.
-        // Asked for together, since the page wants both and each was a full aggregate.
-        $worth = new NetWorth;
-        $lastMonthEnd = $today->copy()->startOfMonth()->subDay()->toDateString();
-
-        [$now, $then] = $worth->onMany([$day, $lastMonthEnd]);
-
-        // Owed in the base currency at today's rate, beside the section heading.
-        $fx = Fx::for($statements->pluck('card.ccy')->all());
-        $owed = $statements->reduce(
-            fn (BigDecimal $total, array $statement) => $total->plus($fx->toBase($statement['owed'], $statement['card']['ccy'], $day) ?? BigDecimal::zero()),
-            BigDecimal::zero()
-        );
-
-        // Carried on the key of every cached prop below. A write moves it, so the keys the
-        // browser remembers stop matching and the props are built again.
-        $mark = ForgetsTheHomeCache::mark();
-
-        return inertia('index', [
+        return [
             'cash' => $cash,
-            'brokerages' => $brokerages,
             'statements' => $statements,
-            'base' => Fx::BASE->value,
-
-            // The rate each currency with money on this page went at today, for a row held in
-            // another to quote beside its own money.
+            'brokerages' => $brokerages,
             'rates' => $ratesFor($cash->pluck('ccy')->merge($brokerages->pluck('ccy'))->all()),
-
-            'headline' => [
-                ...collect($now)->only(['net_worth', 'cash', 'cards', 'loans', 'value', 'unrealised', 'unpriced', 'unconverted'])->all(),
-                'loan_count' => count($now['loan_rows']),
-
-                // Both keyed by the same figure the client holds, so every card's note comes
-                // from one expression and net worth stops being the special case. $then is
-                // the whole snapshot for the last month's end, so the other three were here
-                // already and only net_worth was being read out of it.
-                'change' => collect(self::TREND_FIGURES)
-                    ->mapWithKeys(fn (string $key) => [
-                        $key => (string) BigDecimal::of($now[$key])->minus($then[$key]),
-                    ])->all(),
-                'last_month' => collect(self::TREND_FIGURES)
-                    ->mapWithKeys(fn (string $key) => [$key => $then[$key]])->all(),
-                'owed' => (string) $owed->toScale(4),
-            ],
-            // Month ends and today's, for each headline card's line.
-            //
-            // Deferred, and it is what is left worth deferring: six period snapshots for a
-            // sparkline drawn under figures that are already on screen. Nothing waits on
-            // it, so it should not hold the page up.
-            //
-            // rescued, because a trend that cannot be computed is a missing line and not a
-            // broken page -- the headline figures are the page.
-            //
-            // Deferred and cached at once, though the cache only earns its keep on a
-            // prefetched visit: the client fetches a deferred prop by naming it, and a once
-            // prop named outright is always resolved. What makes the fetch cheap is the
-            // short circuit at the top, not once().
-            'trend' => Inertia::defer(fn () => $this->trend(), rescue: true)
-                ->once()
-                ->as("trend.{$mark}")
-                ->until(self::ONCE_FOR),
-            // The forecast and what it says. Together with the trend these are most of the
-            // page, and on a visit where the browser already has all of them none of the
-            // three closures runs, so the projection is never built at all.
-            //
-            // attention is here too, and it is the reason this works: it shares the forecast
-            // object, so while it was built every visit the other two were not buying
-            // anything. Its overdue and pending notices are worth a recomputation after an
-            // edit, and the mark is what makes an edit force one.
-            'attention' => Inertia::once(
-                fn () => Attention::items($today, $cash, $statements, $this->forecast($today), $brokerages->sum('open') > 0)
-            )->as("attention.{$mark}")->until(self::ONCE_FOR),
-            'month' => Inertia::once(fn () => $this->forecast($today)->monthOutlook()[0] ?? null)
-                ->as("month.{$mark}")->until(self::ONCE_FOR),
-            // The month after this one as the forecast has it, known and typical, with its
-            // expected dividends: the projection's own figures, so it is the forecast's month.
-            'nextMonth' => Inertia::once(fn () => collect($this->forecast($today)->projection()[0]['months'] ?? [])
-                ->first(fn (array $month) => $month['month'] > $today->format('Y-m')))
-                ->as("nextMonth.{$mark}")->until(self::ONCE_FOR),
-            'upcoming' => Inertia::once(fn () => $this->upcoming($today)->take(self::UPCOMING_SHOWN)->values()->all())
-                ->as("upcoming.{$mark}")->until(self::ONCE_FOR),
-            // Cached with upcoming, not computed from it: a prop left out of the cache would
-            // rebuild the list to count it, which is the work being avoided.
-            'upcomingMore' => Inertia::once(fn () => max(0, $this->upcoming($today)->count() - self::UPCOMING_SHOWN))
-                ->as("upcomingMore.{$mark}")->until(self::ONCE_FOR),
-            'upcomingDays' => self::UPCOMING_DAYS,
-        ]);
+        ];
     }
 
     /**
