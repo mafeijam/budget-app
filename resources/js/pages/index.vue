@@ -284,7 +284,7 @@
       <div class="row q-col-gutter-md">
         <div class="col-12 col-md-5">
           <q-card flat bordered class="full-height">
-            <q-card-section class="row items-center q-pb-sm">
+            <q-card-section class="row items-center q-pb-sm app-panel-head">
               <q-icon name="notifications_active" size="sm" color="grey-6" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Needs attention</div>
               <q-badge
@@ -293,28 +293,62 @@
                 :label="attention.length"
               />
             </q-card-section>
-            <q-list v-if="attention.length" separator>
-              <q-item
+            <div v-if="attention.length">
+              <div
                 v-for="item in attention"
                 :key="item.message"
-                clickable
-                dense
-                class="q-py-sm"
+                class="app-attn cursor-pointer"
+                :class="`app-attn--${item.level}`"
                 @click="go(item.link.path, item.link.data)"
               >
-                <q-item-section avatar class="app-home-attention__icon">
+                <div class="row items-start no-wrap">
                   <q-icon
                     :name="item.icon"
                     size="xs"
+                    class="q-mr-sm q-mt-xs"
                     :color="item.level === 'negative' ? 'negative' : 'warning'"
                   />
-                </q-item-section>
-                <q-item-section class="text-body2 text-grey-9">{{ item.message }}</q-item-section>
-                <q-item-section side>
-                  <q-icon name="chevron_right" size="xs" color="grey-5" />
-                </q-item-section>
-              </q-item>
-            </q-list>
+                  <div class="col">
+                    <div class="row items-center no-wrap">
+                      <span class="app-attn__title text-grey-9 ellipsis">
+                        {{ item.title ?? item.message }}
+                      </span>
+                      <q-badge
+                        v-if="item.when"
+                        class="app-tint app-attn__when q-ml-sm"
+                        :class="
+                          item.level === 'negative' ? 'app-tint--negative' : 'app-tint--warning'
+                        "
+                      >
+                        <q-icon name="schedule" size="12px" class="q-mr-xs" />{{ item.when }}
+                      </q-badge>
+                    </div>
+                    <div v-if="item.detail" class="text-caption text-grey-6">{{ item.detail }}</div>
+                  </div>
+                  <div v-if="item.amount" class="app-attn__amount money q-ml-md">
+                    <span :class="signClass(item.amount)">{{ signed(item.amount) }}</span>
+                    <span class="text-caption text-grey-7 q-ml-xs">{{ item.ccy }}</span>
+                  </div>
+                </div>
+
+                <div v-if="item.rows?.length" class="app-attn__rows">
+                  <div v-for="(row, i) in item.rows" :key="i" class="app-attn__row">
+                    <span class="text-grey-7">{{ formatDate(row.date) }}</span>
+                    <div class="ellipsis">
+                      <div class="ellipsis text-grey-9">{{ row.description }}</div>
+                      <div class="text-caption text-grey-6">{{ row.account }}</div>
+                    </div>
+                    <span class="app-attn__amount money">
+                      <span :class="signClass(row.amount)">{{ signed(row.amount) }}</span>
+                      <span class="text-caption text-grey-7 q-ml-xs">{{ row.ccy }}</span>
+                    </span>
+                  </div>
+                  <div v-if="item.more" class="text-caption text-primary q-mt-xs">
+                    +{{ item.more }} more
+                  </div>
+                </div>
+              </div>
+            </div>
             <q-card-section v-else class="row items-center text-positive q-pt-none">
               <q-icon name="check_circle_outline" size="xs" class="q-mr-sm" />
               All clear: nothing overdue, nothing below zero.
@@ -324,43 +358,56 @@
 
         <div class="col-12 col-md-7">
           <q-card flat bordered>
-            <q-card-section class="row items-center q-pb-sm">
+            <q-card-section class="row items-center q-pb-sm app-panel-head">
               <q-icon name="upcoming" size="sm" color="grey-6" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Coming up</div>
               <div class="text-caption text-grey-7 q-ml-sm">next {{ upcomingDays }} days</div>
             </q-card-section>
-            <q-markup-table v-if="upcoming.length" flat dense>
-              <tbody>
-                <tr
-                  v-for="(event, i) in upcoming"
-                  :key="i"
-                  class="cursor-pointer"
-                  @click="openEvent(event)"
-                >
-                  <td class="text-grey-7" style="width: 96px">{{ formatDate(event.date) }}</td>
-                  <!-- Wrapping: Quasar's cells do not, and a phone would push the amount off. -->
-                  <td style="white-space: normal">
-                    <!-- An estimate, tagged as one: the panel's other rows are all known, and
-                         "as paid 2025-10-02" in the description is not a thing a reader can
-                         be expected to parse as last year's payment standing in for this year's. -->
-                    <div v-if="event.estimate">
-                      <q-badge class="app-tint app-tint--muted">expected</q-badge>
-                    </div>
-                    <div>{{ event.description }}</div>
-                    <div class="text-caption text-grey-6">{{ event.account }}</div>
-                  </td>
-                  <!-- An expected dividend or a bonus is an estimate, so its amount is tinted
-                       as the dividends page tints one rather than read as certain. -->
-                  <td
-                    class="text-right money text-weight-medium"
-                    :class="event.estimate ? 'app-text-estimate' : signClass(event.amount)"
+            <div v-if="upcoming.length">
+              <div v-for="day in upcomingDaysGrouped" :key="day.date" class="app-soon__day">
+                <div class="app-soon__date">
+                  <span class="app-soon__date-num">{{ day.num }}</span>
+                  <span class="text-caption text-grey-7 q-ml-xs">{{ day.month }}</span>
+                </div>
+                <div class="col">
+                  <div
+                    v-for="event in day.events"
+                    :key="event.key"
+                    class="app-soon__row cursor-pointer"
+                    @click="openEvent(event)"
                   >
-                    {{ signed(event.amount) }}
-                    <span class="text-caption text-grey-7">{{ event.ccy }}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </q-markup-table>
+                    <div class="app-soon__kind" :class="`app-soon__kind--${event.tone}`">
+                      <q-icon :name="event.icon" size="16px" />
+                    </div>
+                    <div class="ellipsis">
+                      <div class="row items-center no-wrap">
+                        <span class="app-attn__title text-grey-9 ellipsis">{{ event.title }}</span>
+                        <!-- An estimate, tagged as one: the panel's other rows are all known,
+                             and "as paid 2025-10-02" in the description is not a thing a
+                             reader can be expected to parse as last year's payment standing
+                             in for this year's. -->
+                        <q-badge
+                          v-if="event.estimate"
+                          class="app-tint app-tint--muted q-ml-sm"
+                          label="expected"
+                        />
+                      </div>
+                      <div class="text-caption text-grey-6 ellipsis">
+                        {{ event.kindLabel }} · {{ event.account }}
+                      </div>
+                    </div>
+                    <!-- An expected dividend or a bonus is an estimate, so its amount is tinted
+                         as the dividends page tints one rather than read as certain. -->
+                    <span class="app-attn__amount money">
+                      <span :class="event.estimate ? 'app-text-estimate' : signClass(event.amount)">
+                        {{ signed(event.amount) }}
+                      </span>
+                      <span class="text-caption text-grey-7 q-ml-xs">{{ event.ccy }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <q-card-section v-else class="text-grey-6 q-pt-none">
               Nothing known in the next {{ upcomingDays }} days.
             </q-card-section>
@@ -727,6 +774,49 @@ const monthCols = computed(() => {
 // In the script: the template cannot see the auto-imported router, so a click calling it
 // there throws in the handler and goes nowhere.
 const go = (path, data) => router.visit(path, data ? { data } : {})
+
+const kinds = {
+  statement: { icon: 'credit_card', label: 'Card statement', tone: 'out' },
+  recurring: { icon: 'event_repeat', label: 'Recurring', tone: 'neutral' },
+  pending: { icon: 'pending_actions', label: 'Pending', tone: 'warn' },
+  scheduled: { icon: 'schedule', label: 'Scheduled', tone: 'neutral' },
+  'expected dividend': { icon: 'savings', label: 'Expected dividend', tone: 'in' },
+  'expected bonus': { icon: 'card_giftcard', label: 'Expected bonus', tone: 'in' },
+  'expected double pay': { icon: 'payments', label: 'Expected double pay', tone: 'in' },
+}
+
+const dayFormat = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  timeZone: 'UTC',
+})
+
+// By calendar day, from the date string alone: a `date` column has no time to be shifted.
+const upcomingDaysGrouped = computed(() => {
+  const days = new Map()
+
+  props.upcoming.forEach((event, i) => {
+    const kind = kinds[event.kind] ?? { icon: 'event', label: event.kind, tone: 'neutral' }
+    const day = days.get(event.date) ?? { date: event.date, events: [] }
+    const [year, month, num] = event.date.split('-').map(Number)
+    const parts = dayFormat.formatToParts(new Date(Date.UTC(year, month - 1, num)))
+
+    day.num = num
+    day.month = parts.find(p => p.type === 'month').value
+    day.events.push({
+      ...event,
+      key: i,
+      icon: kind.icon,
+      tone: kind.tone,
+      kindLabel: kind.label,
+      // The date is the group's heading, so a statement need not say it again.
+      title:
+        event.kind === 'statement' ? event.description.replace(/ due \S+$/, '') : event.description,
+    })
+    days.set(event.date, day)
+  })
+
+  return [...days.values()]
+})
 
 // As the forecast page opens the same events.
 const openEvent = event => {

@@ -364,8 +364,115 @@ body {
   border-left: 3px solid var(--q-negative);
 }
 
-.app-home-attention__icon {
-  min-width: 32px;
+/* The one rule left in either panel, now that its rows have none between them. */
+.app-panel-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: 4px;
+}
+
+.app-attn {
+  padding: 10px 16px;
+}
+
+.app-soon__day {
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+}
+
+.app-soon__date {
+  width: 56px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.app-soon__date-num {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #334155;
+}
+
+.app-soon__row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 4px 0;
+  border-radius: 4px;
+}
+
+.app-soon__row:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* On the title's line, as Needs attention's amounts are. */
+.app-soon__row > .app-attn__amount {
+  padding-top: 1px;
+}
+
+.app-soon__kind {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.app-soon__kind--out {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+
+.app-soon__kind--in {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.app-soon__kind--warn {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.app-attn__when {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.app-attn__title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.app-attn:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.app-attn__rows {
+  margin: 6px 0 0 28px;
+  padding-left: 10px;
+  border-left: 1px dashed rgba(0, 0, 0, 0.12);
+}
+
+.app-attn__amount {
+  font-size: 13px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.app-attn__row {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 3px 0;
+  font-size: 13px;
 }
 
 .q-item__label.app-nav-heading {

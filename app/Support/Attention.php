@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\AccountType;
 use App\Enums\Frequency;
 use App\Enums\TransactionStatus;
+use App\Enums\TransactionType;
 use App\Models\Price;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
@@ -24,10 +25,12 @@ class Attention
     /** How far ahead a yearly recurring is worth naming, in days. */
     public const YEARLY_SOON_DAYS = 90;
 
+    public const PREVIEW_ROWS = 3;
+
     /**
      * @param  iterable<array<string, mixed>>  $cash  Home's cash accounts, with balance
      * @param  iterable<array<string, mixed>>  $statements  Home's unsettled statements
-     * @return list<array{level: string, icon: string, message: string, link: array{path: string, data?: array<string, mixed>, broker?: int}}>
+     * @return list<array{level: string, icon: string, message: string, link: array{path: string, data?: array<string, mixed>, broker?: int}, title?: string, detail?: string, when?: string, amount?: string, ccy?: string, rows?: list<array<string, string|null>>, more?: int}>
      */
     public static function items(Carbon $today, iterable $cash, iterable $statements, Forecast $forecast, bool $holdsShares): array
     {
@@ -68,22 +71,35 @@ class Attention
             $items[] = self::item('warning', 'warning_amber', $warning, '/forecast');
         }
 
-        $pending = Transaction::query()
+        $pendingQuery = Transaction::query()
             ->where('status', TransactionStatus::Pending->value)
             ->where('date', '<=', $day)
-            ->whereHas('account', fn ($q) => $q->where('type', '!=', AccountType::Security->value))
-            ->count();
+            ->whereHas('account', fn ($q) => $q->where('type', '!=', AccountType::Security->value));
+
+        $pending = (clone $pendingQuery)->count();
 
         if ($pending > 0) {
+            $rows = $pendingQuery->with('account')->orderBy('date')->orderBy('id')->limit(self::PREVIEW_ROWS)->get()
+                ->map(fn (Transaction $t) => [
+                    'date' => Carbon::parse($t->date)->toDateString(),
+                    'description' => $t->description,
+                    'account' => $t->account?->name,
+                    'amount' => (string) BigDecimal::of($t->amount)->multipliedBy(
+                        TransactionType::from($t->type)->movesBalanceOn(AccountType::from($t->account->type)) ?: 1
+                    ),
+                    'ccy' => $t->ccy,
+                ])->all();
+
             $items[] = self::item('warning', 'pending_actions',
                 $pending === 1 ? '1 pending transaction is due and not posted yet' : "{$pending} pending transactions are due and not posted yet",
-                '/transactions', ['filter' => ['status' => TransactionStatus::Pending->value, 'date_to' => $day]]);
+                '/transactions', ['filter' => ['status' => TransactionStatus::Pending->value, 'date_to' => $day]],
+                ['title' => 'Pending, not posted', 'rows' => $rows, 'more' => max(0, $pending - count($rows))]);
         }
 
         // Recorded up to a refused occurrence and stopped there; see RecurringPayments.
         $yearlySoon = $today->copy()->addDays(self::YEARLY_SOON_DAYS)->toDateString();
 
-        foreach (RecurringTransaction::query()->where('active', true)->orderBy('description')->get() as $rule) {
+        foreach (RecurringTransaction::query()->with('account')->where('active', true)->orderBy('description')->get() as $rule) {
             $next = $rule->nextDate();
 
             if ($next === null) {
@@ -111,7 +127,12 @@ class Attention
                         $next,
                         $today->diffInDays(Carbon::parse($next), false),
                     ),
-                    '/recurring');
+                    '/recurring', [],
+                    ['title' => $rule->description, 'detail' => "Yearly · due {$next} · {$rule->account?->name}",
+                        'when' => 'in '.$today->diffInDays(Carbon::parse($next), false).' days',
+                        'amount' => (string) BigDecimal::of($rule->amount)->multipliedBy(
+                            TransactionType::from($rule->type)->movesBalanceOn(AccountType::Cash) ?: -1
+                        ), 'ccy' => $rule->ccy]);
             }
         }
 
@@ -139,8 +160,8 @@ class Attention
     }
 
     /** @return array{level: string, icon: string, message: string, link: array<string, mixed>} */
-    private static function item(string $level, string $icon, string $message, string $path, array $data = []): array
+    private static function item(string $level, string $icon, string $message, string $path, array $data = [], array $parts = []): array
     {
-        return ['level' => $level, 'icon' => $icon, 'message' => $message, 'link' => ['path' => $path, ...($data === [] ? [] : ['data' => $data])]];
+        return ['level' => $level, 'icon' => $icon, 'message' => $message, 'link' => ['path' => $path, ...($data === [] ? [] : ['data' => $data])], ...$parts];
     }
 }
