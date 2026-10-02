@@ -171,129 +171,92 @@
       </div>
     </div>
 
-    <!-- This month and the next side by side, so one reads as the other's continuation. -->
-    <div v-if="month || nextMonth">
-      <div class="row q-col-gutter-md">
-        <!-- The month the page opens in: what it has done so far, what is still to come,
-             and where it is likely to end against an ordinary month. -->
-        <div v-if="month" class="col-12 col-md-6">
-          <q-card flat bordered class="app-home-link full-height" @click="go('/cash-flow')">
-            <q-card-section class="row items-center no-wrap q-pb-sm">
-              <q-icon name="insights" size="sm" color="grey-6" class="q-mr-sm" />
-              <div>
-                <div class="text-subtitle1 text-weight-medium">Current month</div>
-                <div class="text-caption text-grey-7">{{ monthName(month.month) }} so far</div>
-              </div>
-              <q-space />
-              <div class="app-home-month-days column items-end">
-                <div class="text-caption text-grey-7">
-                  Day {{ monthDays.done }} of {{ monthDays.total }}
-                  <template v-if="month.days_left">· {{ month.days_left }} left</template>
-                </div>
-                <div class="app-home-month-days__track">
-                  <div :style="{ width: `${(monthDays.done / monthDays.total) * 100}%` }" />
-                </div>
-              </div>
-            </q-card-section>
-
-            <q-card-section class="q-pt-sm">
-              <div class="app-outlook app-outlook--pairs">
-                <div
-                  v-for="tile in monthTiles"
-                  :key="tile.label"
-                  class="app-outlook__tile"
-                  :class="{ 'app-outlook__tile--total': tile.total }"
-                >
-                  <div class="text-caption text-grey-7">{{ tile.label }}</div>
-                  <div class="text-h6 text-weight-bold money" :class="tile.class">
-                    {{ tile.value }}
-                  </div>
-                  <div class="text-caption money" :class="tile.noteClass ?? 'text-grey-6'">
-                    {{ tile.note }}
-                  </div>
-                </div>
-              </div>
-
-              <!-- In and out on one scale: done so far solid, known still to come paler, and the
-             typical spending of the days left palest, as an estimate. -->
-              <div class="q-mt-md">
-                <div
-                  v-for="bar in monthFlow"
-                  :key="bar.label"
-                  class="app-outlook__bar row items-center no-wrap"
-                >
-                  <div class="app-outlook__bar-label text-caption text-grey-7">{{ bar.label }}</div>
-                  <div class="app-outlook__track col">
-                    <div
-                      v-for="part in bar.parts"
-                      :key="part.colour"
-                      :style="{ width: `${part.width}%`, background: part.colour }"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div class="text-caption text-grey-6 q-mt-sm">
-                In {{ base }} at today's rate. Solid is done, paler is the cash known still to come,
-                palest the typical income and spending of the days left.
-              </div>
-            </q-card-section>
-          </q-card>
+    <!-- This month and the next as one card, each answering the same question -- where the
+         month is likely to end -- with its in and out drawn on one scale for both. -->
+    <q-card v-if="monthCols.length" flat bordered>
+      <q-card-section class="row items-center no-wrap q-pb-none">
+        <q-icon name="insights" size="sm" color="grey-6" class="q-mr-sm" />
+        <div>
+          <div class="text-subtitle1 text-weight-medium">This month and next</div>
+          <div class="text-caption text-grey-7">In {{ base }} at today's rate</div>
         </div>
+        <q-space />
+        <div v-if="month" class="text-right">
+          <div class="text-caption text-grey-7">12-month average</div>
+          <div class="text-body2 text-weight-medium money" :class="signClass(month.average_net)">
+            {{ signed(month.average_net) }}
+          </div>
+        </div>
+      </q-card-section>
 
-        <!-- The month after, as the forecast has it: known in and out, the typical income
-             and spending beside them, and where it is likely to end. -->
-        <div v-if="nextMonth" class="col-12 col-md-6">
-          <q-card flat bordered class="app-home-link full-height" @click="go('/forecast')">
-            <q-card-section class="row items-center no-wrap q-pb-sm">
-              <q-icon name="event_note" size="sm" color="grey-6" class="q-mr-sm" />
-              <div>
-                <div class="text-subtitle1 text-weight-medium">Next month</div>
-                <div class="text-caption text-grey-7">{{ monthName(nextMonth.month) }} ahead</div>
+      <div class="app-months">
+        <div
+          v-for="col in monthCols"
+          :key="col.key"
+          class="app-months__col"
+          :class="{ 'app-months__col--forecast': col.forecast }"
+          @click="go(col.path)"
+        >
+          <div class="row items-center no-wrap">
+            <div class="text-subtitle2 text-weight-bold text-grey-9">{{ col.name }}</div>
+            <q-badge v-if="col.forecast" class="app-tint app-tint--info q-ml-sm" label="forecast" />
+            <q-space />
+            <template v-if="col.days">
+              <div class="text-caption text-grey-7 q-mr-sm">
+                Day {{ col.days.done }} of {{ col.days.total }}
               </div>
-            </q-card-section>
+              <div class="app-home-month-days__track">
+                <div :style="{ width: `${(col.days.done / col.days.total) * 100}%` }" />
+              </div>
+            </template>
+          </div>
 
-            <q-card-section class="q-pt-sm">
-              <div class="app-outlook app-outlook--pairs">
+          <div class="text-caption text-grey-7 q-mt-sm">Likely net</div>
+          <div class="row items-baseline no-wrap">
+            <div class="text-h5 text-weight-bold money" :class="signClass(col.net)">
+              {{ col.forecast ? '≈ ' : '' }}{{ signed(col.net) }}
+            </div>
+            <div
+              v-if="col.vsAverage"
+              class="text-caption text-weight-medium money q-ml-md"
+              :class="col.vsAverage.up ? 'text-positive' : 'text-negative'"
+            >
+              {{ col.vsAverage.up ? '▲' : '▼' }} {{ money(col.vsAverage.amount) }}
+              {{ col.vsAverage.up ? 'above' : 'below' }} average
+            </div>
+          </div>
+
+          <!-- One scale across both months, so the longer bar is the larger month. -->
+          <div class="q-mt-md">
+            <div v-for="bar in col.bars" :key="bar.label" class="app-months__bar">
+              <div class="text-caption text-grey-7">{{ bar.label }}</div>
+              <div class="app-outlook__track">
                 <div
-                  v-for="tile in nextTiles"
-                  :key="tile.label"
-                  class="app-outlook__tile"
-                  :class="{ 'app-outlook__tile--total': tile.total }"
+                  v-for="part in bar.parts"
+                  :key="part.kind"
+                  :style="{ width: `${part.width}%`, background: part.colour }"
                 >
-                  <div class="text-caption text-grey-7">{{ tile.label }}</div>
-                  <div class="text-h6 text-weight-bold money" :class="tile.class">
-                    {{ tile.value }}
-                  </div>
-                  <div class="text-caption money" :class="tile.noteClass ?? 'text-grey-6'">
-                    {{ tile.note }}
-                  </div>
+                  <q-tooltip :delay="200" :offset="[0, 6]">
+                    {{ part.kind }}: {{ money(part.amount) }}
+                  </q-tooltip>
                 </div>
               </div>
+              <div class="text-caption text-weight-medium money text-right text-grey-9">
+                {{ money(bar.total) }}
+              </div>
+            </div>
+          </div>
 
-              <div class="q-mt-md">
-                <div
-                  v-for="bar in nextFlow"
-                  :key="bar.label"
-                  class="app-outlook__bar row items-center no-wrap"
-                >
-                  <div class="app-outlook__bar-label text-caption text-grey-7">{{ bar.label }}</div>
-                  <div class="app-outlook__track col">
-                    <div
-                      v-for="part in bar.parts"
-                      :key="part.colour"
-                      :style="{ width: `${part.width}%`, background: part.colour }"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div class="text-caption text-grey-6 q-mt-sm">
-                Solid is known, pale the typical income and spending, dividends among them.
-              </div>
-            </q-card-section>
-          </q-card>
+          <div v-if="col.note" class="text-caption text-grey-6 q-mt-xs">{{ col.note }}</div>
         </div>
       </div>
-    </div>
+
+      <q-card-section class="row items-center q-gutter-x-md text-caption text-grey-7 q-pt-sm">
+        <div v-for="key in legend" :key="key.label" class="row items-center no-wrap">
+          <span class="app-months__swatch" :style="{ background: key.colour }" />{{ key.label }}
+        </div>
+      </q-card-section>
+    </q-card>
 
     <!-- A plain div: a q-col-gutter row directly inside a q-gutter column misaligns. -->
     <div>
@@ -623,174 +586,91 @@ const monthDays = computed(() => {
   return { total, done: total - (props.month?.days_left ?? 0) }
 })
 
-// A comparison for reading, not money, so a float percentage is fine.
-const against = (value, average) => {
-  const base = Number(average)
-
-  if (base === 0) return null
-
-  const change = ((Number(value) - base) / Math.abs(base)) * 100
-
-  return {
-    label: `${change >= 0 ? '+' : ''}${change.toFixed(0)}%`,
-    class: change >= 0 ? 'text-positive' : 'text-negative',
-  }
+// Solid for what is done, paler for what is known still to come, palest for the typical
+// estimate: the same three shades in both months, so November's known reads as October's.
+const shades = {
+  in: { done: '#059669', known: '#6ee7b7', typical: '#bbf7d0' },
+  out: { done: '#dc2626', known: '#f87171', typical: '#fecaca' },
 }
 
-// Every figure is the server's string; nothing here adds money up.
-const monthTiles = computed(() => {
-  const m = props.month
-  const vs = against(m.likely_net, m.average_net)
+// Each key half green and half red, as the shade means the same on either bar.
+const legend = ['done', 'known', 'typical'].map(kind => ({
+  kind,
+  label: { done: 'Done', known: 'Known to come', typical: 'Typical, an estimate' }[kind],
+  colour: `linear-gradient(90deg, ${shades.in[kind]} 50%, ${shades.out[kind]} 50%)`,
+}))
 
-  return [
-    {
-      label: 'Income so far',
-      value: money(m.so_far.income),
-      class: 'text-positive',
-      // The forecast's outlook reads the same typical income off the same row, so the two
-      // pages cannot drift: the typical figure is named there and was named nowhere here,
-      // which left this tile saying nothing was coming while the month end below it said
-      // otherwise. `~` because it is an estimate, as on the spending tile beside it.
-      note:
-        isZero(m.to_come.income) && isZero(m.typical_income_rest)
-          ? 'nothing more expected'
-          : [
-              isZero(m.to_come.income) ? null : `+${money(m.to_come.income)} known`,
-              isZero(m.typical_income_rest) ? null : `~${money(m.typical_income_rest)} typical`,
-            ]
-              .filter(Boolean)
-              .join(' and ') + ' to come',
-    },
-    {
-      label: 'Spending so far',
-      value: money(m.so_far.spending),
-      class: 'text-negative',
-      note:
-        isZero(m.to_come.spending) && isZero(m.typical_rest)
-          ? 'nothing more expected'
-          : [
-              isZero(m.to_come.spending) ? null : `−${money(m.to_come.spending)} known`,
-              isZero(m.typical_rest) ? null : `~${money(m.typical_rest)} typical`,
-            ]
-              .filter(Boolean)
-              .join(' and ') + ' to come',
-    },
-    {
-      label: 'Likely month end',
-      value: signed(m.likely_net),
-      class: signClass(m.likely_net),
-      note: 'so far, what is known, and typical spending for the rest',
-      total: true,
-    },
-    {
-      label: 'Against an average month',
-      value: vs?.label ?? '—',
-      class: vs?.class ?? 'text-grey-7',
-      note: `the last 12 months average ${signed(m.average_net)}`,
-    },
-  ]
-})
+// Each month's figures as decimal strings, totals added exactly by plus(); the widths alone
+// are floats, on one scale shared by both months.
+const monthCols = computed(() => {
+  const average = props.month?.average_net ?? null
+  const versus = net => {
+    if (average === null) return null
 
-const nextTiles = computed(() => {
-  const m = props.nextMonth
-  const vs = props.month ? against(m.net_typical, props.month.average_net) : null
+    const gap = minus(net, average)
 
-  return [
-    {
-      label: 'Known in',
-      value: `+${money(m.in)}`,
-      class: 'text-positive',
-      note: isZero(m.dividends)
-        ? `and ~${money(m.typical_in)} typical income`
-        : `and ~${money(m.typical_in)} typical, ~${money(m.dividends)} of it dividends`,
-    },
-    {
-      label: 'Known out',
-      value: `−${money(m.out)}`,
-      class: 'text-negative',
-      note: `and ~${money(m.typical)} typical spending`,
-    },
-    {
-      label: 'Likely net',
-      value: signed(m.net_typical),
-      class: signClass(m.net_typical),
-      note: `${signed(m.net_known)} from the known alone`,
-      total: true,
-    },
-    {
-      label: 'Against an average month',
-      value: vs?.label ?? '—',
-      class: vs?.class ?? 'text-grey-7',
-      note: props.month ? `the last 12 months average ${signed(props.month.average_net)}` : '',
-    },
-  ]
-})
+    return { up: !negative(gap), amount: negative(gap) ? gap.slice(1) : gap }
+  }
 
-// Widths only, on one scale for both, so floats: known solid, typical pale.
-const nextFlow = computed(() => {
-  const m = props.nextMonth
-  const [inKnown, inTypical, outKnown, outTypical] = [m.in, m.typical_in, m.out, m.typical].map(
-    Number,
+  const cols = []
+
+  if (props.month) {
+    const m = props.month
+
+    cols.push({
+      key: 'current',
+      name: monthName(m.month),
+      path: '/cash-flow',
+      forecast: false,
+      days: monthDays.value,
+      net: m.likely_net,
+      vsAverage: versus(m.likely_net),
+      flows: {
+        in: { done: m.so_far.income, known: m.to_come.income, typical: m.typical_income_rest },
+        out: { done: m.so_far.spending, known: m.to_come.spending, typical: m.typical_rest },
+      },
+    })
+  }
+
+  if (props.nextMonth) {
+    const m = props.nextMonth
+
+    cols.push({
+      key: 'next',
+      name: monthName(m.month),
+      path: '/forecast',
+      forecast: true,
+      net: m.net_typical,
+      vsAverage: versus(m.net_typical),
+      note: isZero(m.dividends) ? '' : `In includes ~${money(m.dividends)} of dividends`,
+      flows: {
+        in: { done: '0', known: m.in, typical: m.typical_in },
+        out: { done: '0', known: m.out, typical: m.typical },
+      },
+    })
+  }
+
+  const totalOf = flow => plus(plus(flow.done, flow.known), flow.typical)
+  const scale = Math.max(
+    1,
+    ...cols.flatMap(col => [Number(totalOf(col.flows.in)), Number(totalOf(col.flows.out))]),
   )
-  const scale = Math.max(1, inKnown + inTypical, outKnown + outTypical)
-  const width = value => (value / scale) * 100
 
-  return [
-    {
-      label: 'In',
-      parts: [
-        { width: width(inKnown), colour: '#059669' },
-        { width: width(inTypical), colour: '#86efac' },
-      ],
-    },
-    {
-      label: 'Out',
-      parts: [
-        { width: width(outKnown), colour: '#dc2626' },
-        { width: width(outTypical), colour: '#fecaca' },
-      ],
-    },
-  ]
-})
-
-// Widths only, on one scale for both bars, so floats are fine here and only here.
-const monthFlow = computed(() => {
-  const m = props.month
-  const [inDone, inCome, inTypical] = [
-    Number(m.so_far.income),
-    Number(m.to_come.income),
-    Number(m.typical_income_rest),
-  ]
-  const [outDone, outCome, outTypical] = [
-    Number(m.so_far.spending),
-    Number(m.to_come.spending),
-    Number(m.typical_rest),
-  ]
-  // The In bar carries its typical income as the Out bar carries its typical spending, in the
-  // pale green the forecast's own In bar uses for it. Without that third segment this bar set
-  // the scale from income the card said nothing more was coming from, so every other width on
-  // it was drawn against a month with no expected income in it.
-  const scale = Math.max(1, inDone + inCome + inTypical, outDone + outCome + outTypical)
-  const width = value => (value / scale) * 100
-
-  return [
-    {
-      label: 'In',
-      parts: [
-        { width: width(inDone), colour: '#059669' },
-        { width: width(inCome), colour: '#6ee7b7' },
-        { width: width(inTypical), colour: '#86efac' },
-      ],
-    },
-    {
-      label: 'Out',
-      parts: [
-        { width: width(outDone), colour: '#dc2626' },
-        { width: width(outCome), colour: '#f87171' },
-        { width: width(outTypical), colour: '#fecaca' },
-      ],
-    },
-  ]
+  return cols.map(col => ({
+    ...col,
+    bars: ['in', 'out'].map(side => ({
+      label: side === 'in' ? 'In' : 'Out',
+      total: totalOf(col.flows[side]),
+      parts: ['done', 'known', 'typical']
+        .filter(kind => !isZero(col.flows[side][kind]))
+        .map(kind => ({
+          kind: legend.find(key => key.kind === kind)?.label ?? kind,
+          amount: col.flows[side][kind],
+          width: (Number(col.flows[side][kind]) / scale) * 100,
+          colour: shades[side][kind],
+        })),
+    })),
+  }))
 })
 
 // In the script: the template cannot see the auto-imported router, so a click calling it

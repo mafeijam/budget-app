@@ -2437,3 +2437,62 @@ body {
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
 }
+
+/* Home's two months side by side, a hairline between, each a link to its report. */
+.app-months {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 8px 8px 0;
+}
+
+.app-months__col {
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.app-months__col:hover {
+  background: var(--app-header-bg);
+}
+
+.app-months__col + .app-months__col {
+  border-left: 1px solid var(--app-border);
+  border-radius: 0 10px 10px 0;
+}
+
+/* An estimate, quieter than the month on record. */
+.app-months__col--forecast .app-outlook__track > div {
+  opacity: 0.85;
+}
+
+.app-months__bar {
+  display: grid;
+  grid-template-columns: 32px 1fr 96px;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-months__bar + .app-months__bar {
+  margin-top: 6px;
+}
+
+.app-months__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+}
+
+@media (max-width: 767px) {
+  .app-months {
+    grid-template-columns: 1fr;
+  }
+
+  .app-months__col + .app-months__col {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
+    border-radius: 0 0 10px 10px;
+  }
+}
