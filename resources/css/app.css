@@ -413,39 +413,41 @@ body {
 }
 
 /* Classes rather than color props: Quasar's palette has no shade mixed from the brand. */
-/* A holding's second line: what is held at what cost, then its trades as quiet tags. */
+/* A holding's second line: what is held at what cost, then its trades as one segmented pill. */
 .app-holding-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
+  gap: 4px 10px;
   margin-top: 3px;
   font-size: 0.75rem;
   line-height: 1.2;
+  color: #64748b;
 }
 
 .app-holding-line__held {
-  margin-right: 2px;
   font-weight: 600;
   color: #334155;
 }
 
-.app-holding-line__at {
-  padding: 0 1px;
-  font-weight: 400;
-  color: #94a3b8;
-}
-
-.app-holding-line__tag {
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #64748b;
+.app-holding-line__pill {
+  display: inline-flex;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  overflow: hidden;
   white-space: nowrap;
 }
 
+.app-holding-line__pill > span {
+  padding: 1px 7px;
+}
+
+.app-holding-line__pill > span + span {
+  border-left: 1px solid var(--app-border);
+}
+
 /* The cost of dealing, apart from the history beside it. */
-.app-holding-line__tag--fees {
+.app-holding-line__fees {
   background: #eef2ff;
   color: #4f46e5;
 }

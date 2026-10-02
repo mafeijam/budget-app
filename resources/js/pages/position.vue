@@ -318,19 +318,17 @@
                   label="sold out"
                 />
               </div>
-              <!-- What is held and at what cost leads; the trades behind it follow as quiet tags. -->
+              <!-- What is held at what cost, then the trades behind it as one segmented pill. -->
               <div class="app-holding-line money">
-                <span v-if="position.open" class="app-holding-line__held">
-                  {{ quantity(position.quantity) }}
-                  <span class="app-holding-line__at">@</span>
-                  {{ money(position.average_cost) }}
+                <span v-if="position.open">
+                  <span class="app-holding-line__held">{{ quantity(position.quantity) }}</span>
+                  @ {{ money(position.average_cost) }}
                 </span>
-                <span class="app-holding-line__tag">{{ activity(position).trades }}</span>
-                <span
-                  v-if="activity(position).fees"
-                  class="app-holding-line__tag app-holding-line__tag--fees"
-                >
-                  fees {{ activity(position).fees }}
+                <span v-else>nothing held</span>
+                <span class="app-holding-line__pill">
+                  <span v-for="part in activity(position)" :key="part.key" :class="part.class">
+                    {{ part.label }}
+                  </span>
                 </span>
               </div>
             </td>
@@ -943,17 +941,23 @@ const headline = totals => [
   },
 ]
 
-// Trades, the last of them, and the fees a row has only sometimes. What the line realised
-// is not repeated here: it has a column of its own now.
-const activity = position => ({
-  trades: [
-    `${position.trades} trade${position.trades === 1 ? '' : 's'}`,
-    position.last_trade_date ? `last ${formatDate(position.last_trade_date)}` : null,
-  ]
-    .filter(Boolean)
-    .join(' · '),
-  fees: received(position.fees) ? money(position.fees) : null,
-})
+// Trades, the last of them, and the fees a row has only sometimes: the pill's segments.
+// What the line realised is not repeated here: it has a column of its own.
+const activity = position =>
+  [
+    {
+      key: 'trades',
+      label: [
+        `${position.trades} trade${position.trades === 1 ? '' : 's'}`,
+        position.last_trade_date ? formatDate(position.last_trade_date) : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    },
+    received(position.fees)
+      ? { key: 'fees', label: `fees ${money(position.fees)}`, class: 'app-holding-line__fees' }
+      : null,
+  ].filter(Boolean)
 
 // The day most prices are from, so only a price older than it, or set by hand, says when.
 const latestPriceDate = computed(() =>
