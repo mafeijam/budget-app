@@ -1,7 +1,29 @@
 <template>
+  <!-- The phone's: each month its likely net and what goes in and out, side by side, from the
+       same figures as the full card below so the two cannot disagree. -->
+  <q-card v-if="compact && monthCols.length" flat bordered>
+    <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
+      This month and next
+    </q-card-section>
+    <div class="app-month-tiles">
+      <div v-for="col in monthCols" :key="col.key" class="app-month-tiles__tile">
+        <div class="row items-center no-wrap">
+          <span class="text-weight-medium text-grey-9">{{ col.name }}</span>
+          <q-badge v-if="col.forecast" class="app-tint app-tint--info q-ml-xs" label="forecast" />
+        </div>
+        <div class="text-h6 text-weight-bold money text-no-wrap" :class="signClass(col.net)">
+          {{ col.forecast ? '≈ ' : '' }}{{ signed(col.net) }}
+        </div>
+        <div v-for="bar in col.bars" :key="bar.label" class="text-caption money">
+          {{ bar.label }} {{ money(bar.total) }}
+        </div>
+      </div>
+    </div>
+  </q-card>
+
   <!-- This month and the next as one card, each answering the same question -- where the
        month is likely to end -- with its in and out drawn on one scale for both. -->
-  <q-card v-if="monthCols.length" flat bordered>
+  <q-card v-else-if="monthCols.length" flat bordered>
     <q-card-section class="row items-center no-wrap q-pb-none">
       <q-icon name="insights" size="sm" color="grey-6" class="q-mr-sm" />
       <div>
@@ -100,6 +122,8 @@ const props = defineProps({
   // The forecast's month after this one: known and typical figures, decimal strings.
   nextMonth: { type: Object, default: null },
   base: { type: String, default: 'HKD' },
+  // Two tiles for a phone instead of the bars, legend and comparisons.
+  compact: { type: Boolean, default: false },
 })
 
 const money = useMoney()
