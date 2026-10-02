@@ -13,7 +13,6 @@
       :loading="loading === 'transaction'"
       @click="open(forms[0])"
     >
-      <q-tooltip :delay="500" :offset="[0, 8]">New transaction</q-tooltip>
     </q-btn>
     <q-btn
       unelevated
