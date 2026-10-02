@@ -612,7 +612,9 @@ const props = defineProps({
   // converted it. The day is the one the cards read, not today.
   rates: { type: Object, default: () => ({}) },
   current: { type: Object, default: () => ({ accounts: [], brokerages: [], unconverted: [] }) },
-  lastMonth: { type: Object, default: null },
+  // One period back from the day read, on the spacing the chart is drawn at, and null where
+  // the ledger does not reach that far.
+  lastPeriod: { type: Object, default: null },
   since: { type: Object, default: null },
   history: { type: Array, default: () => [] },
   months: { type: Number, default: 12 },
@@ -879,7 +881,7 @@ const change = (against, key, label) => {
 
 const changes = computed(() =>
   [
-    change(props.lastMonth, 'month', 'vs last month'),
+    change(props.lastPeriod, 'period', `vs last ${periodName.value}`),
     change(props.since, 'since', props.since ? `since ${monthLabel(props.since.date)}` : ''),
   ].filter(Boolean),
 )

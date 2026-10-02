@@ -156,7 +156,8 @@ class NetWorthTest extends TestCase
             ->where('months', 3)
             ->where('base', 'HKD')
             ->where('current.cash', '100.0000')
-            ->where('lastMonth.date', '2026-08-31')
+            // A quarter back, because the badge is about the spacing the chart is drawn at.
+            ->where('lastPeriod.date', '2026-06-30')
             ->where('since.date', '2026-02-28')
             ->has('history', 3)
         );
@@ -164,6 +165,37 @@ class NetWorthTest extends TestCase
         $this->get('/net-worth?months=9')->assertInertia(fn (Assert $page) => $page
             ->where('months', 12)
             ->where('periods', [1, 3, 6, 12])
+        );
+    }
+
+    public function test_the_badge_reads_the_spacing_the_chart_is_drawn_at(): void
+    {
+        $this->row($this->bank, 'deposit', '2019-06-10', '10000');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Yearly is the default, so a badge reading "vs last month" under it answered a
+        // question the page was not showing: the points below it are year ends.
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
+            ->where('months', 12)
+            ->where('lastPeriod.date', '2025-09-30')
+            ->where('lastPeriod.change', '50.0000')
+        );
+
+        $this->get('/net-worth?months=1')->assertInertia(fn (Assert $page) => $page
+            ->where('lastPeriod.date', '2026-08-31')
+        );
+    }
+
+    public function test_a_ledger_too_young_to_reach_a_period_back_has_no_badge(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+
+        // A year back is before the first transaction, where the balance is a standing zero. The
+        // whole holding would read as a gain of itself, against a day the ledger does not reach.
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
+            ->where('lastPeriod', null)
+            // The window's own first is still a comparison, since the ledger does reach it.
+            ->where('since.date', '2026-02-28')
         );
     }
 
@@ -292,7 +324,7 @@ class NetWorthTest extends TestCase
             ->where('at', null)
             ->where('snapshot', '2026-03-31')
             ->where('current.cash', '100.0000')
-            ->where('lastMonth.date', '2026-02-28')
+            ->where('lastPeriod.date', '2026-02-28')
             ->where('history.0.date', '2026-02-28')
             ->where('history.1.date', '2026-03-31')
             ->has('history', 2)
@@ -360,7 +392,7 @@ class NetWorthTest extends TestCase
         // answer: a day inside a month silently took the whole month's movements.
         $this->get('/net-worth?months=1&at=2022-12')->assertInertia(fn (Assert $page) => $page
             ->where('current.cash', '10.0000')
-            ->where('lastMonth.date', '2022-11-30')
+            ->where('lastPeriod.date', '2022-11-30')
         );
 
         // A month still running has no last day yet, so it reads today.

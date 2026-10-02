@@ -52,14 +52,26 @@ class NetWorthController extends Controller
             ? null
             : Carbon::parse($from ?? $first)->endOfMonth()->min(Carbon::parse($day))->toDateString();
 
+        /* One period back, on the spacing the chart is drawn at: the badge is about the same
+           stretch of time as the points below it, and a yearly chart that read "vs last month"
+           answered a question the page was not showing. A month end, since a day inside one
+           silently takes the whole month's movements. */
+        $back = Carbon::parse($day)->startOfMonth()->subMonthsNoOverflow($months)->endOfMonth()->toDateString();
+
+        // Before the ledger opens there is nothing to compare against, and a badge that rises
+        // from a standing zero says the holding grew when it says the ledger does not reach back.
+        $lastPeriod = $first !== null && $back >= $first ? $back : null;
+
         // The cards' three snapshots and the chart's, asked for together. One at a time each
         // meant a full balance aggregate over every transaction and a read of the closes, and
         // the page already knew every day it wanted. Every one of them is a month end or
         // today, which is what makes asking them together sound.
-        $days = [$day, Carbon::parse($day)->startOfMonth()->subDay()->toDateString()];
+        $days = [$day];
 
-        if ($since !== null) {
-            $days[] = $since;
+        foreach ([$lastPeriod, $since] as $compared) {
+            if ($compared !== null) {
+                $days[] = $compared;
+            }
         }
 
         $days = array_values(array_unique([...$days, ...$chart]));
@@ -67,8 +79,8 @@ class NetWorthController extends Controller
 
         $current = $shown[$day];
 
-        // The comparisons the net worth card makes: last month's end, and the window's first.
-        $against = fn (string $day) => [
+        // The comparisons the net worth card makes: one period back, and the window's first.
+        $against = fn (?string $day) => $day === null ? null : [
             'date' => $day,
             'net_worth' => $shown[$day]['net_worth'],
             'change' => (string) BigDecimal::of($current['net_worth'])->minus($shown[$day]['net_worth']),
@@ -81,8 +93,8 @@ class NetWorthController extends Controller
             // can say what converted it. That day, not today: a month picked on the chart was
             // built at that month's close and a rate from today would not be the one.
             'rates' => $worth->ratesOn($day),
-            'lastMonth' => $against(Carbon::parse($day)->startOfMonth()->subDay()->toDateString()),
-            'since' => $since === null ? null : $against($since),
+            'lastPeriod' => $against($lastPeriod),
+            'since' => $against($since),
             'history' => NetWorth::chartPoints(array_map(fn (string $d) => $shown[$d], $chart)),
             // The month picked, and the day it resolved to, so the chart can mark it without
             // working out a month's last day in the browser.
