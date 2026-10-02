@@ -65,7 +65,14 @@
           :fill="colours.cash"
           fill-opacity="0.18"
         />
-        <path v-if="owing" :d="area('loans')" :fill="colours.loans" fill-opacity="0.2" />
+        <!-- Lighter than the cash's fill below zero, which is drawn over it, so the two separate. -->
+        <path v-if="owing" :d="area('loans')" :fill="colours.loans" fill-opacity="0.12" />
+        <path
+          :d="area('cash')"
+          :clip-path="`url(#${uid}-below)`"
+          :fill="colours.overdrawn"
+          fill-opacity="0.25"
+        />
         <path
           v-for="(piece, i) in gaps"
           :key="`gap-${i}`"
@@ -166,7 +173,7 @@ const colours = {
   value: '#2563eb',
   cost: '#e11d48',
   loans: '#d97706',
-  overdrawn: '#b97373',
+  overdrawn: '#f43f5e',
   grid: '#e2e8f0',
   baseline: '#94a3b8',
 }
@@ -187,8 +194,8 @@ const bands = [
 // Painted in this order, so the net worth line is over every fill beneath it.
 const lines = [
   { key: 'cost', colour: colours.cost, dashed: true },
-  // Cash below zero is a line in a muted red with no fill: money missing rather than held, and
-  // a fill there would sit on the loans' and muddy both. Muted, as red proper is the stock cost.
+  // Cash below zero is rose, line and fill: money missing rather than held. Rose rather than the
+  // red proper, which is the stock cost, so it does not read as one more thing about the stocks.
   { key: 'cash', colour: colours.cash, clip: 'above' },
   { key: 'cash', id: 'cash-below', colour: colours.overdrawn, clip: 'below' },
   { key: 'value', colour: colours.value },
