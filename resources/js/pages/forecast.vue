@@ -51,87 +51,84 @@
          reserve of months of spending, is cash that could go elsewhere and never take the
          balance under the reserve. -->
     <q-card v-for="spare in spares" :key="spare.ccy" flat bordered>
-      <!-- The runway card's header: its title on the left and its toolbar on the right. To the
-           top, not the middle: this toolbar is twice the runway's height for its slider, and
-           centred on it the title sat twenty pixels lower than the runway's does. -->
-      <q-card-section class="row items-start q-gutter-y-sm">
-        <div class="row items-center no-wrap">
-          <q-icon name="savings" size="sm" color="grey-6" class="q-mr-sm" />
-          <div>
+      <!-- Three columns in one band: the answer, the sum that gives it, and the reserve that
+           sets it, so nothing waits on a second row under a tall header. -->
+      <q-card-section class="app-spare">
+        <div class="app-spare__result">
+          <div class="row items-center no-wrap">
+            <q-icon name="savings" size="sm" color="grey-6" class="q-mr-sm" />
             <div class="text-subtitle1 text-weight-medium">
               {{ spare.short ? 'Short of the reserve' : 'Spare cash' }}
             </div>
-            <div class="text-caption text-grey-7">
-              What could be moved out today and leave the reserve untouched, in {{ spare.ccy }}.
-            </div>
+          </div>
+          <div
+            class="text-h4 text-weight-bold money q-mt-sm"
+            :class="spare.short ? 'text-negative' : 'text-positive'"
+          >
+            {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.amount) }}
+          </div>
+          <div class="text-caption text-grey-7">
+            {{
+              spare.short
+                ? `more ${spare.ccy} is needed to keep the reserve on the lowest day`
+                : `${spare.ccy} that could move out today and never touch the reserve`
+            }}
           </div>
         </div>
-        <q-space />
 
-        <div class="col-auto app-toolbar app-toolbar--slider row items-center">
-          <q-icon name="shield" size="xs" color="grey-6" class="q-mx-sm">
-            <q-tooltip :delay="500" :offset="[0, 6]">The reserve, in months of spending</q-tooltip>
-          </q-icon>
-          <!-- From nothing to a year in half months, wide enough to land on a half: each month
-               marked above the track and the one picked under the thumb, as Quasar's own
-               marker-labels example lays them out. -->
-          <div class="q-px-md app-toolbar__slider app-toolbar__slider--labelled">
-            <q-slider
-              v-model="reserveMonths"
-              :min="0"
-              :max="12"
-              :step="0.5"
-              :markers="1"
-              marker-labels
-              marker-labels-class="text-caption text-grey-7"
-              switch-marker-labels-side
-              label-always
-              switch-label-side
-              :label-value="monthsLabel(reserveMonths)"
-              color="primary"
-            />
-          </div>
-        </div>
-      </q-card-section>
-
-      <!-- The sum itself, each part named where it stands, rather than a sentence to unpick. -->
-      <q-card-section class="q-pt-none">
-        <div class="app-spare">
-          <div>
-            <div class="text-caption text-grey-7">Lowest ahead</div>
-            <div class="text-h6 text-weight-medium money text-grey-9">
+        <!-- The sum as a receipt: each part on its own line, the figures in one column. -->
+        <div class="app-spare__sum">
+          <div class="app-spare__line">
+            <span class="app-spare__op" />
+            <span class="text-grey-8">Lowest ahead</span>
+            <span class="money text-weight-medium text-grey-9 text-right">
               {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.lowest) }}
-            </div>
-            <div class="text-caption text-grey-6">{{ spare.lowNote }}</div>
+            </span>
+            <span class="text-caption text-grey-6">{{ spare.lowNote }}</span>
           </div>
-          <div class="app-spare__op text-h6 text-grey-5">−</div>
-          <div>
-            <div class="text-caption text-grey-7">Reserve</div>
-            <div class="text-h6 text-weight-medium money text-grey-9">
+          <div class="app-spare__line">
+            <span class="app-spare__op text-grey-6">−</span>
+            <span class="text-grey-8">Reserve</span>
+            <span class="money text-weight-medium text-grey-9 text-right">
               {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.reserve) }}
-            </div>
-            <div class="text-caption text-grey-6">{{ monthsLabel(reserveMonths) }} of spending</div>
+            </span>
+            <span class="text-caption text-grey-6">
+              {{ monthsLabel(reserveMonths) }} of spending
+            </span>
           </div>
-          <div class="app-spare__op text-h6 text-grey-5">=</div>
-          <div>
-            <div class="text-caption text-grey-7">{{ spare.short ? 'Short by' : 'Spare' }}</div>
-            <div
-              class="text-h4 text-weight-bold money"
+          <div class="app-spare__line app-spare__line--total">
+            <span class="app-spare__op text-grey-6">=</span>
+            <span class="text-grey-8">{{ spare.short ? 'Short by' : 'Spare' }}</span>
+            <span
+              class="money text-weight-bold text-right"
               :class="spare.short ? 'text-negative' : 'text-positive'"
             >
               {{ spare.estimate ? '≈ ' : '' }}{{ money(spare.amount) }}
-            </div>
-            <div class="text-caption text-grey-6">
-              {{ spare.short ? 'more is needed to keep the reserve' : 'could be moved out today' }}
-            </div>
+            </span>
+            <span />
           </div>
         </div>
-        <div class="text-caption text-grey-7 q-mt-sm">
-          {{
-            spare.short
-              ? 'The balance would fall below the reserve on the lowest day ahead.'
-              : 'Moved out today, the balance would still never fall below the reserve.'
-          }}
+
+        <div class="app-spare__reserve">
+          <div class="row items-center text-caption text-grey-7">
+            <q-icon name="shield" size="xs" color="grey-6" class="q-mr-xs" />
+            Reserve to keep
+            <q-space />
+            <span class="text-weight-bold text-primary">{{ monthsLabel(reserveMonths) }}</span>
+          </div>
+          <!-- Half months up to a year, each month marked; the value is read in the line above
+               rather than a bubble, which needed a band of its own under the track. -->
+          <q-slider
+            v-model="reserveMonths"
+            :min="0"
+            :max="12"
+            :step="0.5"
+            :markers="1"
+            :marker-labels="[0, 3, 6, 9, 12].map(value => ({ value, label: String(value) }))"
+            marker-labels-class="text-caption text-grey-6"
+            color="primary"
+            class="q-mt-xs"
+          />
         </div>
       </q-card-section>
     </q-card>

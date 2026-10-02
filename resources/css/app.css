@@ -1809,14 +1809,45 @@ body {
 
 /* Spare cash as its sum: lowest ahead, minus the reserve, equals the spare. */
 .app-spare {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(320px, 1.6fr) minmax(240px, 1fr);
   align-items: center;
-  gap: 8px 24px;
+  gap: 16px 40px;
+}
+
+.app-spare__sum {
+  display: grid;
+  gap: 6px;
+  padding-left: 24px;
+  border-left: 1px solid var(--app-border);
+}
+
+/* Sign, name, figure, note: the figures line up however long the names run. */
+.app-spare__line {
+  display: grid;
+  grid-template-columns: 14px 100px minmax(110px, auto) 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-spare__line--total {
+  padding-top: 6px;
+  border-top: 1px solid var(--app-border);
 }
 
 .app-spare__op {
-  line-height: 1;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .app-spare {
+    grid-template-columns: 1fr;
+  }
+
+  .app-spare__sum {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 /* Forecast months: one row each, the bars and the figures in columns that line up. */
