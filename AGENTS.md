@@ -165,7 +165,7 @@ then currency). The cost is a larger response, so build each view from one share
   with `writeCookie()`, read by the controller, and listed in `encryptCookies(except:)` in
   `bootstrap/app.php` — an encrypted cookie the browser wrote reads as nothing, silently.
   Totals closed means the totals query does not run at all. Hide transfers is a preference,
-  not a filter: Clear all leaves it, `active` does not count it, the echoed `params.filter`
+  not a filter: Reset leaves it, `active` does not count it, the echoed `params.filter`
   leaves out the cookie's addition, and a link that names it wins for that visit only.
   Tests set them with `withUnencryptedCookie()`; the totals tests need it to get totals.
 - **Detail too big to ship is fetched when asked, from a small JSON endpoint built on the

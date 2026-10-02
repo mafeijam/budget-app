@@ -23,6 +23,19 @@
       <div class="app-toolbar row items-center no-wrap">
         <q-btn
           flat
+          round
+          dense
+          size="sm"
+          icon="restart_alt"
+          color="grey-8"
+          :disable="!active"
+          @click="clear"
+        >
+          <q-tooltip :delay="500" :offset="[0, 6]">Reset the filters</q-tooltip>
+        </q-btn>
+        <q-separator vertical inset class="q-mx-sm" />
+        <q-btn
+          flat
           dense
           no-caps
           icon="tune"
@@ -79,18 +92,6 @@
     </div>
 
     <q-space />
-
-    <div v-if="active" class="col-auto">
-      <q-btn
-        class="text-weight-bold"
-        color="grey-2"
-        text-color="grey-9"
-        unelevated
-        no-caps
-        label="Clear all"
-        @click="clear"
-      />
-    </div>
 
     <div class="col-auto">
       <slot name="actions" />
@@ -539,7 +540,7 @@ const parse = filter => ({
 
 const filters = reactive(parse(seeded))
 
-// A choice about the page and not a filter on one search, so Clear all leaves it. Kept in a
+// A choice about the page and not a filter on one search, so Reset leaves it. Kept in a
 // cookie and not in storage or the URL, so the server applies it to the first request: from
 // storage the page loaded the whole list and then asked again. The server says whether it
 // applied it, which a link naming it can change for one visit without changing the choice.
@@ -552,7 +553,7 @@ const hideTransfers = computed({
 })
 
 // What the list on screen is filtered by: the server's echo of the last request, not the
-// controls. The chips and Clear all read this, so they change when the rows do -- off the
+// controls. The chips and Reset read this, so they change when the rows do -- off the
 // controls, a chip went at the click and the rows a fifth of a second later, and the table
 // jumped up under the old rows before they were replaced.
 const applied = computed(() => parse(page.props.params?.filter ?? {}))
