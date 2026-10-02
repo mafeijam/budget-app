@@ -120,6 +120,12 @@ body {
   color: #424242;
 }
 
+/* The three figures under net worth, as large as a phone allows: at 16px "1,522,431.44" ran out
+   of its third of a 320px screen, so the size follows the width down to 14px. */
+.app-simple__part {
+  font-size: clamp(0.875rem, 4.1vw, 1rem);
+}
+
 /* Every row the same padding, a one-line row and a two-line one alike: a dense item's minimum
    height left the one-line rows padded out and the two-line ones not, so the gaps between rows
    changed with what each held. */

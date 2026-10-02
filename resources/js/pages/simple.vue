@@ -9,7 +9,7 @@
         <div class="row q-mt-sm">
           <div v-for="part in parts" :key="part.label" class="col">
             <div class="text-caption text-grey-7">{{ part.label }}</div>
-            <div class="text-body2 text-weight-medium money" :class="part.class">
+            <div class="app-simple__part text-weight-medium money" :class="part.class">
               {{ money(part.value) }}
             </div>
           </div>
