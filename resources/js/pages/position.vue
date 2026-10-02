@@ -424,7 +424,7 @@
               @click.stop="peekDividends(position, owner)"
             >
               <template v-if="position.dividend_count">
-                <span class="text-grey-9">{{ money(position.dividends) }}</span>
+                <span class="app-text-dividend">{{ money(position.dividends) }}</span>
                 <div class="text-caption text-grey-6">
                   {{ payments(position.dividend_count) }}
                   <!-- The cell opens the payments here; this goes on to the full list. -->
@@ -928,7 +928,7 @@ const headline = totals => [
   {
     label: 'Dividends',
     value: money(totals.dividends),
-    class: 'text-grey-9',
+    class: 'app-text-dividend',
     note: 'received in all',
     noteClass: 'text-grey-6',
   },

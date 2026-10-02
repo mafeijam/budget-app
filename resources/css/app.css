@@ -849,9 +849,11 @@ body {
  * shade this was before, read as brown beside those controls.
  *
  * It is 3.19:1 on white: enough for a figure at heading size, under the 4.5:1 AA wants for
- * a caption. That is the trade, not an oversight to put right.
+ * a caption. That is the trade, not an oversight to put right. Dividends received on
+ * Positions take the same amber, so the money a holding has paid reads as one colour.
  */
-.app-text-estimate {
+.app-text-estimate,
+.app-text-dividend {
   color: #d97706;
 }
 
