@@ -1,14 +1,17 @@
 <template>
+  <!-- Full screen on a phone, where a dialog with a margin round it left the fields a strip
+       to scroll and Submit somewhere below them. -->
   <q-dialog
     v-model="dialog"
-    transition-show="jump-down"
-    transition-hide="jump-up"
+    :maximized="narrow"
+    :transition-show="narrow ? 'slide-up' : 'jump-down'"
+    :transition-hide="narrow ? 'slide-down' : 'jump-up'"
     :no-backdrop-dismiss="form.isDirty"
     :no-esc-dismiss="form.isDirty"
     @hide="$emit('hide-form')"
   >
-    <q-card flat class="card-form-dialog">
-      <q-card-section>
+    <q-card flat class="card-form-dialog" :class="{ 'card-form-dialog--full': narrow }">
+      <q-card-section :class="{ 'q-pt-sm q-pb-xs': narrow }">
         <div class="row items-center no-wrap q-gutter-x-sm">
           <div class="text-h6 text-grey-9 text-weight-bold">
             {{ title }}
@@ -18,13 +21,19 @@
           <q-btn flat round color="grey-6" icon="close" @click="dialog = false" />
         </div>
         <!-- Its own row on a phone, where beside the title it squeezed the title onto two. -->
-        <div v-if="narrow && $slots.header" class="q-mt-xs">
+        <!-- Pulled left by the button's own padding, so its icon lines up under the title. -->
+        <div v-if="narrow && $slots.header" class="card-form-dialog__header-row">
           <slot name="header" />
         </div>
         <slot name="subheader" />
       </q-card-section>
 
-      <q-card-section class="scroll" :class="{ 'card-form-height': fullHeight }">
+      <q-separator v-if="narrow" />
+
+      <q-card-section
+        class="scroll card-form-dialog__body"
+        :class="{ 'card-form-height': fullHeight && !narrow }"
+      >
         <slot />
       </q-card-section>
 
@@ -34,9 +43,9 @@
         </div>
       </q-card-section>
 
-      <q-separator v-if="separator" inset />
+      <q-separator v-if="separator || narrow" :inset="!narrow" />
 
-      <q-card-actions class="q-pa-md">
+      <q-card-actions :class="narrow ? 'q-px-md q-pt-xs' : 'q-pa-md'">
         <slot name="actions">
           <div class="col-12">
             <div class="row items-center">
@@ -62,7 +71,7 @@
               <q-btn
                 type="submit"
                 class="text-weight-bold app-btn app-btn--positive"
-                :class="{ 'full-width q-mt-md text-subtitle1': narrow }"
+                :class="{ 'full-width q-mt-sm text-subtitle1': narrow }"
                 :padding="narrow ? '12px md' : 'sm md'"
                 unelevated
                 no-caps
