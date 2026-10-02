@@ -501,7 +501,7 @@ class TransactionController extends Controller
                 'ccy' => $account->ccy,
             ]);
 
-        $categories = Category::all()->map(fn ($category) => [
+        $categories = Category::byUse()->map(fn (Category $category) => [
             'label' => $category->name,
             'value' => $category->id,
         ]);

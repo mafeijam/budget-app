@@ -124,7 +124,7 @@ class RecurringTransactionController extends Controller
                 'active' => $account->status === 'active',
             ]);
 
-        $categories = Category::orderBy('name')->get()->map(fn (Category $category) => [
+        $categories = Category::byUse()->map(fn (Category $category) => [
             'label' => $category->name,
             'value' => $category->id,
         ]);
