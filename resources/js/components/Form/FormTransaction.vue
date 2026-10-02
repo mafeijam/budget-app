@@ -757,14 +757,14 @@ const templates = computed(() => ctx.templates ?? [])
 const templateSearch = ref('')
 
 // QList has no groups, so the account names are headers between runs of templates. The
-// recurring rules come first in each account's run: they are the ones with a current figure
-// behind them, and a saved template of the same subscription tends to be the stale one.
+// saved templates come first in each account's run: they are the ones somebody chose to
+// keep, and the recurring rules follow, so a new save is not pushed below a run of rules.
 const templateGroups = computed(() => {
   const needle = (templateSearch.value ?? '').toLowerCase()
   const groups = new Map()
 
   for (const template of [...templates.value].sort(
-    (a, b) => Number(b.derived) - Number(a.derived),
+    (a, b) => Number(a.derived) - Number(b.derived),
   )) {
     const account = template.account_name ?? ''
 
