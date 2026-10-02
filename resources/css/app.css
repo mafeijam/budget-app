@@ -1410,6 +1410,11 @@ body {
   min-width: 0;
 }
 
+.app-tx-pending {
+  color: #b45309;
+  font-weight: 500;
+}
+
 /* The transactions filter bar: a white search, and the open filters on a soft panel. */
 .app-filter-search .q-field__control {
   background: var(--app-surface);

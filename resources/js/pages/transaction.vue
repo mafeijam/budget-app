@@ -36,7 +36,13 @@
       <template #body-cell-description="cell">
         <q-td :props="cell">
           <div class="row items-center no-wrap">
-            <span class="app-tx-icon q-mr-sm" :class="`app-tx-icon--${directionName(cell.row)}`">
+            <!-- Untinted while pending, as its amount is: it has not moved the balance yet. -->
+            <span
+              class="app-tx-icon q-mr-sm"
+              :class="
+                cell.row.status === 'pending' ? null : `app-tx-icon--${directionName(cell.row)}`
+              "
+            >
               <!-- A transfer's half by what it is, not its type: a withdrawal's cart reads as spent. -->
               <q-icon
                 :name="
@@ -44,38 +50,23 @@
                 "
                 size="16px"
               />
-              <q-tooltip :delay="500" :offset="[0, 6]">{{
-                transferOf(cell.row) ? `${cell.row.type}, one half of a transfer` : cell.row.type
-              }}</q-tooltip>
+              <q-tooltip :delay="500" :offset="[0, 6]">{{ kindOf(cell.row) }}</q-tooltip>
             </span>
             <div class="app-tx-what">
-              <div class="row items-center no-wrap">
-                <span class="text-weight-medium text-grey-9 ellipsis">
-                  {{ cell.row.description }}
-                </span>
-                <!-- Only the exception is marked: almost every row is posted. -->
-                <q-badge
-                  v-if="cell.row.status === 'pending'"
-                  class="app-tint app-tint--warning q-ml-sm"
-                  label="pending"
-                />
-                <q-badge
-                  v-if="cell.row.meta_data?.one_off"
-                  class="app-tint app-tint--info q-ml-sm"
-                  label="one-off"
-                >
+              <div class="text-weight-medium text-grey-9 ellipsis">
+                {{ cell.row.description }}
+              </div>
+              <!-- Words rather than badges: a fill on every row made the column read as noise.
+                   Only the exception is marked, since almost every row is posted. -->
+              <div class="text-caption text-grey-6 ellipsis">
+                <span v-if="cell.row.status === 'pending'" class="app-tx-pending">Pending · </span>
+                {{ [categoryName(cell.row), cell.row.account_name].filter(Boolean).join(' · ') }}
+                <span v-if="cell.row.meta_data?.one_off">
+                  · one-off
                   <q-tooltip :delay="500" :offset="[0, 6]">
                     Left out of the forecast's typical figures
                   </q-tooltip>
-                </q-badge>
-              </div>
-              <div class="text-caption text-grey-6 ellipsis">
-                {{ [categoryName(cell.row), cell.row.account_name].filter(Boolean).join(' · ') }}
-                <q-badge
-                  v-bind="accountTypeBadges[cell.row.account_type] ?? {}"
-                  class="q-ml-xs text-weight-regular"
-                  :label="cell.row.account_type"
-                />
+                </span>
               </div>
             </div>
           </div>
@@ -302,11 +293,14 @@ const props = defineProps({
 const pagination = usePagination()
 const formatMoney = useMoney()
 
-// Quasar's ramp, not the brand: these hues only part card rows from bank rows.
-const accountTypeBadges = {
-  cash: { color: 'teal-1', textColor: 'teal-9' },
-  card: { color: 'deep-purple-1', textColor: 'deep-purple-9' },
-  security: { color: 'orange-1', textColor: 'orange-10' },
+const accountTypeNames = { cash: 'cash account', card: 'card', security: 'brokerage' }
+
+// The account's kind, which the row no longer badges: the icon mostly says it already.
+const kindOf = row => {
+  const on = accountTypeNames[row.account_type]
+  const kind = on ? `${row.type} on a ${on}` : row.type
+
+  return transferOf(row) ? `${kind}, one half of a transfer` : kind
 }
 
 const typeIcons = {
