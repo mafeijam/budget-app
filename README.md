@@ -97,7 +97,7 @@ Two commands run from the scheduler, which does nothing unless something calls
 * * * * * cd /path/to/budget-app && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-- `prices:fetch` at 06:30 Hong Kong time, for the brokerage's closing prices.
+- `prices:fetch` at 06:30 and 18:30 Hong Kong time, for the brokerage's closing prices.
 - `recurring:record` at 00:05 Hong Kong time, for the recurring transactions due
   that day. A missed run catches up on the next one, and saving a rule records
   whatever is already due, so the page works without cron and only goes stale.
