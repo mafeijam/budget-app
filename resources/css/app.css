@@ -390,16 +390,21 @@ body {
   padding: 8px 16px;
 }
 
+/* The height of the icon tile beside it, and the row's own 4px of padding above it, so the day
+   is centred on the tile instead of hanging from the top of the group. */
 .app-soon__date {
   width: 56px;
   flex: none;
   white-space: nowrap;
+  height: 28px;
+  margin-top: 4px;
+  line-height: 28px;
 }
 
 .app-soon__date-num {
   font-size: 20px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: inherit;
   color: #334155;
 }
 
