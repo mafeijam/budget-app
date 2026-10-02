@@ -1,9 +1,20 @@
 <template>
   <div class="column no-wrap q-gutter-sm">
-    <q-card flat bordered>
-      <q-card-section>
-        <div class="text-caption text-grey-7">Net worth</div>
-        <div class="text-h5 text-weight-bold text-grey-9 money">
+    <q-card flat bordered class="overflow-hidden">
+      <!-- The heading, and since last month's end as the home page's card has it. -->
+      <q-card-section class="app-card-head">
+        Net worth
+        <q-badge
+          class="app-change"
+          :class="change.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'"
+        >
+          <q-icon :name="change.up ? 'trending_up' : 'trending_down'" size="14px" />
+          <span class="money">{{ signed(change.amount) }}</span>
+          <span v-if="change.pct" class="app-change__pct">{{ change.pct }}</span>
+        </q-badge>
+      </q-card-section>
+      <q-card-section class="q-pt-sm q-pb-sm">
+        <div class="app-simple__worth text-weight-bold text-grey-9 money">
           {{ base }} {{ money(headline.net_worth) }}
         </div>
         <!-- Each as wide as its figure, spread to both edges, the last flush right: in equal
@@ -24,12 +35,23 @@
           {{ headline.unconverted.join(', ') }} left out: no rate to {{ base }} yet.
         </div>
       </q-card-section>
+      <!-- Deferred, so it lands under figures already on screen; the fallback holds its
+           height so the cards below do not move when it does. -->
+      <Deferred data="trend">
+        <template #fallback>
+          <div class="app-home-spark-placeholder" />
+        </template>
+        <HomeSpark
+          v-if="trend.length > 1"
+          :values="trend.map(point => point.net_worth)"
+          colour="#475569"
+          :label="`Net worth, last ${trend.length - 1} months`"
+        />
+      </Deferred>
     </q-card>
 
     <q-card v-if="attention.length" flat bordered>
-      <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
-        Needs attention
-      </q-card-section>
+      <q-card-section class="app-card-head"> Needs attention </q-card-section>
       <q-list>
         <q-item v-for="item in attention" :key="item.message" dense class="q-py-sm">
           <q-item-section avatar top style="min-width: 32px">
@@ -52,9 +74,7 @@
     <HomeMonths compact :month="month" :next-month="nextMonth" :base="base" />
 
     <q-card flat bordered>
-      <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
-        Cash
-      </q-card-section>
+      <q-card-section class="app-card-head"> Cash </q-card-section>
       <q-list>
         <q-item v-for="account in held" :key="account.id" dense class="q-py-sm">
           <q-item-section top>
@@ -85,9 +105,7 @@
     </q-card>
 
     <q-card flat bordered>
-      <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
-        Cards owe
-      </q-card-section>
+      <q-card-section class="app-card-head"> Cards owe </q-card-section>
       <q-list>
         <q-item v-for="card in owing" :key="card.id" dense class="q-py-sm">
           <q-item-section top>
@@ -112,9 +130,7 @@
     </q-card>
 
     <q-card v-if="brokerages.length" flat bordered>
-      <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
-        Stocks
-      </q-card-section>
+      <q-card-section class="app-card-head"> Stocks </q-card-section>
       <q-list>
         <q-item v-for="broker in brokerages" :key="broker.id" dense class="q-py-sm">
           <q-item-section top>
@@ -142,6 +158,7 @@
 </template>
 
 <script setup>
+import { Deferred } from '@inertiajs/vue3'
 import simple from '../layout-simple.vue'
 
 defineOptions({ layout: simple })
@@ -152,6 +169,8 @@ const props = defineProps({
   brokerages: { type: Array, default: Array },
   base: { type: String, default: 'HKD' },
   headline: { type: Object, default: () => ({ unconverted: [] }) },
+  // Month ends and today, deferred, for the line under net worth.
+  trend: { type: Array, default: Array },
   // The yearly recurring bills due soon, as the home page's Needs attention words them.
   attention: { type: Array, default: Array },
   month: { type: Object, default: null },
@@ -165,6 +184,22 @@ const isZero = value => !/[1-9]/.test(String(value))
 const signed = value => (negative(value) ? money(value) : `+${money(value)}`)
 const signClass = value =>
   negative(value) ? 'text-negative' : isZero(value) ? 'text-grey-6' : 'text-positive'
+
+// A share for reading, not money: one place, and `|| 0` so a small loss reads 0.0% not -0.0%.
+const percent = (part, whole) =>
+  Number(whole)
+    ? `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
+    : ''
+
+const change = computed(() => {
+  const amount = props.headline.change?.net_worth ?? '0'
+
+  return {
+    amount,
+    up: !negative(amount),
+    pct: percent(amount, props.headline.last_month?.net_worth),
+  }
+})
 
 const parts = computed(() => [
   {

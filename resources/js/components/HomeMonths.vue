@@ -2,9 +2,7 @@
   <!-- The phone's: each month its likely net and what goes in and out, side by side, from the
        same figures as the full card below so the two cannot disagree. -->
   <q-card v-if="compact && monthCols.length" flat bordered>
-    <q-card-section class="q-pb-xs text-subtitle2 text-weight-bold text-grey-9">
-      This month and next
-    </q-card-section>
+    <q-card-section class="app-card-head"> This month and next </q-card-section>
     <div class="app-month-tiles">
       <div v-for="col in monthCols" :key="col.key" class="app-month-tiles__tile">
         <div class="row items-center no-wrap">

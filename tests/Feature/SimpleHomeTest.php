@@ -6,6 +6,7 @@ use App\Http\Controllers\HomeController;
 use App\Models\RecurringTransaction;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Support\Header;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsACard;
 use Tests\TestCase;
@@ -102,6 +103,43 @@ class SimpleHomeTest extends TestCase
             ->where('attention.0.title', 'INSURANCE')
             ->where('attention.0.amount', '-480.0000')
             ->where('attention.0.when', 'in 80 days'));
+    }
+
+    public function test_net_worth_carries_the_home_pages_change_since_last_month(): void
+    {
+        $this->travelTo(Carbon::parse('2026-02-15 12:00', 'Asia/Hong_Kong'));
+
+        $this->deposit('2026-01-10', '1000.0000');
+        $this->deposit('2026-02-10', '250.0000');
+
+        $home = $this->get('/', ['User-Agent' => self::DESKTOP])->viewData('page')['props']['headline'];
+
+        $this->get('/', ['User-Agent' => self::PHONE])->assertInertia(fn (Assert $page) => $page
+            ->where('headline.change.net_worth', $home['change']['net_worth'])
+            ->where('headline.change.net_worth', '250.0000')
+            ->where('headline.last_month.net_worth', $home['last_month']['net_worth']));
+    }
+
+    public function test_the_line_under_net_worth_is_fetched_as_the_phone_page(): void
+    {
+        $this->travelTo(Carbon::parse('2026-02-15 12:00', 'Asia/Hong_Kong'));
+        $this->deposit('2026-01-10', '1000.0000');
+
+        $version = $this->get('/', ['User-Agent' => self::PHONE])
+            ->assertInertia(fn (Assert $page) => $page->component('simple')->missing('trend'))
+            ->viewData('page')['version'];
+
+        // Answered as the home page, Inertia would swap the phone's page out for it.
+        $this->get('/', [
+            'User-Agent' => self::PHONE,
+            Header::INERTIA => 'true',
+            Header::VERSION => $version,
+            Header::PARTIAL_COMPONENT => 'simple',
+            Header::PARTIAL_ONLY => 'trend',
+        ])->assertOk()
+            ->assertJsonPath('component', 'simple')
+            ->assertJsonPath('props.trend.0.net_worth', fn ($worth) => is_string($worth))
+            ->assertJsonMissingPath('props.cash');
     }
 
     private function deposit(string $date, string $amount): void

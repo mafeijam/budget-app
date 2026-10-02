@@ -16,6 +16,7 @@ use Brick\Math\BigDecimal;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Inertia\DeferProp;
 use Inertia\Inertia;
 use Inertia\Support\Header;
 
@@ -72,9 +73,12 @@ class HomeController extends Controller
     {
         // A partial reload for the deferred line still comes through here, and Inertia
         // discards everything it does not want once the action has returned -- so the line
-        // cost a whole page plus a line. Only the line is built for it.
+        // cost a whole page plus a line. Only the line is built for it, under the page that
+        // asked: answered as the home page, the phone's page would be replaced by it.
         if (trim((string) $request->header(Header::PARTIAL_ONLY, '')) === 'trend') {
-            return inertia('index', ['trend' => $this->trend()]);
+            $component = $request->header(Header::PARTIAL_COMPONENT) === 'simple' ? 'simple' : 'index';
+
+            return inertia($component, ['trend' => $this->trend()]);
         }
 
         $today = today();
@@ -130,23 +134,7 @@ class HomeController extends Controller
                     ->mapWithKeys(fn (string $key) => [$key => $then[$key]])->all(),
                 'owed' => (string) $owed->toScale(4),
             ],
-            // Month ends and today's, for each headline card's line.
-            //
-            // Deferred, and it is what is left worth deferring: six period snapshots for a
-            // sparkline drawn under figures that are already on screen. Nothing waits on
-            // it, so it should not hold the page up.
-            //
-            // rescued, because a trend that cannot be computed is a missing line and not a
-            // broken page -- the headline figures are the page.
-            //
-            // Deferred and cached at once, though the cache only earns its keep on a
-            // prefetched visit: the client fetches a deferred prop by naming it, and a once
-            // prop named outright is always resolved. What makes the fetch cheap is the
-            // short circuit at the top, not once().
-            'trend' => Inertia::defer(fn () => $this->trend(), rescue: true)
-                ->once()
-                ->as("trend.{$mark}")
-                ->until(self::ONCE_FOR),
+            'trend' => $this->trendProp($mark),
             // The forecast and what it says. Together with the trend these are most of the
             // page, and on a visit where the browser already has all of them none of the
             // three closures runs, so the projection is never built at all.
@@ -192,17 +180,48 @@ class HomeController extends Controller
 
         ['cash' => $cash, 'statements' => $statements, 'brokerages' => $brokerages, 'rates' => $rates] = $this->holdings($day);
 
+        [$now, $then] = (new NetWorth)->onMany([$day, $today->copy()->startOfMonth()->subDay()->toDateString()]);
+        $mark = ForgetsTheHomeCache::mark();
+
         return inertia('simple', [
             'cash' => $cash,
             'statements' => $statements,
             'brokerages' => $brokerages,
             'base' => Fx::BASE->value,
             'rates' => $rates,
-            'headline' => collect((new NetWorth)->on($day))
-                ->only(['net_worth', 'cash', 'cards', 'value', 'unconverted'])->all(),
+            'headline' => [
+                ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unconverted'])->all(),
+                // Net worth's alone, keyed as the home page keys every card's.
+                'change' => ['net_worth' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth'])],
+                'last_month' => ['net_worth' => $then['net_worth']],
+            ],
+            'trend' => $this->trendProp($mark),
             'attention' => Attention::yearlySoon($today),
-            ...$this->months($today, ForgetsTheHomeCache::mark()),
+            ...$this->months($today, $mark),
         ]);
+    }
+
+    /**
+     * Month ends and today's, for each headline card's line.
+     *
+     * Deferred, and it is what is left worth deferring: six period snapshots for a
+     * sparkline drawn under figures that are already on screen. Nothing waits on
+     * it, so it should not hold the page up.
+     *
+     * Rescued, because a trend that cannot be computed is a missing line and not a
+     * broken page -- the headline figures are the page.
+     *
+     * Deferred and cached at once, though the cache only earns its keep on a
+     * prefetched visit: the client fetches a deferred prop by naming it, and a once
+     * prop named outright is always resolved. What makes the fetch cheap is the
+     * short circuit at the top, not once().
+     */
+    private function trendProp(string $mark): DeferProp
+    {
+        return Inertia::defer(fn () => $this->trend(), rescue: true)
+            ->once()
+            ->as("trend.{$mark}")
+            ->until(self::ONCE_FOR);
     }
 
     /**
