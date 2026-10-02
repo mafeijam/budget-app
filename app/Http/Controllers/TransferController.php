@@ -20,6 +20,31 @@ use Illuminate\Validation\ValidationException;
  */
 class TransferController extends Controller
 {
+    /**
+     * What the transfer dialog needs opened over any page: the cash accounts it moves between,
+     * and the server's day to start from.
+     *
+     * @return array{accounts: list<array<string, mixed>>, today: string}
+     */
+    public static function formProps(): array
+    {
+        return [
+            'accounts' => Account::query()
+                ->where('type', AccountType::Cash->value)
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Account $account) => [
+                    'label' => $account->name,
+                    'value' => $account->id,
+                    'type' => $account->type,
+                    'ccy' => $account->ccy,
+                ])
+                ->all(),
+            'today' => today()->toDateString(),
+        ];
+    }
+
     public function store(Request $r)
     {
         $input = $this->validated($r);

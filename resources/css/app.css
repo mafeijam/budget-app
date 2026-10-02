@@ -2359,3 +2359,81 @@ body {
 .q-field--outlined.q-field--readonly.app-date-field .q-field__control:before {
   border-style: solid;
 }
+
+/* The header's Add: one filled button split in two, the halves joined by a hairline. */
+.app-add__main {
+  border-radius: 8px 0 0 8px;
+  padding: 0 14px;
+  min-height: 36px;
+  font-size: 0.85rem;
+}
+
+.app-add__more {
+  border-radius: 0 8px 8px 0;
+  padding: 0 6px;
+  min-height: 36px;
+  border-left: 1px solid rgb(255 255 255 / 0.28);
+}
+
+.app-add-menu {
+  width: 320px;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 32px rgb(15 23 42 / 0.14),
+    0 2px 6px rgb(15 23 42 / 0.06);
+}
+
+.app-add-menu__group + .app-add-menu__group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--app-border);
+}
+
+.app-add-menu__title {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.app-add-menu__item {
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-height: 48px;
+}
+
+.app-add-menu__item .q-item__section--avatar {
+  min-width: 46px;
+}
+
+.app-add-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.app-add-menu__icon--primary {
+  background: var(--app-primary-tint);
+  color: var(--app-primary-ink);
+}
+
+.app-add-menu__icon--info {
+  background: var(--app-info-tint);
+  color: var(--app-info-ink);
+}
+
+.app-add-menu__icon--positive {
+  background: var(--app-positive-tint);
+  color: var(--app-positive-ink);
+}
+
+.app-add-menu__icon--muted {
+  background: var(--app-muted-tint);
+  color: var(--app-muted-ink);
+}

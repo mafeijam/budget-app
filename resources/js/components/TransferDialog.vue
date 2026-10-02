@@ -179,6 +179,12 @@
 </template>
 
 <script setup>
+// Given by the Add menu, which opens this over any page; on Transactions, the page's own.
+const props = defineProps({
+  accounts: { type: Array, default: null },
+  today: { type: String, default: null },
+})
+
 const page = usePage()
 
 const open = ref(false)
@@ -189,7 +195,7 @@ const blank = () => ({
   from_account_id: null,
   to_account_id: null,
   // The server's day, as the transaction form is seeded, not the browser's.
-  date: page.props.formEmpty?.date ?? null,
+  date: props.today ?? page.props.formEmpty?.date ?? null,
   amount: '',
   amount_in: '',
   description: '',
@@ -200,7 +206,9 @@ const form = useForm(blank())
 
 // Cash accounts only: a card is paid by settling its statement, a brokerage by a trade.
 const accounts = computed(() =>
-  (page.props.filterOptions?.accounts ?? []).filter(account => account.type === 'cash'),
+  (props.accounts ?? page.props.filterOptions?.accounts ?? []).filter(
+    account => account.type === 'cash',
+  ),
 )
 
 const from = computed(() => accounts.value.find(a => a.value === form.from_account_id) ?? null)

@@ -16,6 +16,7 @@ class FormContextController extends Controller
         'account' => AccountController::class,
         'category' => CategoryController::class,
         'recurring' => RecurringTransactionController::class,
+        'transfer' => TransferController::class,
     ];
 
     public function show(string $form): JsonResponse

@@ -147,6 +147,17 @@ class TransferTest extends TestCase
         $this->put("/transfers/{$lone->id}", $this->body())->assertSessionHasErrors('from_account_id');
     }
 
+    public function test_the_add_menu_gets_the_active_cash_accounts_and_today(): void
+    {
+        Account::create(['name' => 'Card', 'status' => 'active', 'type' => 'card', 'ccy' => 'HKD']);
+        Account::create(['name' => 'Closed', 'status' => 'inactive', 'type' => 'cash', 'ccy' => 'HKD']);
+
+        $this->getJson('/forms/transfer')
+            ->assertOk()
+            ->assertJsonPath('today', '2026-03-15')
+            ->assertJsonPath('accounts.*.label', ['Current', 'Saving', 'Yen']);
+    }
+
     /** @return array<string, mixed> */
     private function body(array $overrides = []): array
     {
