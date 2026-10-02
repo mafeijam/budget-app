@@ -167,22 +167,265 @@ class NetWorthTest extends TestCase
         );
     }
 
-    public function test_a_picked_day_puts_its_snapshot_in_the_cards(): void
+    public function test_a_from_picks_where_the_history_starts(): void
+    {
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // The whole ledger, which is the default and so is not echoed back.
+        $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
+            ->where('from', null)
+            ->where('earliest', '2019-01')
+            ->where('history.0.date', '2019-12-31')
+            ->where('since.date', '2019-01-31')
+        );
+
+        $this->get('/net-worth?months=1&from=2026-02')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2026-02')
+            ->where('history.0.date', '2026-02-28')
+            ->where('history.7.date', '2026-09-15')
+            ->has('history', 8)
+            ->where('since.date', '2026-02-28')
+        );
+
+        // Yearly is still year ends. A window drops the points before it rather than counting
+        // the periods from it, so March does not become the month every twelve months lands
+        // on and a yearly history quietly stops being yearly.
+        $this->get('/net-worth?from=2024-03')->assertInertia(fn (Assert $page) => $page
+            ->where('history.0.date', '2024-03-31')
+            ->where('history.1.date', '2024-12-31')
+            ->where('history.2.date', '2025-12-31')
+            ->has('history', 4)
+        );
+    }
+
+    public function test_a_from_is_the_month_it_names_at_any_spacing(): void
+    {
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // January with half-year points between them: starting from the first half-year end
+        // instead plotted from June while the control still read January, and nothing on
+        // screen said which of the two had been asked for.
+        $this->get('/net-worth?months=6&from=2024-01')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2024-01')
+            ->where('history.0.date', '2024-01-31')
+            ->where('history.1.date', '2024-06-30')
+            ->where('history.2.date', '2024-12-31')
+        );
+
+        // The same month as a period end is one point, not the opening month and then itself.
+        $this->get('/net-worth?months=3&from=2024-04')->assertInertia(fn (Assert $page) => $page
+            ->where('history.0.date', '2024-04-30')
+            ->where('history.1.date', '2024-06-30')
+        );
+
+        // And a window shorter than its spacing still opens where it was asked to, rather
+        // than on one lone point.
+        $this->get('/net-worth?months=12&from=2026-02')->assertInertia(fn (Assert $page) => $page
+            ->where('history.0.date', '2026-02-28')
+            ->has('history', 2)
+        );
+    }
+
+    public function test_a_month_the_ledger_cannot_show_is_the_whole_ledger(): void
+    {
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Thirteen is not a month, three are still to come, June 2018 is before the first
+        // transaction, and a day is not a month: each is a window the data cannot show.
+        foreach (['2019-13', '2027-03', '2018-06', 'soon', '2026-02-01'] as $month) {
+            $this->get("/net-worth?from={$month}")->assertInertia(fn (Assert $page) => $page
+                ->where('from', null)
+                ->where('history.0.date', '2019-12-31')
+            );
+        }
+    }
+
+    public function test_the_window_end_is_one_point_not_two_on_a_month_end(): void
+    {
+        // Today on the last day of a month is itself a period end, and so is a window that
+        // ends on one: appending the end unconditionally put the same day on the chart twice,
+        // which draws as a flat step at the end of every window that lands on a month end.
+        $this->travelTo(Carbon::parse('2026-09-30 12:00', 'Asia/Hong_Kong'));
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+
+        $this->get('/net-worth?months=1')->assertInertia(fn (Assert $page) => $page
+            ->where('history.0.date', '2026-02-28')
+            ->where('history.7.date', '2026-09-30')
+            ->has('history', 8)
+        );
+
+        $this->travelTo(Carbon::parse('2026-09-15 12:00', 'Asia/Hong_Kong'));
+        $this->get('/net-worth?months=1&to=2026-06')->assertInertia(fn (Assert $page) => $page
+            ->where('history.4.date', '2026-06-30')
+            ->has('history', 5)
+        );
+    }
+
+    public function test_a_window_ending_this_month_reads_today(): void
+    {
+        // This month has no end to read yet, so the cards sit on today. Every snapshot on the
+        // page is a month end or today, which is what lets them all be asked for together --
+        // a day inside a month would be given the whole month's movements.
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        $this->get('/net-worth?months=1&from=2026-02&to=2026-09')->assertInertia(fn (Assert $page) => $page
+            ->where('at', null)
+            ->where('history.0.date', '2026-02-28')
+            ->where('history.7.date', '2026-09-15')
+            ->has('history', 8)
+        );
+    }
+
+    public function test_a_to_ends_the_window_where_it_is_asked_to(): void
     {
         $this->row($this->bank, 'deposit', '2026-02-10', '100');
         $this->row($this->bank, 'deposit', '2026-05-10', '50');
 
-        $this->get('/net-worth?at=2026-03-31')->assertInertia(fn (Assert $page) => $page
-            ->where('at', '2026-03-31')
+        // The cards read the window's end, so ending it in March is March's figures and
+        // nothing after them.
+        $this->get('/net-worth?months=1&to=2026-03')->assertInertia(fn (Assert $page) => $page
+            ->where('to', '2026-03')
+            ->where('at', null)
+            ->where('snapshot', '2026-03-31')
             ->where('current.cash', '100.0000')
             ->where('lastMonth.date', '2026-02-28')
-            ->where('lastMonth.change', '0.0000')
+            ->where('history.0.date', '2026-02-28')
+            ->where('history.1.date', '2026-03-31')
+            ->has('history', 2)
         );
 
-        // A future or malformed day is today's page.
-        foreach (['2026-12-31', '2026-02-30', 'soon'] as $day) {
-            $this->get("/net-worth?at={$day}")->assertInertia(fn (Assert $page) => $page
+        // Both ends together, which is what the two pickers are for.
+        $this->get('/net-worth?months=1&from=2026-02&to=2026-04')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2026-02')
+            ->where('to', '2026-04')
+            ->where('snapshot', '2026-04-30')
+            ->where('history.0.date', '2026-02-28')
+            ->where('history.2.date', '2026-04-30')
+            ->has('history', 3)
+        );
+    }
+
+    public function test_a_window_starting_this_month_compares_against_today(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // September's month end is still to come, so the badge cannot read against it, and a
+        // comparison to a day the cards are not on is no comparison at all.
+        $this->get('/net-worth?months=1&from=2026-09')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2026-09')
+            ->where('since.date', '2026-09-15')
+            ->where('since.change', '0.0000')
+        );
+    }
+
+    public function test_the_window_ends_are_read_as_one(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // An end before the start is not a shorter window but no window, so the end is dropped
+        // and the page runs to today rather than asking for days that are not there.
+        $this->get('/net-worth?months=1&from=2026-06&to=2026-03')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2026-06')
+            ->where('to', null)
+            ->where('at', null)
+            ->where('history.3.date', '2026-09-15')
+            ->has('history', 4)
+        );
+    }
+
+    public function test_an_at_reads_that_month_without_moving_the_window(): void
+    {
+        $this->row($this->bank, 'deposit', '2019-01-10', '10');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Clicking a point on the chart sets this and not the window's end, so the months on
+        // the right of the point it was clicked on are still there to be read: the whole of
+        // 2019 to today is 92 month ends plus today.
+        $this->get('/net-worth?months=1&at=2022-12')->assertInertia(fn (Assert $page) => $page
+            ->where('at', '2022-12')
+            ->where('to', null)
+            ->where('snapshot', '2022-12-31')
+            ->has('history', 93)
+            ->where('history.47.date', '2022-12-31')
+            ->where('history.92.date', '2026-09-15')
+        );
+
+        // A month is read on its last day, which is the only day of it the balances can
+        // answer: a day inside a month silently took the whole month's movements.
+        $this->get('/net-worth?months=1&at=2022-12')->assertInertia(fn (Assert $page) => $page
+            ->where('current.cash', '10.0000')
+            ->where('lastMonth.date', '2022-11-30')
+        );
+
+        // A month still running has no last day yet, so it reads today.
+        $this->get('/net-worth?months=1&at=2026-09')->assertInertia(fn (Assert $page) => $page
+            ->where('at', '2026-09')
+            ->where('snapshot', '2026-09-15')
+        );
+    }
+
+    public function test_an_at_is_bounded_by_the_window_it_sits_in(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Outside it in either direction is not read: the chart has no point there to mark,
+        // and one before the window's end is the end itself.
+        $this->get('/net-worth?months=1&from=2026-04&at=2026-03')->assertInertia(fn (Assert $page) => $page
+            ->where('at', null)
+            ->where('snapshot', '2026-09-15')
+            ->where('current.cash', '150.0000')
+        );
+
+        $this->get('/net-worth?months=1&to=2026-04&at=2026-06')->assertInertia(fn (Assert $page) => $page
+            ->where('at', null)
+            ->where('snapshot', '2026-04-30')
+        );
+
+        // Inside it, and still no window moved.
+        $this->get('/net-worth?months=1&from=2026-03&to=2026-07&at=2026-05')->assertInertia(fn (Assert $page) => $page
+            ->where('from', '2026-03')
+            ->where('to', '2026-07')
+            ->where('at', '2026-05')
+            ->where('snapshot', '2026-05-31')
+            ->where('history.0.date', '2026-03-31')
+            ->where('history.4.date', '2026-07-31')
+            ->has('history', 5)
+        );
+    }
+
+    public function test_a_month_the_ledger_cannot_show_is_no_snapshot(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Still to come, not a month at all, before the first transaction, and a day where
+        // only a month belongs: each leaves the page reading today.
+        foreach (['2027-03', '2026-13', '2019-01', 'soon', '2026-05-31'] as $month) {
+            $this->get("/net-worth?at={$month}")->assertInertia(fn (Assert $page) => $page
                 ->where('at', null)
+                ->where('snapshot', '2026-09-15')
+                ->where('current.cash', '150.0000')
+            );
+        }
+    }
+
+    public function test_a_to_the_ledger_cannot_show_is_today(): void
+    {
+        $this->row($this->bank, 'deposit', '2026-02-10', '100');
+        $this->row($this->bank, 'deposit', '2026-05-10', '50');
+
+        // Still to come, not a month at all, and before the first transaction.
+        foreach (['2027-03', '2026-13', '2019-01', 'soon'] as $month) {
+            $this->get("/net-worth?to={$month}")->assertInertia(fn (Assert $page) => $page
+                ->where('to', null)
+                ->where('snapshot', '2026-09-15')
                 ->where('current.cash', '150.0000')
             );
         }
@@ -192,7 +435,7 @@ class NetWorthTest extends TestCase
     {
         $usd = Account::create(['name' => 'Bank USD', 'status' => 'active', 'type' => 'cash', 'ccy' => 'USD']);
         $this->row($usd, 'deposit', '2026-02-10', '100');
-        $this->price('USDHKD=X', '2026-09-11', '7.8', 'HKD');
+        $this->price('USDHKD=X', '2026-08-20', '7.8', 'HKD');
         $this->price('USDHKD=X', '2026-09-15', '9', 'HKD');
 
         $this->get('/net-worth')->assertInertia(fn (Assert $page) => $page
@@ -201,9 +444,11 @@ class NetWorthTest extends TestCase
             ->where('rates', ['USD' => '9.0000'])
         );
 
-        // The day the cards read, not today: a snapshot picked on the chart was built at that
-        // day's rate, so the same page asked for an earlier day has to quote the earlier rate.
-        $this->get('/net-worth?at=2026-09-11')->assertInertia(fn (Assert $page) => $page
+        // The day the cards read, not today: a month picked on the chart was built at that
+        // month's close, so the same page asked for an earlier month has to quote the rate of
+        // the day it closed.
+        $this->get('/net-worth?at=2026-08')->assertInertia(fn (Assert $page) => $page
+            ->where('snapshot', '2026-08-31')
             ->where('rates', ['USD' => '7.8000'])
         );
     }

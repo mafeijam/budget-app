@@ -5,11 +5,12 @@
         <div class="col">
           <div class="text-h6 text-weight-medium">
             Net worth
-            <span v-if="at" class="text-subtitle1 text-grey-7">on {{ dayLabel(at) }}</span>
+            <span v-if="at" class="text-subtitle1 text-grey-7">at {{ monthLabel(at) }}</span>
           </div>
           <div class="text-caption text-grey-7">
             Cash, plus the stocks at their last close, in {{ base }}. What the cards owe is not
-            subtracted here. Pending rows are left out. Click a point on the chart to see that day.
+            subtracted here. Pending rows are left out. Click a point on the chart to read that
+            month.
           </div>
         </div>
         <div v-if="at" class="col-auto">
@@ -18,7 +19,7 @@
             unelevated
             no-caps
             icon="today"
-            label="Back to today"
+            :label="`Back to ${to ? monthLabel(to) : 'today'}`"
             @click="visit({ at: null })"
           />
         </div>
@@ -100,25 +101,118 @@
         <div class="col">
           <div class="text-subtitle1 text-weight-medium">Over time</div>
           <div class="text-caption text-grey-7">
-            A snapshot at the end of each {{ periodName }}, and today's.
+            A snapshot at the end of each {{ periodName }}{{ windowLabel }}.
           </div>
         </div>
-        <!-- The Positions page's toolbar, so the pages' controls read alike. -->
-        <div class="col-auto app-toolbar row items-center no-wrap">
-          <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
-          <q-btn-toggle
-            :model-value="months"
-            :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
-            no-caps
-            unelevated
-            dense
-            toggle-color="blue-1"
-            toggle-text-color="primary"
-            text-color="grey-8"
-            padding="xs md"
-            class="app-toolbar__toggle text-weight-bold"
-            @update:model-value="choose"
-          />
+
+        <div class="col-auto row items-center no-wrap q-gutter-sm">
+          <!-- The Positions page's toolbar, so the pages' controls read alike. Both ends of
+               the window in one box, divided: they are one range, and a reader should not
+               have to know they are two controls. -->
+          <div class="app-toolbar row items-center no-wrap">
+            <q-btn
+              flat
+              dense
+              no-caps
+              class="app-toolbar__pick q-px-sm"
+              icon-right="expand_more"
+              @click="opens.from++"
+            >
+              <div class="row items-center no-wrap">
+                <q-icon
+                  name="event"
+                  size="20px"
+                  :color="from ? 'primary' : 'grey-7'"
+                  class="q-mr-sm"
+                />
+                <div class="column items-start">
+                  <span class="text-caption text-grey-6 app-toolbar__label">From</span>
+                  <span
+                    class="text-body2 text-weight-bold"
+                    :class="from ? 'text-primary' : 'text-grey-9'"
+                  >
+                    {{ from ? monthLabel(from) : 'All' }}
+                  </span>
+                </div>
+              </div>
+              <q-menu :offset="[0, 8]">
+                <q-date
+                  :key="opens.from"
+                  :model-value="opening.from"
+                  :navigation-min-year-month="bounds.from.min"
+                  :navigation-max-year-month="bounds.from.max"
+                  default-view="Months"
+                  years-in-month-view
+                  emit-immediately
+                  mask="YYYY-MM"
+                  minimal
+                  color="primary"
+                  @update:model-value="(month, reason) => chooseMonth('from', month, reason)"
+                />
+              </q-menu>
+            </q-btn>
+
+            <q-separator vertical inset class="q-mx-xs" />
+
+            <q-btn
+              flat
+              dense
+              no-caps
+              class="app-toolbar__pick q-px-sm"
+              icon-right="expand_more"
+              @click="opens.to++"
+            >
+              <div class="row items-center no-wrap">
+                <q-icon
+                  name="event"
+                  size="20px"
+                  :color="to ? 'primary' : 'grey-7'"
+                  class="q-mr-sm"
+                />
+                <div class="column items-start">
+                  <span class="text-caption text-grey-6 app-toolbar__label">To</span>
+                  <span
+                    class="text-body2 text-weight-bold"
+                    :class="to ? 'text-primary' : 'text-grey-9'"
+                  >
+                    {{ to ? monthLabel(to) : 'Today' }}
+                  </span>
+                </div>
+              </div>
+              <q-menu :offset="[0, 8]">
+                <q-date
+                  :key="opens.to"
+                  :model-value="opening.to"
+                  :navigation-min-year-month="bounds.to.min"
+                  :navigation-max-year-month="bounds.to.max"
+                  default-view="Months"
+                  years-in-month-view
+                  emit-immediately
+                  mask="YYYY-MM"
+                  minimal
+                  color="primary"
+                  @update:model-value="(month, reason) => chooseMonth('to', month, reason)"
+                />
+              </q-menu>
+            </q-btn>
+          </div>
+
+          <div class="app-toolbar row items-center no-wrap">
+            <q-icon name="date_range" size="xs" color="grey-6" class="q-mx-sm" />
+            <q-btn-toggle
+              :model-value="months"
+              :options="periods.map(n => ({ label: periodLabels[n] ?? `${n}M`, value: n }))"
+              no-caps
+              unelevated
+              dense
+              toggle-color="blue-1"
+              toggle-text-color="primary"
+              text-color="grey-8"
+              padding="xs md"
+              class="app-toolbar__toggle text-weight-bold"
+              @update:model-value="chooseSpacing"
+            />
+          </div>
         </div>
       </q-card-section>
 
@@ -130,7 +224,7 @@
           :history="history"
           :base="base"
           :months="months"
-          :selected="at ?? history.at(-1)?.date"
+          :selected="snapshot ?? history.at(-1)?.date"
           @select="pick"
         />
         <div v-else class="text-grey-6">No transactions yet.</div>
@@ -431,22 +525,44 @@ const props = defineProps({
   history: { type: Array, default: () => [] },
   months: { type: Number, default: 12 },
   periods: { type: Array, default: () => [1, 3, 6, 12] },
+  // The month the cards read, and the day the server resolved it to: the chart marks that day,
+  // and working out a month's last one in the browser is the server's answer to give.
   at: { type: String, default: null },
+  snapshot: { type: String, default: null },
+  // The window the chart plots, each end a YYYY-MM and null for the ledger's own bounds. The
+  // month it cannot go before, and the server's own day, which is its top.
+  from: { type: String, default: null },
+  to: { type: String, default: null },
+  earliest: { type: String, default: null },
+  today: { type: String, default: null },
 })
 
-// The spacing and the picked snapshot, each off the URL at its default.
-const visit = ({ months = props.months, at = props.at }) =>
+// The spacing, the two ends of the window and the month the cards read, each off the URL at
+// its default.
+const visit = ({ months = props.months, from = props.from, to = props.to, at = props.at }) =>
   router.get(
     '/net-worth',
     {
       ...(months === 12 ? {} : { months }),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
       ...(at ? { at } : {}),
     },
     { preserveScroll: true, replace: true },
   )
 
-// The last point is today's, which is the page without a day picked.
-const pick = day => visit({ at: day === props.history.at(-1)?.date ? null : day })
+/* The month a point on the chart stands for, picked to be read. The window is left where it
+   is: a snapshot inside it is a different question from where it stops, and one key for both
+   made every click throw away everything to the right of the point. Clicking the point the
+   cards already read, or the one they read without being asked, puts it back to the window's
+   end. */
+const pick = day => {
+  const month = day.slice(0, 7)
+
+  visit({
+    at: day === props.history.at(-1)?.date || month === props.at ? null : month,
+  })
+}
 
 const money = useMoney()
 
@@ -466,7 +582,58 @@ const periodName = computed(
 )
 
 // Yearly is the default, so it stays off the URL.
-const choose = n => visit({ months: n })
+const chooseSpacing = n => visit({ months: n })
+
+/* A q-date's year-month bounds are YYYY/MM, and its own: it greys the months outside them
+   and refuses a pick inside, which a day-level `options` does neither of. The two ends also
+   bound each other, so a window cannot be asked for with its ends the wrong way round. */
+const nav = month => month?.replace('-', '/') ?? null
+
+const maxYearMonth = computed(() => props.today?.slice(0, 7).replace('-', '/') ?? null)
+
+const bounds = computed(() => ({
+  from: { min: nav(props.earliest), max: maxYearMonth.value },
+  to: { min: nav(props.from ?? props.earliest), max: maxYearMonth.value },
+}))
+
+// Each picker's own month to open on: the end that is set, or the month it would default to.
+const opening = computed(() => ({
+  from: props.from ?? props.today?.slice(0, 7),
+  to: props.to ?? props.today?.slice(0, 7),
+}))
+
+/* What the caption says the window is, which is the one thing the chart's own axis cannot:
+   the axis labels the months, but nothing on it says which of them the reader chose. */
+const windowLabel = computed(() => {
+  if (props.from && props.to) {
+    return `, from ${monthLabel(props.from)} to ${monthLabel(props.to)}`
+  }
+
+  if (props.from) {
+    return `, from ${monthLabel(props.from)}, and today's`
+  }
+
+  return props.to ? `, up to ${monthLabel(props.to)}` : ", and today's"
+})
+
+/* Choosing a month leaves the q-date on its calendar view, and that view is read once at
+   mount, so the menu would next open on day cells. Each key mounts a fresh one per opening. */
+const opens = reactive({ from: 0, to: 0 })
+
+/* The ledger's own bounds are the defaults, so they stay off the URL. `from` at the floor is
+   the whole ledger and `to` at this month is today, which is the page without a window. */
+const choose = (end, month) =>
+  visit({
+    [end]:
+      month === (end === 'from' ? props.earliest : props.today?.slice(0, 7)) || !month
+        ? null
+        : month,
+  })
+
+/* Only a month picked is a choice. A q-date also emits for the year arrows and for a year
+   chosen off a grid, carrying whichever month was already selected, so honouring every emit
+   set the window to a year the reader was only looking through. It says which it was. */
+const chooseMonth = (end, month, reason) => reason === 'month' && choose(end, month)
 
 // On the decimal string, not a float.
 const isZero = value => /^-?0*(\.0*)?$/.test(String(value ?? '0'))
@@ -578,19 +745,6 @@ const parts = computed(() =>
     .filter(part => !isZero(part.value))
     .map(part => ({ ...part, gross: Math.max(Number(part.value), 0) })),
 )
-
-const dayFormat = new Intl.DateTimeFormat('en', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC',
-})
-
-const dayLabel = day => {
-  const [year, month, date] = day.split('-').map(Number)
-
-  return dayFormat.format(new Date(Date.UTC(year, month - 1, date)))
-}
 
 const monthFormat = new Intl.DateTimeFormat('en', {
   month: 'long',

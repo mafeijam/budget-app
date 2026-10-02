@@ -342,11 +342,12 @@ class NetWorth
     /**
      * The days history() takes its snapshots on, for a caller that wants other days too and
      * reads them all in one onMany(): each call is the balance aggregate and the closes
-     * again.
+     * again. $from and $to are the first of the months the window starts and ends in, and
+     * the end is that month's end or today, whichever comes first.
      *
      * @return list<string>
      */
-    public function historyDays(int $months, Carbon $today, ?int $limit = null): array
+    public function historyDays(int $months, Carbon $today, ?int $limit = null, ?string $from = null, ?string $to = null): array
     {
         // From the first whole year, as every page that counts back starts: see Ledger.
         $first = Ledger::start();
@@ -355,8 +356,30 @@ class NetWorth
             return [];
         }
 
-        $points = [];
+        // $from is a floor on the points, not a new place for the periods to count from:
+        // counting from it would turn a yearly history into "every twelve months from
+        // March", so a window would move where every year end falls.
+        $start = $from !== null && $from > $first ? $from : $first;
+
         $todayString = $today->toDateString();
+
+        /* The window opens on the end of the month it was given, so a start of January is
+           drawn from January's end rather than from the first period end after it. Dropping
+           to the next one left the control and the chart disagreeing -- from January with
+           half-year points plotted from June, the control still reading January, and nothing
+           saying which of the two the reader had asked for.
+
+           The floor itself is not a point, which looks like an exception and is not: it is
+           the first day the data can answer for, not a month anybody chose. */
+        $opening = $start > $first ? Carbon::parse($start)->endOfMonth()->toDateString() : null;
+
+        // The day the series finishes on: the window's last month end, or today where that
+        // month is still running and has no end to read yet. A window ending after today is
+        // not a window at all, and the prices for it do not exist.
+        $monthEnd = $to === null ? $today->copy()->endOfMonth() : Carbon::parse($to)->endOfMonth();
+        $end = $monthEnd->toDateString() < $todayString ? $monthEnd->toDateString() : $todayString;
+
+        $points = [];
         $cursor = $today->copy()->startOfYear();
 
         // The last period end at or before today, so the count ends on a period boundary
@@ -365,8 +388,15 @@ class NetWorth
             $cursor->addMonthsNoOverflow($months);
         }
 
-        for (; $cursor->copy()->subDay()->toDateString() >= $first; $cursor = $cursor->copy()->subMonthsNoOverflow($months)) {
-            $points[] = $cursor->copy()->subDay()->toDateString();
+        for (; $cursor->copy()->subDay()->toDateString() >= $start; $cursor = $cursor->copy()->subMonthsNoOverflow($months)) {
+            $day = $cursor->copy()->subDay()->toDateString();
+
+            // Past the window's end, and the older ones below are past it too. At or before
+            // the opening month as well, which is often a period end itself and would then
+            // land on the chart twice.
+            if ($day <= $end && ($opening === null || $day > $opening)) {
+                $points[] = $day;
+            }
         }
 
         if ($limit !== null && count($points) > $limit) {
@@ -379,7 +409,17 @@ class NetWorth
         // contract: a caller reading the series plots or compares it in that order.
         $points = array_reverse($points);
 
-        $points[] = $todayString;
+        if ($opening !== null) {
+            array_unshift($points, $opening);
+        }
+
+        // The end of the window is a point of its own, and one the periods may already have
+        // produced: today on the last day of a month is a period end at every spacing that
+        // divides a year, and a window ending on a month end is one too. Appending it either
+        // way puts the same day on the chart twice, which reads as a flat step.
+        if (end($points) !== $end) {
+            $points[] = $end;
+        }
 
         return $points;
     }

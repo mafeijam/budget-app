@@ -336,11 +336,13 @@ const gaps = computed(() => {
 const axis = computed(() => {
   const all = points.value
   const every = Math.max(1, Math.ceil(all.length / 12))
-  const today = all.length - 1
+  // The window's end, which is labelled whatever day it falls on: it is the one the reader
+  // is looking back from, and thinning the labels would drop it in favour of an older one.
+  const last = all.length - 1
 
   return all
     .map((point, i) => ({ i, label: point.short }))
-    .filter(({ i }) => i === today || (i % every === 0 && today - i >= every / 2))
+    .filter(({ i }) => i === last || (i % every === 0 && last - i >= every / 2))
 })
 
 const compact = value =>
