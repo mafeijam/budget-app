@@ -167,7 +167,7 @@ const title = computed(() => {
   return target.value ? 'Edit account' : 'Create new account'
 })
 
-const typeTitles = { cash: 'Cash', card: 'Card', security: 'Securities' }
+const typeTitles = { cash: 'Cash', card: 'Card', security: 'Security' }
 const typeIcons = { cash: 'account_balance', card: 'credit_card', security: 'show_chart' }
 
 // A label for a value the maps have not met yet, rather than a blank button.
