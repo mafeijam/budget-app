@@ -236,6 +236,7 @@
               :class="[
                 column.align === 'left' ? 'text-left' : 'text-right',
                 { 'cursor-pointer app-positions__sortable': column.sort },
+                { 'app-positions__bar-cell': column.key === 'bar' },
               ]"
               @click="column.sort && sortBy(column.key)"
             >

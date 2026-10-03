@@ -1243,7 +1243,7 @@ body {
   box-shadow: inset 0 -1px 0 var(--app-border);
 }
 
-.app-positions__bar-cell {
+.app-positions td.app-positions__bar-cell {
   width: 120px;
 }
 
@@ -1303,6 +1303,42 @@ body {
   display: block;
   min-width: 0;
   max-width: 300px;
+}
+
+/*
+ * The table is as narrow as its content: the holding pill never wraps, the spark
+ * is a fixed size, and money is tabular, about 1205px across. A 1440px window with
+ * the drawer open holds 1155px, so below 1500px the chrome slims -- shorter names
+ * and a narrower spark -- and the return bar goes, a picture of the Total return
+ * percentage beside it. Below about 1310px even that overflows, so the table
+ * scrolls inside the card instead of past it; the window stops being the scroller
+ * there, so the labels unpin with it -- left sticky, the 51px offset meant for the
+ * window would pin them 51px down from the card, over the first rows.
+ *
+ * After the rules it narrows, so they win at equal specificity.
+ */
+@media (max-width: 1500px) {
+  .app-positions__name {
+    max-width: 200px;
+  }
+
+  .app-home-spark.app-price-spark {
+    width: 72px;
+  }
+
+  .app-positions__bar-cell {
+    display: none;
+  }
+}
+
+@media (max-width: 1310px) {
+  .app-positions.q-table__container {
+    overflow-x: auto;
+  }
+
+  .app-positions thead th {
+    position: static;
+  }
 }
 
 /* The recurring page: the month's totals, the next 30 days, and a row per rule. */
