@@ -103,6 +103,11 @@ body {
   margin: 0 auto;
 }
 
+/* Thumb room past the last card, which ends where the page ends. */
+.app-simple {
+  padding-bottom: 16px;
+}
+
 /* The phone's simple page, read on a small screen and often outdoors: its light greys a step
    darker, the month panel's included, and the caption grey Quasar sets on a list item's
    second line, which the side column then lightens again for the figures under a balance. */
