@@ -175,8 +175,9 @@ body {
   justify-content: center;
 }
 
-/* Raised half out of the bar and ringed in the bar's white, so it reads as cut out of it. No
-   offset shadow, unlike every other button: under the ring it drew a blue crescent off one side. */
+/* A fifth out of the bar and ringed in the bar's white, so it reads as cut out of it.
+   No offset shadow, unlike every other button: under the ring it drew a blue crescent
+   off one side. */
 .q-btn.app-add-fab {
   width: 46px;
   height: 46px;
@@ -184,7 +185,7 @@ body {
   min-width: 0;
   min-height: 0;
   padding: 0;
-  margin-top: -20px;
+  margin-top: -10px;
   font-size: 1.25rem;
   box-shadow: 0 0 0 5px var(--app-surface);
 }

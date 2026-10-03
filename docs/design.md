@@ -122,7 +122,7 @@ split Add has a blue one.
 
 **Tab bar.** The phone's two pages, Home and Transactions, in a white bar at the foot edged
 in amber above, each its drawer emoji with no label: the others greyed, the current one in
-colour and lifted over a pink dot. Adding a transaction is the round blue button between them, raised half out of the
+colour and lifted over a pink dot. Adding a transaction is the round blue button between them, a fifth out of the
 bar and ringed in its white, the one button with no offset shadow.
 
 **Toggles.** Every `q-btn-toggle` chooses with `toggle-color="amber-3"` and
