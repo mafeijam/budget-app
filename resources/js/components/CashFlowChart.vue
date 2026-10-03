@@ -91,7 +91,7 @@
           :points="netLine"
           fill="none"
           :stroke="colours.net"
-          stroke-width="1.5"
+          stroke-width="0.75"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
