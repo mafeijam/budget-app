@@ -215,7 +215,9 @@ const money = useMoney()
 // a few hundred thousand it reads. Drawn downwards with a fill, so it reads as a debt against
 // the cash and stocks above rather than as one more thing held.
 const colours = {
-  net_worth: '#475569',
+  // Muted rather than the stronger slate: with every other line gone this is the only
+  // one, and at full strength it shouted over the fills it is meant to read against.
+  net_worth: '#64748b',
   cash: '#059669',
   value: '#2563eb',
   cost: '#e11d48',
@@ -229,7 +231,6 @@ const legend = [
   { key: 'net_worth', label: 'Net worth', colour: colours.net_worth },
   { key: 'cash', label: 'Cash', colour: colours.cash, area: true },
   { key: 'value', label: 'Stock value', colour: colours.value, area: true },
-  { key: 'cost', label: 'Stock cost', colour: colours.cost },
   { key: 'loans', label: 'Loans owed', colour: colours.loans, area: true },
 ]
 
@@ -246,17 +247,11 @@ const toggle = key => {
   hidden.value = shows(key) ? [...hidden.value, key] : hidden.value.filter(k => k !== key)
 }
 
-// Painted in this order, so the net worth line is over every fill beneath it.
-const lines = [
-  { key: 'cost', colour: colours.cost, dashed: true },
-  // Cash below zero is rose, line and fill: money missing rather than held. Rose rather than the
-  // red proper, which is the stock cost, so it does not read as one more thing about the stocks.
-  { key: 'cash', colour: colours.cash, clip: 'above' },
-  { key: 'cash', id: 'cash-below', colour: colours.overdrawn, clip: 'below' },
-  { key: 'value', colour: colours.value },
-  { key: 'loans', colour: colours.loans },
-  { key: 'net_worth', colour: colours.net_worth },
-]
+// Only net worth keeps a line: the rest read as fills, and a line along each fill's
+// edge only repeated what the colour already said. The cost line went with its legend
+// entry, which would otherwise have switched off nothing; the bands still show where
+// the value stands against it.
+const lines = [{ key: 'net_worth', colour: colours.net_worth }]
 
 // The loan only where the window has one: a legend entry for a line flat on zero says nothing.
 const owing = computed(() => points.value.some(point => point.numbers.loans !== 0))
