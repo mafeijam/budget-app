@@ -198,6 +198,24 @@ body {
   border-radius: 12px;
 }
 
+/* The phone list's search and filters, pinned under the app bar on a band of the page's cream
+   the width of the screen, so rows scroll under it rather than show through. The left margin
+   is the gutter's own, cancelled to reach the screen's edge. Edged in amber as the bar is, but
+   only once pinned. */
+.q-gutter-md > .app-simple-filters {
+  position: sticky;
+  z-index: 3;
+  margin-left: 0;
+  margin-right: -16px;
+  padding: 8px 16px;
+  background: var(--app-ground);
+  transition: box-shadow 0.15s;
+}
+
+.app-simple-filters--stuck {
+  box-shadow: 0 3px 0 #f0b44f55;
+}
+
 /* Beside the search, the field's white edged in its amber; amber filled once a filter is on. */
 .q-btn.app-simple-filter-btn {
   width: 40px;
@@ -1330,6 +1348,12 @@ body {
   font-size: 11px;
   fill: var(--app-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.net-worth-chart__milestone {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #ffffff;
 }
 
 /* Wider than a Quasar tooltip, and positioned by the chart rather than by a target. */

@@ -1,140 +1,156 @@
 <template>
   <!-- The phone list's search and filters. In the URL, as the full list's are: a filter is what
-       the list is, and a link to a filtered list is the point. -->
-  <div class="column no-wrap q-gutter-y-sm">
-    <div class="row no-wrap items-center q-gutter-x-sm">
-      <q-input
-        v-model="search"
-        outlined
-        dense
-        clearable
-        debounce="300"
-        placeholder="Search descriptions"
-        class="col app-simple-search"
-        @update:model-value="apply"
-      >
-        <template #prepend>
-          <q-icon name="search" />
-        </template>
-      </q-input>
-      <q-btn
-        unelevated
-        round
-        class="app-simple-filter-btn"
-        :class="{ 'app-simple-filter-btn--on': chips.length }"
-        icon="tune"
-        aria-label="Filters"
-        @click="openSheet"
-      >
-        <q-badge v-if="chips.length" floating rounded color="primary" :label="chips.length" />
-      </q-btn>
-    </div>
+       the list is, and a link to a filtered list is the point. Pinned under the app bar, so a
+       search is a thumb away however far the list has been scrolled. -->
+  <div
+    ref="bar"
+    class="app-simple-filters"
+    :class="{ 'app-simple-filters--stuck': stuck }"
+    :style="{ top: `${barHeight}px` }"
+  >
+    <div class="column no-wrap q-gutter-y-sm">
+      <div class="row no-wrap items-center q-gutter-x-sm">
+        <q-input
+          v-model="search"
+          outlined
+          dense
+          clearable
+          debounce="300"
+          placeholder="Search descriptions"
+          class="col app-simple-search"
+          @update:model-value="apply"
+        >
+          <template #prepend>
+            <q-icon name="search" />
+          </template>
+        </q-input>
+        <q-btn
+          unelevated
+          round
+          class="app-simple-filter-btn"
+          :class="{ 'app-simple-filter-btn--on': chips.length }"
+          icon="tune"
+          aria-label="Filters"
+          @click="openSheet"
+        >
+          <q-badge v-if="chips.length" floating rounded color="primary" :label="chips.length" />
+        </q-btn>
+      </div>
 
-    <div v-if="chips.length" class="row q-gutter-xs">
-      <q-chip
-        v-for="chip in chips"
-        :key="chip.key"
-        removable
-        dense
-        class="app-simple-chip"
-        :label="chip.label"
-        @remove="drop(chip.key)"
-      />
-    </div>
+      <div v-if="chips.length" class="row q-gutter-xs">
+        <q-chip
+          v-for="chip in chips"
+          :key="chip.key"
+          removable
+          dense
+          class="app-simple-chip"
+          :label="chip.label"
+          @remove="drop(chip.key)"
+        />
+      </div>
 
-    <q-dialog v-model="sheet" position="bottom">
-      <q-card class="app-simple-sheet">
-        <q-card-section class="row items-center no-wrap q-pb-sm">
-          <div class="text-h6 text-weight-bold text-grey-9">Filters</div>
-          <q-space />
-          <q-btn v-close-popup flat round color="grey-6" icon="close" aria-label="Close" />
-        </q-card-section>
+      <q-dialog v-model="sheet" position="bottom">
+        <q-card class="app-simple-sheet">
+          <q-card-section class="row items-center no-wrap q-pb-sm">
+            <div class="text-h6 text-weight-bold text-grey-9">Filters</div>
+            <q-space />
+            <q-btn v-close-popup flat round color="grey-6" icon="close" aria-label="Close" />
+          </q-card-section>
 
-        <q-card-section class="column q-gutter-y-md q-pt-none">
-          <SimplePicker v-model="draft.account_id" :options="accountOptions" label="Account" />
-          <SimplePicker v-model="draft.category_id" :options="categoryOptions" label="Category" />
-          <div class="row no-wrap q-gutter-x-sm">
-            <div class="col">
-              <SimplePicker v-model="draft.type" :options="typeOptions" label="Type" />
+          <q-card-section class="column q-gutter-y-md q-pt-none">
+            <SimplePicker v-model="draft.account_id" :options="accountOptions" label="Account" />
+            <SimplePicker v-model="draft.category_id" :options="categoryOptions" label="Category" />
+            <div class="row no-wrap q-gutter-x-sm">
+              <div class="col">
+                <SimplePicker v-model="draft.type" :options="typeOptions" label="Type" />
+              </div>
+              <div class="col">
+                <SimplePicker v-model="draft.ccy" :options="currencyOptions" label="Currency" />
+              </div>
             </div>
-            <div class="col">
-              <SimplePicker v-model="draft.ccy" :options="currencyOptions" label="Currency" />
-            </div>
-          </div>
-          <SimplePicker
-            v-model="draft.due_month"
-            :options="dueMonthOptions"
-            label="Statement month"
-          />
+            <SimplePicker
+              v-model="draft.due_month"
+              :options="dueMonthOptions"
+              label="Statement month"
+            />
 
-          <q-btn-toggle
-            v-model="draft.status"
-            spread
-            no-caps
-            unelevated
-            toggle-color="amber-3"
-            toggle-text-color="grey-9"
-            :options="statusButtons"
-            class="app-simple-sheet__toggle"
-          />
+            <q-btn-toggle
+              v-model="draft.status"
+              spread
+              no-caps
+              unelevated
+              toggle-color="amber-3"
+              toggle-text-color="grey-9"
+              :options="statusButtons"
+              class="app-simple-sheet__toggle"
+            />
 
-          <!-- A field for each end, so a range can be open. The mask goes on the q-date: a
+            <!-- A field for each end, so a range can be open. The mask goes on the q-date: a
                q-input mask is a different parser. -->
-          <div class="row no-wrap q-gutter-x-sm">
-            <div v-for="end in ends" :key="end.key" class="col">
-              <q-input
-                :model-value="draft[end.key]"
-                :label="end.label"
-                outlined
-                readonly
-                clearable
-                class="app-date-field"
-                @clear="draft[end.key] = null"
-              >
-                <template #prepend>
-                  <q-icon name="event" />
-                </template>
-                <q-menu v-model="menus[end.key]" fit cover>
-                  <q-date
-                    v-model="draft[end.key]"
-                    mask="YYYY-MM-DD"
-                    minimal
-                    no-unset
-                    color="primary"
-                    :options="end.options"
-                    @update:model-value="menus[end.key] = false"
-                  />
-                </q-menu>
-              </q-input>
+            <div class="row no-wrap q-gutter-x-sm">
+              <div v-for="end in ends" :key="end.key" class="col">
+                <q-input
+                  :model-value="draft[end.key]"
+                  :label="end.label"
+                  outlined
+                  readonly
+                  clearable
+                  class="app-date-field"
+                  @clear="draft[end.key] = null"
+                >
+                  <template #prepend>
+                    <q-icon name="event" />
+                  </template>
+                  <q-menu v-model="menus[end.key]" fit cover>
+                    <q-date
+                      v-model="draft[end.key]"
+                      mask="YYYY-MM-DD"
+                      minimal
+                      no-unset
+                      color="primary"
+                      :options="end.options"
+                      @update:model-value="menus[end.key] = false"
+                    />
+                  </q-menu>
+                </q-input>
+              </div>
             </div>
-          </div>
-        </q-card-section>
+          </q-card-section>
 
-        <q-card-actions class="q-px-md q-pb-md row no-wrap q-gutter-x-sm">
-          <q-btn
-            flat
-            no-caps
-            color="grey-7"
-            icon="restart_alt"
-            label="Reset"
-            class="col"
-            @click="reset"
-          />
-          <q-btn
-            unelevated
-            no-caps
-            icon="check"
-            label="Show"
-            class="col app-btn app-btn--positive text-weight-bold"
-            @click="(apply(), (sheet = false))"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+          <q-card-actions class="q-px-md q-pb-md row no-wrap q-gutter-x-sm">
+            <q-btn
+              flat
+              no-caps
+              color="grey-7"
+              icon="restart_alt"
+              label="Reset"
+              class="col"
+              @click="reset"
+            />
+            <q-btn
+              unelevated
+              no-caps
+              icon="check"
+              label="Show"
+              class="col app-btn app-btn--positive text-weight-bold"
+              @click="(apply(), (sheet = false))"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+    </div>
   </div>
 </template>
 
 <script setup>
+const barHeight = useBarHeight()
+const bar = ref(null)
+
+// Its shadow only once it is pinned: at rest it sits on the page above the first card, where a
+// rule under it would read as the edge of something.
+const { top } = useElementBounding(bar)
+const stuck = computed(() => barHeight.value > 0 && top.value <= barHeight.value + 1)
+
 const props = defineProps({
   // The filter as the URL names it.
   filter: { type: Object, default: () => ({}) },
