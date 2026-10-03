@@ -104,8 +104,9 @@ From those two, a card draws:
 - a change pill as a white sticker, its text green or red, its shadow in `--card-ink`.
 
 Home's cards are `.app-home-headline__card--{key}`, keyed by the figure, not by position, so
-reordering them keeps their colours. Net worth's are `.app-worth-card--{cash,owed,stocks}`.
-A new coloured card needs only a class that sets the two variables.
+reordering them keeps their colours. Net worth's are `.app-worth-card--{cash,owed,stocks}`,
+and the phone page's `.app-simple-card--{worth,cash,stocks,cards}`, each a coloured title
+strip over white. A new coloured card needs only a class that sets the two variables.
 
 ## The pieces
 

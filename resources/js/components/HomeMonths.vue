@@ -10,7 +10,7 @@
           <q-badge v-if="col.forecast" class="app-tint app-tint--info q-ml-xs" label="forecast" />
         </div>
         <div
-          class="text-h5 text-weight-bold money text-no-wrap q-py-sm"
+          class="app-month-tiles__net text-weight-bold money text-no-wrap q-py-sm"
           :class="signClass(col.net)"
         >
           {{ col.forecast ? '≈ ' : '' }}{{ signed(col.net) }}

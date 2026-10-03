@@ -12,7 +12,7 @@
     </q-header>
 
     <q-page-container>
-      <q-page class="app-simple q-pa-sm text-grey-9">
+      <q-page class="app-simple q-pa-md text-grey-9">
         <slot />
       </q-page>
     </q-page-container>

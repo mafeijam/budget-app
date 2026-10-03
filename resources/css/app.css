@@ -115,19 +115,21 @@ body {
 
 /* The phone's simple page, read on a small screen and often outdoors: its light greys a step
    darker, the month panel's included, and the caption grey Quasar sets on a list item's
-   second line, which the side column then lightens again for the figures under a balance. */
+   second line, which the side column then lightens again for the figures under a balance.
+   Slate, the theme's ink, not Quasar's neutral greys, which made every card read grey. */
 .app-simple .text-grey-5,
 .app-simple .text-grey-6 {
-  color: #616161 !important;
+  color: #475569 !important;
 }
 
-.app-simple .text-grey-7 {
-  color: #424242 !important;
+.app-simple .text-grey-7,
+.app-simple .text-grey-9 {
+  color: #334155 !important;
 }
 
 .app-simple .q-item__label--caption,
 .app-simple .q-item__section--side {
-  color: #424242;
+  color: #334155;
 }
 
 /* The three figures under net worth, as large as a phone allows: at 16px "1,522,431.44" ran out
@@ -148,7 +150,7 @@ body {
   font-size: 0.875rem;
   font-weight: 700;
   line-height: 1.375rem;
-  color: #424242;
+  color: #334155;
 }
 
 /* Net worth, the page's one large figure: it still fits "HKD 2,179,659.39" across a 320px screen. */
@@ -156,6 +158,46 @@ body {
   font-size: 1.75rem;
   line-height: 2.25rem;
   letter-spacing: -0.01em;
+}
+
+/*
+  The phone's coloured cards, Home's colours on the same two variables: the heading strip in
+  the fill and the rest on white. Net worth too, though it has no rows: lavender all through
+  sat heavy at the top of the page. The !important is .q-card's, against no-shadow.
+*/
+.app-simple-card--worth {
+  --card-fill: #e2dafe;
+  --card-ink: #8b5cf6;
+}
+
+.app-simple-card--cash {
+  --card-fill: #c3f7d6;
+  --card-ink: #22a35a;
+}
+
+.app-simple-card--stocks {
+  --card-fill: #bee9fe;
+  --card-ink: #0ea5e9;
+}
+
+.app-simple-card--cards {
+  --card-fill: #fed2d7;
+  --card-ink: #f43f5e;
+}
+
+.q-card.app-simple-card {
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--card-ink) 70%, transparent) !important;
+}
+
+.app-simple-card > .app-card-head {
+  margin-bottom: 6px;
+  padding-bottom: 12px;
+  background: var(--card-fill);
+}
+
+.app-simple-card--worth .app-simple__worth {
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800;
 }
 
 /* The line under net worth, shallower than the home page's: a glance at its shape is the point. */
@@ -607,21 +649,24 @@ body {
   color: #334155 !important;
 }
 
-/* A change pill on a coloured card, Home's or the net worth page's: a white sticker, so a
-   red or green tint is not laid over the card's own colour. */
+/* A change pill on a coloured card, Home's, the net worth page's or the phone's: a white
+   sticker, so a red or green tint is not laid over the card's own colour. */
 .app-home-headline .app-change,
-.app-worth-card__head .app-change {
+.app-worth-card__head .app-change,
+.app-simple-card .app-change {
   background: #fff;
   box-shadow: 2px 2px 0 color-mix(in srgb, var(--card-ink) 55%, transparent);
 }
 
 .app-home-headline .app-change.app-tint--positive,
-.app-worth-card__head .app-change.app-tint--positive {
+.app-worth-card__head .app-change.app-tint--positive,
+.app-simple-card .app-change.app-tint--positive {
   color: var(--q-positive);
 }
 
 .app-home-headline .app-change.app-tint--negative,
-.app-worth-card__head .app-change.app-tint--negative {
+.app-worth-card__head .app-change.app-tint--negative,
+.app-simple-card .app-change.app-tint--negative {
   color: var(--q-negative);
 }
 
@@ -3229,6 +3274,13 @@ body {
 
 .app-month-tiles__tile + .app-month-tiles__tile {
   border-left: 1px solid var(--app-border);
+}
+
+/* A month's net, as large as half a phone allows: at a fixed 24px "+15,472.09" ran out of its
+   tile on a 320px screen and was cut off. */
+.app-month-tiles__net {
+  font-size: clamp(1.1rem, 6vw, 1.5rem);
+  line-height: 2rem;
 }
 
 /* And smaller on a phone, after the rules it overrides: at full size one month's figure and bars

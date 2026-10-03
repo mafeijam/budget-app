@@ -1,6 +1,6 @@
 <template>
   <div class="column no-wrap q-gutter-md">
-    <q-card flat bordered class="overflow-hidden">
+    <q-card flat bordered class="overflow-hidden app-simple-card app-simple-card--worth">
       <!-- The heading, and since last month's end as the home page's card has it. -->
       <q-card-section class="app-card-head">
         Net worth
@@ -44,7 +44,7 @@
         <HomeSpark
           v-if="trend.length > 1"
           :values="trend.map(point => point.net_worth)"
-          colour="#475569"
+          colour="#8b5cf6"
           :label="`Net worth, last ${trend.length - 1} months`"
         />
       </Deferred>
@@ -73,7 +73,7 @@
 
     <HomeMonths compact :month="month" :next-month="nextMonth" :base="base" />
 
-    <q-card flat bordered>
+    <q-card flat bordered class="app-simple-card app-simple-card--cash">
       <q-card-section class="app-card-head">
         Cash
         <q-badge
@@ -114,7 +114,7 @@
       </q-card-section>
     </q-card>
 
-    <q-card v-if="brokerages.length" flat bordered>
+    <q-card v-if="brokerages.length" flat bordered class="app-simple-card app-simple-card--stocks">
       <q-card-section class="app-card-head">
         Stocks
         <q-badge
@@ -146,7 +146,7 @@
       </q-list>
     </q-card>
 
-    <q-card flat bordered>
+    <q-card flat bordered class="app-simple-card app-simple-card--cards">
       <q-card-section class="app-card-head">
         Cards owe
         <q-badge
