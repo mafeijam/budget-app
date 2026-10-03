@@ -427,7 +427,7 @@
         v-if="!derivesAmount"
         class="col-12 col-sm-5 app-form-flag"
         borderless
-        hint="Not expected again, so the forecast leaves it out of typical spending and income"
+        hint="Excluded from typical spending and income"
         :error="!!form.errors['meta_data.one_off']"
         :error-message="form.errors['meta_data.one_off']"
       >
