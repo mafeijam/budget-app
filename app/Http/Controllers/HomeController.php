@@ -191,9 +191,13 @@ class HomeController extends Controller
             'rates' => $rates,
             'headline' => [
                 ...collect($now)->only(['net_worth', 'cash', 'cards', 'value', 'unconverted'])->all(),
-                // Net worth's alone, keyed as the home page keys every card's.
-                'change' => ['net_worth' => (string) BigDecimal::of($now['net_worth'])->minus($then['net_worth'])],
-                'last_month' => ['net_worth' => $then['net_worth']],
+                // Every card's month-on-month change, keyed as the home page keys them.
+                'change' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [
+                        $key => (string) BigDecimal::of($now[$key])->minus($then[$key]),
+                    ])->all(),
+                'last_month' => collect(self::TREND_FIGURES)
+                    ->mapWithKeys(fn (string $key) => [$key => $then[$key]])->all(),
             ],
             'trend' => $this->trendProp($mark),
             'attention' => Attention::yearlySoon($today),

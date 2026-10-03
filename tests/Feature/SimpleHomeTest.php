@@ -117,7 +117,13 @@ class SimpleHomeTest extends TestCase
         $this->get('/', ['User-Agent' => self::PHONE])->assertInertia(fn (Assert $page) => $page
             ->where('headline.change.net_worth', $home['change']['net_worth'])
             ->where('headline.change.net_worth', '250.0000')
-            ->where('headline.last_month.net_worth', $home['last_month']['net_worth']));
+            ->where('headline.change.cash', $home['change']['cash'])
+            ->where('headline.change.cards', $home['change']['cards'])
+            ->where('headline.change.value', $home['change']['value'])
+            ->where('headline.last_month.net_worth', $home['last_month']['net_worth'])
+            ->where('headline.last_month.cash', $home['last_month']['cash'])
+            ->where('headline.last_month.cards', $home['last_month']['cards'])
+            ->where('headline.last_month.value', $home['last_month']['value']));
     }
 
     public function test_the_line_under_net_worth_is_fetched_as_the_phone_page(): void

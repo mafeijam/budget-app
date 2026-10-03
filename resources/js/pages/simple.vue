@@ -74,7 +74,17 @@
     <HomeMonths compact :month="month" :next-month="nextMonth" :base="base" />
 
     <q-card flat bordered>
-      <q-card-section class="app-card-head"> Cash </q-card-section>
+      <q-card-section class="app-card-head">
+        Cash
+        <q-badge
+          class="app-change"
+          :class="cashChange.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'"
+        >
+          <q-icon :name="cashChange.up ? 'trending_up' : 'trending_down'" size="14px" />
+          <span class="money">{{ signed(cashChange.amount) }}</span>
+          <span v-if="cashChange.pct" class="app-change__pct">{{ cashChange.pct }}</span>
+        </q-badge>
+      </q-card-section>
       <q-list>
         <q-item v-for="account in held" :key="account.id" dense class="q-py-sm">
           <q-item-section top>
@@ -104,8 +114,50 @@
       </q-card-section>
     </q-card>
 
+    <q-card v-if="brokerages.length" flat bordered>
+      <q-card-section class="app-card-head">
+        Stocks
+        <q-badge
+          class="app-change"
+          :class="stocks.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'"
+        >
+          <q-icon :name="stocks.up ? 'trending_up' : 'trending_down'" size="14px" />
+          <span class="money">{{ signed(stocks.amount) }}</span>
+          <span v-if="stocks.pct" class="app-change__pct">{{ stocks.pct }}</span>
+        </q-badge>
+      </q-card-section>
+      <q-list>
+        <q-item v-for="broker in brokerages" :key="broker.id" dense class="q-py-sm">
+          <q-item-section top>
+            <q-item-label class="text-weight-medium text-grey-9">{{ broker.name }}</q-item-label>
+            <q-item-label caption :class="signClass(broker.unrealised)" class="money">
+              {{ signed(broker.unrealised) }}
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side top class="text-right">
+            <q-item-label class="text-weight-bold text-grey-9 money">
+              {{ broker.ccy === base ? '' : `${broker.ccy} ` }}{{ money(broker.market_value) }}
+            </q-item-label>
+            <q-item-label v-if="broker.market_value_base" caption class="money">
+              {{ base }} {{ money(broker.market_value_base) }}
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </q-card>
+
     <q-card flat bordered>
-      <q-card-section class="app-card-head"> Cards owe </q-card-section>
+      <q-card-section class="app-card-head">
+        Cards owe
+        <q-badge
+          class="app-change"
+          :class="cardsChange.up ? 'app-tint app-tint--positive' : 'app-tint app-tint--negative'"
+        >
+          <q-icon :name="cardsChange.up ? 'trending_up' : 'trending_down'" size="14px" />
+          <span class="money">{{ signed(cardsChange.amount) }}</span>
+          <span v-if="cardsChange.pct" class="app-change__pct">{{ cardsChange.pct }}</span>
+        </q-badge>
+      </q-card-section>
       <q-list>
         <q-item v-for="card in owing" :key="card.id" dense class="q-py-sm">
           <q-item-section top>
@@ -127,28 +179,6 @@
       <q-card-section v-if="!owing.length" class="q-pt-none text-grey-6">
         Nothing owed on any card.
       </q-card-section>
-    </q-card>
-
-    <q-card v-if="brokerages.length" flat bordered>
-      <q-card-section class="app-card-head"> Stocks </q-card-section>
-      <q-list>
-        <q-item v-for="broker in brokerages" :key="broker.id" dense class="q-py-sm">
-          <q-item-section top>
-            <q-item-label class="text-weight-medium text-grey-9">{{ broker.name }}</q-item-label>
-            <q-item-label caption :class="signClass(broker.unrealised)" class="money">
-              {{ signed(broker.unrealised) }}
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side top class="text-right">
-            <q-item-label class="text-weight-bold text-grey-9 money">
-              {{ broker.ccy === base ? '' : `${broker.ccy} ` }}{{ money(broker.market_value) }}
-            </q-item-label>
-            <q-item-label v-if="broker.market_value_base" caption class="money">
-              {{ base }} {{ money(broker.market_value_base) }}
-            </q-item-label>
-          </q-item-section>
-        </q-item>
-      </q-list>
     </q-card>
   </div>
 </template>
@@ -187,15 +217,22 @@ const percent = (part, whole) =>
     ? `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
     : ''
 
-const change = computed(() => {
-  const amount = props.headline.change?.net_worth ?? '0'
+const changeFor = key => {
+  const amount = props.headline.change?.[key] ?? '0'
 
   return {
     amount,
     up: !negative(amount),
-    pct: percent(amount, props.headline.last_month?.net_worth),
+    pct: percent(amount, props.headline.last_month?.[key]),
   }
-})
+}
+
+const change = computed(() => changeFor('net_worth'))
+
+// Each box's month-on-month note, as the home page's cards carry it.
+const cashChange = computed(() => changeFor('cash'))
+const cardsChange = computed(() => changeFor('cards'))
+const stocks = computed(() => changeFor('value'))
 
 const parts = computed(() => [
   {
