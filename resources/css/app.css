@@ -2924,7 +2924,7 @@ body {
 }
 
 .app-month-tiles__tile {
-  padding: 8px 16px 4px;
+  padding: 0 16px 4px;
 }
 
 .app-month-tiles__tile + .app-month-tiles__tile {

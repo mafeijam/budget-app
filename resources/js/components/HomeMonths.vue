@@ -9,11 +9,24 @@
           <span class="text-weight-medium text-grey-9">{{ col.name }}</span>
           <q-badge v-if="col.forecast" class="app-tint app-tint--info q-ml-xs" label="forecast" />
         </div>
-        <div class="text-h6 text-weight-bold money text-no-wrap" :class="signClass(col.net)">
+        <div
+          class="text-h5 text-weight-bold money text-no-wrap q-py-sm"
+          :class="signClass(col.net)"
+        >
           {{ col.forecast ? '≈ ' : '' }}{{ signed(col.net) }}
         </div>
-        <div v-for="bar in col.bars" :key="bar.label" class="text-caption money">
-          {{ bar.label }} {{ money(bar.total) }}
+        <div
+          v-for="bar in col.bars"
+          :key="bar.label"
+          class="row items-baseline justify-between text-caption money"
+        >
+          <span
+            class="text-weight-medium"
+            :class="bar.label === 'In' ? 'text-positive' : 'text-negative'"
+          >
+            {{ bar.label }}
+          </span>
+          <span class="text-grey-9 text-weight-medium text-no-wrap">{{ money(bar.total) }}</span>
         </div>
       </div>
     </div>
