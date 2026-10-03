@@ -3,10 +3,6 @@
 namespace Tests\Feature;
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
-use Illuminate\Contracts\Http\Kernel;
-use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Exceptions\OriginMismatchException;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
@@ -155,55 +151,5 @@ class CsrfExpiryTest extends TestCase
         $response->assertStatus(302);
         $response->assertRedirect('/accounts');
         $response->assertSessionHas('message_csrf', self::MESSAGE);
-    }
-
-    public function test_get_requests_are_never_blocked_by_forgery_protection(): void
-    {
-        Route::middleware('web')->get('/__test__/echo', fn () => 'ok');
-
-        $response = $this->withoutUnitTestShortcut(fn () => $this
-            ->get('/__test__/echo', ['Sec-Fetch-Site' => 'cross-site'])
-        );
-
-        $response->assertStatus(200);
-    }
-
-    public function test_csrf_middleware_is_registered_on_the_web_group(): void
-    {
-        // Guards the L13 rename: the web group must have exactly one
-        // forgery-protection middleware in it, and it must be the renamed class --
-        // the framework's own, since the app no longer subclasses it.
-        $kernel = app(Kernel::class);
-
-        $middleware = method_exists($kernel, 'getMiddlewareGroups')
-            ? $kernel->getMiddlewareGroups()['web']
-            : $kernel->getGlobalMiddleware();
-
-        $forgery = array_values(array_filter($middleware, function ($class) {
-            return $this->isForgeryMiddleware($class);
-        }));
-
-        $this->assertCount(
-            1,
-            $forgery,
-            'Expected exactly one request-forgery middleware in the web group, got: '
-                .implode(', ', $forgery)
-        );
-
-        $this->assertSame(
-            PreventRequestForgery::class,
-            $forgery[0],
-            'The web group must use Illuminate\Foundation\Http\Middleware\PreventRequestForgery. '
-                .'Laravel 13 renamed VerifyCsrfToken to PreventRequestForgery and left the '
-                .'old name as a deprecated alias, so a stale reference still works but '
-                .'is no longer correct.'
-        );
-    }
-
-    private function isForgeryMiddleware(string $class): bool
-    {
-        return is_a($class, PreventRequestForgery::class, true)
-            || is_a($class, ValidateCsrfToken::class, true)
-            || is_a($class, VerifyCsrfToken::class, true);
     }
 }

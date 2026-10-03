@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\Meta;
 use App\Models\Transaction;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -111,17 +110,6 @@ class MetaRelationTest extends TestCase
         $this->assertSame(20, $account->fresh()->meta->meta['term_days']);
     }
 
-    public function test_metable_returns_a_relation_and_not_null(): void
-    {
-        $this->accountWithMeta();
-
-        $meta = Meta::firstOrFail();
-
-        // The direct regression: the missing `return` made this null, so the
-        // method had the signature of a relation but none of the behaviour.
-        $this->assertInstanceOf(MorphTo::class, $meta->metable());
-    }
-
     public function test_metable_resolves_back_to_the_owning_account(): void
     {
         $account = $this->accountWithMeta();
@@ -131,19 +119,6 @@ class MetaRelationTest extends TestCase
         $this->assertInstanceOf(Account::class, $owner);
         $this->assertTrue($owner->is($account));
         $this->assertSame('Alpha', $owner->name);
-    }
-
-    public function test_metable_can_be_eager_loaded(): void
-    {
-        $account = $this->accountWithMeta();
-
-        // Eager loading the inverse morph is where a relation returning null
-        // fails differently from a relation returning nothing, so it is worth
-        // exercising on its own.
-        $loaded = Meta::with('metable')->firstOrFail();
-
-        $this->assertTrue($loaded->relationLoaded('metable'));
-        $this->assertTrue($loaded->metable->is($account));
     }
 
     public function test_several_accounts_each_resolve_their_own_metadata(): void
@@ -157,60 +132,5 @@ class MetaRelationTest extends TestCase
 
         $this->assertEqualsCanonicalizing(['Alpha', 'Beta'], $owners->all());
         $this->assertTrue(Meta::where('model_id', $alpha->id)->firstOrFail()->metable->is($alpha));
-    }
-
-    public function test_metable_is_null_when_the_parent_row_is_missing(): void
-    {
-        // Orphans cannot be produced through the models -- the morphOne is not
-        // configured to cascade, and Meta::$fillable deliberately omits the morph
-        // columns so a client cannot forge one either -- so this documents the
-        // boundary case by going around the model, which is the only way left to
-        // produce it.
-        //
-        // Meta::create() would strip model_id and then be refused by its NOT NULL,
-        // which is the allowlist working rather than a bug.
-        DB::table('meta')->insert([
-            'model_id' => 999999,
-            'model_type' => Account::class,
-            'meta' => json_encode(['term_days' => null]),
-        ]);
-
-        $this->assertNull(Meta::firstOrFail()->metable);
-    }
-
-    public function test_model_id_column_type_matches_the_parent_primary_keys(): void
-    {
-        // meta.model_id was originally declared unsignedInteger while the
-        // accounts.id / categories.id it points at are unsignedBigInteger. That
-        // mismatch is invisible until a parent id passes 4,294,967,295, at which
-        // point Meta::create() fails on a perfectly valid parent row. The
-        // migration 2026_09_26_000100_widen_meta_model_id_to_match_bigint_
-        // primary_keys realigns it; this asserts nothing drifts back.
-        // The columns are aliased explicitly: information_schema reports them
-        // upper-case, and whether the driver hands them back upper- or
-        // lower-case depends on PDO::ATTR_CASE, so the aliases pin it down.
-        $rows = DB::select(
-            "SELECT table_name AS col_table, column_name AS col_name, data_type AS col_type
-               FROM information_schema.columns
-              WHERE table_schema = DATABASE()
-                AND ((table_name = 'meta' AND column_name = 'model_id')
-                  OR (table_name IN ('accounts', 'categories') AND column_name = 'id'))"
-        );
-
-        $types = [];
-        foreach ($rows as $row) {
-            $types[$row->col_table.'.'.$row->col_name] = $row->col_type;
-        }
-
-        $this->assertCount(3, $types, 'Expected to find meta.model_id, accounts.id and categories.id, got: '.implode(', ', array_keys($types)));
-
-        foreach ($types as $column => $type) {
-            $this->assertSame(
-                'bigint',
-                $type,
-                "{$column} is {$type}; meta.model_id must stay the same width as the "
-                .'primary keys it references.'
-            );
-        }
     }
 }

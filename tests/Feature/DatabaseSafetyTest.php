@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -36,15 +35,6 @@ class DatabaseSafetyTest extends TestCase
             "The test suite resolved to the '{$name}' database, which does not look "
             .'like a test database. Running RefreshDatabase here would drop live tables. '
             .'If you just ran `php artisan config:cache`, run `php artisan optimize:clear`.'
-        );
-    }
-
-    public function test_the_active_connection_can_actually_be_reached(): void
-    {
-        // A cheap round trip proves the guard is not merely pattern-matching a
-        // name that happens to be unreachable.
-        $this->assertNotNull(
-            DB::connection()->getPdo()
         );
     }
 

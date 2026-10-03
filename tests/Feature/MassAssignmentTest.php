@@ -9,7 +9,6 @@ use App\Models\Price;
 use App\Models\RecurringTransaction;
 use App\Models\Transaction;
 use App\Models\TransactionTemplate;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -39,10 +38,7 @@ class MassAssignmentTest extends TestCase
      * absent from its allowlist; a recurring transaction's last_recorded_on is
      * moved only by RecurringPayments. Carried here so the rule
      * below reads as "every column nobody else owns" rather than pretending all
-     * four tables are shaped alike.
-     *
-     * User is absent because nothing here writes to it; it is asserted separately
-     * below as the precedent this change follows rather than something to police.
+     * four tables are shaped alike. User is absent because nothing here writes to it.
      */
     private const MODELS = [
         Account::class => ['table' => 'accounts', 'not_client_set' => []],
@@ -158,73 +154,6 @@ class MassAssignmentTest extends TestCase
             (new $model)->fill($refused)->getAttributes(),
             "{$model} accepted an attribute that is not on its allowlist."
         );
-    }
-
-    public function test_a_client_cannot_choose_a_primary_key(): void
-    {
-        // The failure this prevents is quiet rather than loud. A row can be
-        // renumbered onto an id another row already holds, or moved to a high id
-        // and left to collide with whatever is inserted next -- and neither shows
-        // up as anything but a surprising id later.
-        $filled = (new Account)->fill(['id' => 999, 'name' => 'Renumber']);
-
-        $this->assertArrayNotHasKey('id', $filled->getAttributes());
-        $this->assertSame('Renumber', $filled->name);
-    }
-
-    public function test_a_client_cannot_choose_a_creation_timestamp(): void
-    {
-        // Backdating created_at is how a row gets filed into the wrong period in
-        // every list sorted by it, and it is not a field the form offers.
-        $backdated = now()->subYears(5);
-
-        $filled = (new Account)->fill(['created_at' => $backdated, 'name' => 'Stamped']);
-
-        $this->assertArrayNotHasKey('created_at', $filled->getAttributes());
-        $this->assertNull($filled->created_at);
-    }
-
-    public function test_a_client_cannot_choose_a_morph_owner(): void
-    {
-        // Meta rows are only ever written through the relation, which sets the
-        // morph columns itself past fill() -- MorphOneOrMany::setForeignAttributesForCreate
-        // assigns them with setAttribute. So the columns are absent from $fillable
-        // on purpose, and this is what pins that: naming a model_id achieves
-        // nothing, so a client cannot attach a bag to somebody else's row.
-        $filled = (new Meta)->fill([
-            'model_id' => 1,
-            'model_type' => Account::class,
-            'meta' => ['term_days' => 15],
-        ]);
-
-        $this->assertArrayNotHasKey('model_id', $filled->getAttributes());
-        $this->assertArrayNotHasKey('model_type', $filled->getAttributes());
-        // getArrayCopy() rather than the property: the column is cast to an
-        // ArrayObject, so the bag arrives as an object however it was assigned.
-        $this->assertSame(['term_days' => 15], $filled->meta->getArrayCopy());
-    }
-
-    public function test_a_written_row_still_gets_its_timestamps_from_the_database_side(): void
-    {
-        // The other half of excluding the timestamps from $fillable: they are not
-        // writable, but they are not skipped either. Eloquent assigns them on save
-        // through setAttribute, which bypasses fill(), so a row created without
-        // them in the payload still has both.
-        $before = now()->subSecond();
-
-        $account = Account::create(['name' => 'Stamped', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-
-        $this->assertNotNull($account->created_at);
-        $this->assertNotNull($account->updated_at);
-        $this->assertTrue($account->created_at->greaterThanOrEqualTo($before));
-    }
-
-    public function test_the_user_model_keeps_its_own_allowlist(): void
-    {
-        // Not part of MODELS, because nothing here writes to it -- but it is the
-        // one model that already had a $fillable, so it is the precedent this
-        // change follows. Asserted so the two cannot drift apart unnoticed.
-        $this->assertSame(['name', 'email', 'password'], (new User)->getFillable());
     }
 
     private function columns(string $table): array

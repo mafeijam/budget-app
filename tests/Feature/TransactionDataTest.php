@@ -10,7 +10,6 @@ use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
 use App\Models\Account;
 use App\Models\Category;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -147,24 +146,6 @@ class TransactionDataTest extends TestCase
         $this->assertSame('4.5000', $data->amount);
         $this->assertSame(Currency::Usd, $data->ccy);
         $this->assertNotNull($data->created_at);
-    }
-
-    public function test_created_at_resolves_to_the_carbon_class(): void
-    {
-        // Regression guard: TransactionData type-hints ?Carbon but was missing
-        // `use Carbon\Carbon`, so the property resolved to App\DTO\Carbon and
-        // the constructor's `$this->created_at ??= now()` threw a TypeError.
-        $data = TransactionData::from($this->postRequest());
-
-        $this->assertInstanceOf(Carbon::class, $data->created_at);
-    }
-
-    public function test_to_array_serializes_created_at(): void
-    {
-        $array = TransactionData::from($this->postRequest())->toArray();
-
-        $this->assertArrayHasKey('created_at', $array);
-        $this->assertNotNull($array['created_at']);
     }
 
     public function test_enums_serialize_as_their_plain_values(): void

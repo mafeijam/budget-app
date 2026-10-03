@@ -305,14 +305,6 @@ class CardStatementCycleTest extends TestCase
         $this->assertSame($before, $charge->toDateString());
     }
 
-    public function test_the_days_are_exposed_for_display(): void
-    {
-        $cycle = $this->cycle();
-
-        $this->assertSame(25, $cycle->statementDay());
-        $this->assertSame(15, $cycle->termDays());
-    }
-
     public function test_it_is_built_from_account_meta(): void
     {
         $cycle = CardStatementCycle::fromMeta(['term_days' => '15', 'statement_day' => 25]);

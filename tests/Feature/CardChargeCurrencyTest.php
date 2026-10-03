@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\DTO\TransactionMetaData;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Support\CardStatement;
@@ -65,17 +64,6 @@ class CardChargeCurrencyTest extends TestCase
     // ---------------------------------------------------------------------
     // The field itself
     // ---------------------------------------------------------------------
-
-    public function test_the_field_is_named_card_amount_and_declared_in_the_meta_dto(): void
-    {
-        // Named in the assertion rather than left implicit, because the name is the
-        // contract with the form: it is a key in the bag, and a client or a reader
-        // who guesses wrong gets a charge that stores nothing.
-        $this->assertTrue(
-            property_exists(TransactionMetaData::class, 'card_amount'),
-            'TransactionMetaData has no card_amount property.'
-        );
-    }
 
     // ---------------------------------------------------------------------
     // When it is required

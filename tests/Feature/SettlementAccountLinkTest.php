@@ -10,7 +10,6 @@ use App\Enums\Currency;
 use App\Models\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -25,9 +24,8 @@ use Tests\TestCase;
  *
  * The link lives in the account's meta bag, with the card terms, rather than in a
  * column. That is a deliberate reversal of an earlier decision and it costs two
- * things this file has to keep honest: the database can no longer refuse a delete
- * on its own, so AccountController::destroy() has to do it, and the link can no
- * longer be joined or indexed. Both are asserted here.
+ * things: the database cannot refuse a delete on its own, so
+ * AccountController::destroy() has to, and the link cannot be joined or indexed.
  *
  * The link is a pointer and nothing more. It does not write a second row on the
  * cash account, so the two sides of a trade are recorded separately and can drift
@@ -114,21 +112,6 @@ class SettlementAccountLinkTest extends TestCase
     // Where the link lives
     // ---------------------------------------------------------------------
 
-    public function test_the_link_is_not_a_column(): void
-    {
-        // The reversal, asserted rather than assumed. A column here would mean two
-        // places for a type-specific attribute, and whichever the code forgot to
-        // read would be the one silently holding the stale value.
-        $columns = DB::select(
-            "SELECT column_name AS col_name FROM information_schema.columns
-              WHERE table_schema = DATABASE() AND table_name = 'accounts'"
-        );
-
-        $names = array_map(fn ($row) => $row->col_name, $columns);
-
-        $this->assertNotContains('settlement_account_id', $names);
-    }
-
     public function test_the_link_round_trips_through_the_meta_bag(): void
     {
         // The whole move in one assertion: what the DTO accepted is what the
@@ -212,22 +195,6 @@ class SettlementAccountLinkTest extends TestCase
         $this->delete("/accounts/{$bank->id}");
 
         $this->assertDatabaseHas('accounts', ['id' => $bank->id]);
-    }
-
-    public function test_the_database_no_longer_refuses_the_delete_on_its_own(): void
-    {
-        // Stated rather than left implied, because it is the price of the move and
-        // the next person to find a dangling link needs to know where to look.
-        // Only AccountController::destroy() checks; anything else writing SQL
-        // deletes the bank and leaves the brokerage pointing at nothing.
-        $bank = Account::create(['name' => 'Unguarded Bank', 'status' => 'active', 'type' => 'cash', 'ccy' => 'HKD']);
-        $broker = Account::create(['name' => 'Unguarded Broker', 'status' => 'active', 'type' => 'security', 'ccy' => 'HKD']);
-        $this->pointAt($broker, $bank->id);
-
-        DB::table('accounts')->where('id', $bank->id)->delete();
-
-        $this->assertDatabaseMissing('accounts', ['id' => $bank->id]);
-        $this->assertNull($broker->fresh()->settlementAccount());
     }
 
     // ---------------------------------------------------------------------

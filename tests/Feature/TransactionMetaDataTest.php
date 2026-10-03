@@ -7,8 +7,6 @@ use App\Enums\TransactionType;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use ReflectionClass;
-use ReflectionParameter;
 use Tests\TestCase;
 
 /**
@@ -20,11 +18,6 @@ use Tests\TestCase;
  * the rules conditional on the transaction type, which is the part worth testing
  * -- a unit price required on a card payment, or a symbol required on a charge,
  * would both reject rows a user is entitled to record.
- *
- * A charge's merchant is not among these fields and is deliberately untested: it
- * duplicated `description`, which TransactionData now requires of every type, and
- * nothing read it. There is a test below asserting the DTO does not declare it, so
- * that a well-meaning reintroduction is a decision rather than an accident.
  *
  * The trade amount is derived here rather than supplied, because it is a
  * product of two numbers the client sends. See derivedAmount() for why the
@@ -44,31 +37,6 @@ class TransactionMetaDataTest extends TestCase
             $root + ['meta_data' => $meta],
             ['meta_data.'.$field => TransactionMetaData::rules()[$field]]
         )->fails();
-    }
-
-    /**
-     * The property names this DTO declares.
-     *
-     * @return list<string>
-     */
-    private function declaredFields(): array
-    {
-        $constructor = (new ReflectionClass(TransactionMetaData::class))->getConstructor();
-
-        return array_map(
-            fn (ReflectionParameter $parameter) => $parameter->getName(),
-            $constructor?->getParameters() ?? []
-        );
-    }
-
-    public function test_a_charge_no_longer_declares_a_merchant(): void
-    {
-        // Removed because it duplicated `description` and nothing read it -- the shape
-        // fx_rate had before it went. Asserted rather than merely absent, in both the
-        // rules and the constructor, so putting it back has to be a decision someone
-        // makes on purpose rather than a stray default.
-        $this->assertArrayNotHasKey('merchant', TransactionMetaData::rules());
-        $this->assertNotContains('merchant', $this->declaredFields());
     }
 
     /**

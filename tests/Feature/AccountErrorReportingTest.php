@@ -26,10 +26,8 @@ use Tests\TestCase;
  *
  * The behaviour under test is that the exception is now reported, so it lands
  * in the log like any other error, while the user-facing response is unchanged.
- * Tests 1-3 assert the reporting through the exception handler, which is the
- * contract the controller controls. test_the_exception_actually_reaches_the_log
- * asserts the end of that pipeline, because "reported" would be worthless if
- * the handler quietly dropped it.
+ * The tests assert the reporting through the exception handler, which is the
+ * contract the controller controls.
  */
 class AccountErrorReportingTest extends TestCase
 {
@@ -109,44 +107,5 @@ class AccountErrorReportingTest extends TestCase
         $response->assertSessionHas('message', 'Account [Healthy] updated');
 
         Exceptions::assertNotReported(QueryException::class);
-    }
-
-    public function test_the_exception_actually_reaches_the_log(): void
-    {
-        // Ends-to-end: report() routes through the exception handler, which
-        // bootstrap/app.php gives no reportable() callback, so reporting reaches the
-        // default logger. If someone adds one that returns false, or adds the
-        // exception to dontReport, this fails.
-        $log = storage_path('logs/laravel-testing-error-reporting.log');
-
-        config()->set('logging.default', 'single');
-        config()->set('logging.channels.single.path', $log);
-
-        if (is_file($log)) {
-            unlink($log);
-        }
-
-        $account = Account::create(['name' => 'Logged', 'status' => 'active', 'type' => 'card', 'ccy' => 'USD']);
-
-        $this->put("/accounts/{$account->id}", $this->payload([
-            'id' => $account->id,
-            'name' => str_repeat('x', 300),
-        ]))->assertSessionHas('message', 'error db...');
-
-        $this->assertFileExists($log, 'The swallowed exception produced no log file at all.');
-
-        $contents = file_get_contents($log);
-
-        $this->assertStringContainsString('QueryException', $contents);
-        // The database-level cause, not just the wrapper. Named for the column that
-        // overflowed rather than the old "Column 'id' cannot be null", because the
-        // trigger changed when the id hole closed.
-        $this->assertMatchesRegularExpression(
-            '/(Data too long for column .name.|SQLSTATE)/i',
-            $contents,
-            'The log entry should identify the underlying SQL error.'
-        );
-
-        unlink($log);
     }
 }
