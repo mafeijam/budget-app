@@ -150,10 +150,6 @@
         </q-item>
       </q-list>
     </q-card>
-
-    <div class="text-center q-pb-md">
-      <q-btn flat no-caps color="grey-7" label="Full site" icon="desktop_windows" @click="full" />
-    </div>
   </div>
 </template>
 
@@ -267,6 +263,4 @@ const dueText = card => {
 
   return `Due ${formatDay(card.dueDate)}, in ${days} ${days === 1 ? 'day' : 'days'}`
 }
-
-const full = () => showHomeView('full')
 </script>
