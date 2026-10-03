@@ -148,6 +148,11 @@ global. Inertia pages must live in `resources/js/pages/` (globbed in `app.js`).
 `auto-imports.d.ts`, `components.d.ts` and `.eslintrc-auto-import.json` are
 generated **and committed** — a build can dirty them.
 
+**The look is documented in `docs/design.md`**: the amber that every line, band and hover
+is, the coloured cards and the two variables they read, and the overrides of Quasar that
+look wrong and are not. A grey line or a slate hover is the old theme left behind. The old
+design is the `pre-redesign` branch.
+
 ## A page's dropdowns and toggles live in localStorage, not the URL
 
 A control that picks what the page is *about* — a brokerage, a currency, the Totals
