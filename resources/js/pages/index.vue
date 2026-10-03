@@ -420,9 +420,11 @@ const percent = (part, whole) =>
     ? `${(Number(((Number(part) / Math.abs(Number(whole))) * 100).toFixed(1)) || 0).toFixed(1)}%`
     : ''
 
-// The net worth chart's colours, so a line here is the same line there.
+// The net worth chart's colours, so a line here is the same line there -- except net
+// worth itself, which sits on the lavender card and takes its violet ink, as the phone
+// page's line does. Slate on lavender read as a line borrowed from another chart.
 const colours = {
-  net_worth: '#475569',
+  net_worth: '#8b5cf6',
   cash: '#059669',
   cards: '#e11d48',
   value: '#2563eb',
