@@ -11,9 +11,23 @@
       @filter="filterStatement"
     />
 
-    <AppTable :rows="data.data" :columns="columns" title="Transaction" dense>
+    <AppTable
+      :rows="data.data"
+      :columns="columns"
+      title="Transaction"
+      dense
+      row-key="id"
+      class="app-tx-table"
+      :table-row-class-fn="rowClass"
+      @row-click="onRowClick"
+    >
       <template #top>
-        <TransactionFilters ref="filterBar" title="Transactions">
+        <TransactionFilters
+          ref="filterBar"
+          title="Transactions"
+          :selection-label="selectionLabel"
+          @clear-selection="selected.clear()"
+        >
           <template #actions>
             <q-btn
               unelevated
@@ -330,6 +344,74 @@ const signed = row => {
 }
 
 const directionName = row => ({ 1: 'in', '-1': 'out' })[direction(row)] ?? 'none'
+
+// Rows chosen by clicking anywhere on the row, kept by id so paging does not drop
+// what is no longer on screen: the table holds one page and the pill every page.
+const selected = reactive(new Map())
+
+// The action cell's own buttons work the row rather than choosing it.
+const onRowClick = (evt, row) => {
+  if (evt?.target?.closest?.('.app-table-actions')) return
+
+  if (selected.has(row.id)) {
+    selected.delete(row.id)
+  } else {
+    selected.set(row.id, {
+      amount: row.amount,
+      ccy: row.ccy,
+      direction: direction(row),
+      cardAmount: row.meta_data?.card_amount ?? null,
+      cardCcy: row.account_ccy ?? null,
+    })
+  }
+}
+
+const rowClass = row => (selected.has(row.id) ? 'app-tx-selected' : '')
+
+// One sum per currency, since HKD and USD never add up: a mixed choice states each.
+// A row with no direction is a trade, which the Amount column prints unsigned, so it
+// adds as written. A foreign charge on a card states a second figure in the card's own
+// money, which is that row's money in HKD, so it joins the HKD sum rather than standing
+// beside it: two HKD figures would each be true and neither the total asked for.
+const selectionLabel = computed(() => {
+  if (!selected.size) return ''
+
+  const sums = new Map()
+  const cardSums = new Map()
+
+  const add = (map, ccy, figure) => {
+    map.set(ccy, map.has(ccy) ? plus(map.get(ccy), figure) : plus('0', figure))
+  }
+
+  for (const choice of selected.values()) {
+    const figure = choice.direction === -1 ? minus('0', choice.amount) : choice.amount
+
+    add(sums, choice.ccy, figure)
+
+    if (choice.cardAmount !== null) {
+      const signedCard = choice.direction === -1 ? minus('0', choice.cardAmount) : choice.cardAmount
+
+      add(cardSums, choice.cardCcy ?? '', signedCard)
+    }
+  }
+
+  const ccys = [...sums.keys(), ...[...cardSums.keys()].filter(ccy => !sums.has(ccy))]
+
+  const figures = ccys.map(ccy => {
+    const total =
+      sums.has(ccy) && cardSums.has(ccy)
+        ? plus(sums.get(ccy), cardSums.get(ccy))
+        : (sums.get(ccy) ?? cardSums.get(ccy))
+
+    // A bucket fed only by stated figures says where they came from; a merged one is
+    // just the currency's total now.
+    if (ccy === '') return `${signedNet(total)} in the card's currency`
+
+    return `${signedNet(total)} ${ccy}${sums.has(ccy) ? '' : ' on the card'}`
+  })
+
+  return `${rows(selected.size)} selected · ${figures.join(' · ')}`
+})
 
 const categoryName = row =>
   props.options?.categories?.find(c => c.value === row.category_id)?.label ?? ''

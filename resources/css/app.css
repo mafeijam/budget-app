@@ -1617,6 +1617,16 @@ body {
   font-weight: 500;
 }
 
+/* Whole-row selection: clicking anywhere on a transaction row chooses it, except the
+   action cell's own buttons, so the cursor says so before the background does. */
+.app-tx-table tbody tr {
+  cursor: pointer;
+}
+
+.app-tx-selected td {
+  background: #eff6ff;
+}
+
 /* The transactions filter bar: a white search, and the open filters on a soft panel. */
 .app-filter-search .q-field__control {
   background: var(--app-surface);

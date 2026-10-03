@@ -413,7 +413,7 @@
   </div>
 
   <!-- Below the bar rather than in it, so nothing there moves when a filter is set. -->
-  <div v-if="shownChips.length" class="row full-width items-center q-mt-sm">
+  <div v-if="shownChips.length || selectionLabel" class="row full-width items-center q-mt-sm">
     <q-chip
       v-for="chip in shownChips"
       :key="chip.key"
@@ -424,13 +424,27 @@
       :label="chip.label"
       @remove="chip.remove"
     />
+    <!-- The clicked rows' total, rounded where the filter chips are square. Removing
+         it unchooses every row, on this page and the ones it cannot see. -->
+    <q-chip
+      v-if="selectionLabel"
+      dense
+      removable
+      rounded
+      class="app-tint app-tint--info q-my-none q-ml-none q-mr-sm"
+      :label="selectionLabel"
+      @remove="$emit('clear-selection')"
+    />
   </div>
 </template>
 
 <script setup>
 defineProps({
   title: { type: String, default: '' },
+  selectionLabel: { type: String, default: '' },
 })
+
+defineEmits(['clear-selection'])
 
 const page = usePage()
 const pagination = inject('pagination')
