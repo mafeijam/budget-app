@@ -38,6 +38,8 @@ declare module 'vue' {
     RecurringFindDialog: typeof import('./resources/js/components/RecurringFindDialog.vue')['default']
     SettleDialog: typeof import('./resources/js/components/SettleDialog.vue')['default']
     SignOutBtn: typeof import('./resources/js/components/SignOutBtn.vue')['default']
+    SimpleFilters: typeof import('./resources/js/components/SimpleFilters.vue')['default']
+    SimplePicker: typeof import('./resources/js/components/SimplePicker.vue')['default']
     TransactionFilters: typeof import('./resources/js/components/TransactionFilters.vue')['default']
     TransferDialog: typeof import('./resources/js/components/TransferDialog.vue')['default']
   }

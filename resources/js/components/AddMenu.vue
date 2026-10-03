@@ -2,20 +2,30 @@
   <!-- Split, and the one filled button in the app: the left half adds a transaction, which
        is nearly every add, so the common one is a click rather than two; the right half has
        the rest. -->
-  <div class="app-add row no-wrap items-stretch">
+  <!-- The phone's: one round button raised out of the tab bar, and only a transaction. -->
+  <q-btn
+    v-if="transactionOnly"
+    round
+    unelevated
+    color="primary"
+    class="app-add-fab"
+    icon="add"
+    aria-label="Add a transaction"
+    :loading="loading === 'transaction'"
+    @click="open(forms[0])"
+  />
+  <div v-else class="app-add row no-wrap items-stretch">
     <q-btn
       unelevated
       no-caps
       color="primary"
       class="app-add__main text-weight-bold"
-      :class="{ 'app-add__main--alone': transactionOnly }"
       icon="add"
       label="Transaction"
       :loading="loading === 'transaction'"
       @click="open(forms[0])"
     />
     <q-btn
-      v-if="!transactionOnly"
       unelevated
       color="primary"
       class="app-add__more"

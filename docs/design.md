@@ -120,6 +120,11 @@ strip over white. A new coloured card needs only a class that sets the two varia
 Delete) have a `2px` offset shadow in their own colour and press flat into it. The header's
 split Add has a blue one.
 
+**Tab bar.** The phone's two pages, Home and Transactions, in a white bar at the foot edged
+in amber above, each its drawer emoji with no label: the others greyed, the current one in
+colour and lifted over a pink dot. Adding a transaction is the round blue button between them, raised half out of the
+bar and ringed in its white, the one button with no offset shadow.
+
 **Toggles.** Every `q-btn-toggle` chooses with `toggle-color="amber-3"` and
 `toggle-text-color="grey-9"`. A new one takes the same two props.
 

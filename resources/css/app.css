@@ -108,9 +108,181 @@ body {
   margin: 0 auto;
 }
 
-/* Thumb room past the last card, which ends where the page ends. */
+/* Thumb room past the last card, and past the add button standing out of the tab bar: Quasar
+   pads the page by the bar's height, not by what rises above it. */
 .app-simple {
-  padding-bottom: 16px;
+  padding-bottom: 34px;
+}
+
+/* The phone's tab bar: white, edged in amber above as the header is below, its two pages either
+   side of the add button. Each page is its drawer emoji alone: the others greyed, the current
+   one in colour, lifted, over a dot in the drawer's pink. */
+.q-footer.app-tabbar {
+  background: var(--app-surface);
+  color: #475569;
+  box-shadow: 0 -3px 0 #f0b44f55;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-tabbar__row {
+  display: grid;
+  grid-template-columns: 1fr 88px 1fr;
+  align-items: center;
+  height: 50px;
+}
+
+.app-tabbar__tab {
+  justify-self: center;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-tabbar__tab img {
+  width: 26px;
+  height: 26px;
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition:
+    filter 0.2s,
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.app-tabbar__tab--active img {
+  filter: none;
+  opacity: 1;
+  transform: translateY(-3px) scale(1.1);
+}
+
+.app-tabbar__tab--active::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5ca8;
+}
+
+.app-tabbar__add {
+  align-self: start;
+  display: flex;
+  justify-content: center;
+}
+
+/* Raised half out of the bar and ringed in the bar's white, so it reads as cut out of it. No
+   offset shadow, unlike every other button: under the ring it drew a blue crescent off one side. */
+.q-btn.app-add-fab {
+  width: 46px;
+  height: 46px;
+  /* A round q-btn is at least 3em, which at this font size outgrew the width set here. */
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin-top: -20px;
+  font-size: 1.25rem;
+  box-shadow: 0 0 0 5px var(--app-surface);
+}
+
+.q-btn.app-add-fab .q-icon {
+  font-size: 1.5rem;
+}
+
+.app-simple-search .q-field__control {
+  background: var(--app-surface);
+  border-radius: 12px;
+}
+
+/* Beside the search, the field's white edged in its amber; amber filled once a filter is on. */
+.q-btn.app-simple-filter-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: var(--app-surface);
+  color: #475569;
+  box-shadow: inset 0 0 0 1px var(--app-border);
+}
+
+.q-btn.app-simple-filter-btn--on {
+  background: #ffe8a3;
+  color: #334155;
+}
+
+.q-chip.app-simple-chip {
+  margin: 0;
+  background: #ffe8a3;
+  color: #334155;
+  font-weight: 600;
+}
+
+/* The sheet rises from the foot, its top corners the cards' and its bottom flush. */
+.app-simple-sheet {
+  width: 100%;
+  border-radius: 20px 20px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+  The phone's bottom sheets, held to the screen the browser actually shows: Quasar caps a dialog
+  at 100vh, which on a phone is the height with the browser's bars hidden, so with them showing
+  the sheet's foot -- the last options, Show -- sat behind them. dvh is the height as shown; the
+  vh line is for a browser without it. !important against Quasar's cap.
+*/
+.q-dialog__inner > .app-simple-sheet,
+.q-dialog__inner > .app-picker-sheet {
+  max-height: calc(100vh - 48px) !important;
+  max-height: calc(100dvh - 48px) !important;
+  border-radius: 20px 20px 0 0 !important;
+}
+
+.app-picker-sheet {
+  width: 100%;
+  height: 70vh;
+  height: 70dvh;
+  border-radius: 20px 20px 0 0;
+}
+
+.app-picker-sheet__rule {
+  background: var(--app-row-rule, #f3d27a);
+}
+
+.app-picker-sheet__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+
+.app-picker-sheet__head {
+  padding: 12px 16px 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.app-picker-sheet__item {
+  color: #334155;
+}
+
+.app-picker-sheet__item--on {
+  background: #fff7db;
+}
+
+.app-picker-field .q-field__control {
+  cursor: pointer;
+}
+
+.app-simple-sheet__toggle {
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
 }
 
 /* The phone's simple page, read on a small screen and often outdoors: its light greys a step
@@ -288,10 +460,16 @@ body {
   font-weight: 700;
 }
 
-/* Quasar tints a hovered toggle option with its text colour, which on grey text is a grey. */
-.q-btn-toggle .q-btn.q-hoverable:hover > .q-focus-helper {
+/* Quasar tints a hovered, focused or tapped toggle option with its text colour, which on grey
+   text is a grey: the ripple a phone's tap draws, and the focus a tap leaves behind, too. */
+.q-btn-toggle .q-btn.q-hoverable:hover > .q-focus-helper,
+.q-btn-toggle .q-btn.q-focusable:focus > .q-focus-helper {
   background: #f0b44f;
   opacity: 0.2;
+}
+
+.q-btn-toggle .q-ripple__inner {
+  background: #f0b44f;
 }
 
 /* Pills, and an outlined one filled with its own colour rather than ringed in it. */
@@ -3116,10 +3294,6 @@ body {
   padding: 0 14px;
   min-height: 36px;
   font-size: 0.85rem;
-}
-
-.q-btn.app-add__main--alone {
-  border-radius: 12px;
 }
 
 .q-btn.app-add__more {

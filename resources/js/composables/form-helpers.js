@@ -96,7 +96,9 @@ export function useDestroy(pagination) {
   //
   // DeleteDialog keeps the three things Quasar's default dialog was configured for:
   // focus on cancel, dismissal as a cancel, and the message as text rather than markup.
-  function destroy(row) {
+  // The phone's list passes `other` in, since its rows carry their own pair and the page has
+  // no map of them.
+  function destroy(row, other = usePage().props.linked?.[row.id]) {
     // What deleting this row would also delete, from the page props. Null for
     // everything but the two halves of a card settlement, which are the only rows in
     // this app that are really one row: a settlement is a payment on the card and a
@@ -106,8 +108,6 @@ export function useDestroy(pagination) {
     //
     // Read at click time rather than once, because the prop is rebuilt per visit and
     // a dialog opened after a delete has to reflect the list it was opened from.
-    const other = usePage().props.linked?.[row.id]
-
     Dialog.create({
       component: DeleteDialog,
       componentProps: {
@@ -134,7 +134,8 @@ export function useDestroy(pagination) {
         onBefore: () => (loading.value = row.id),
         onSuccess: resp => {
           notifySuccess()
-          syncPagination(pagination, resp)
+          // The phone's list has no table to page, as in useSubmit().
+          if (pagination && resp.props.data?.meta) syncPagination(pagination, resp)
         },
         onFinish: () => (loading.value = null),
       })
@@ -187,7 +188,7 @@ export function usePost(pagination) {
         onBefore: () => (loading.value = row.id),
         onSuccess: resp => {
           notifySuccess()
-          syncPagination(pagination, resp)
+          if (pagination && resp.props.data?.meta) syncPagination(pagination, resp)
         },
         // Every guard a dialog would have shown beside the field still runs, and there is no
         // field here to show it on, so the first refusal is the toast. Its wording is a

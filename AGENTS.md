@@ -180,9 +180,10 @@ then currency). The cost is a larger response, so build each view from one share
   not a filter: Reset leaves it, `active` does not count it, the echoed `params.filter`
   leaves out the cookie's addition, and a link that names it wins for that visit only.
   Tests set them with `withUnencryptedCookie()`; the totals tests need it to get totals.
-  Home's choice between the phone's simple page and the full one
-  (`HomeController::VIEW_COOKIE`) is the same kind: the page is picked on the first request,
-  from the cookie or, without one, from "Mobi" in the user agent.
+  The choice between the phone's simple pages and the full ones
+  (`HomeController::VIEW_COOKIE`, read by `HomeController::wantsSimple()` for both Home and
+  Transactions) is the same kind: the page is picked on the first request, from the cookie
+  or, without one, from "Mobi" in the user agent.
 - **Detail too big to ship is fetched when asked, from a small JSON endpoint built on the
   same query as the figure.** Cash flow's quick view (`GET cash-flow/transactions`, opened
   by the eye on a breakdown tile) lists the rows behind one category in one month. It uses
@@ -216,6 +217,10 @@ then currency). The cost is a larger response, so build each view from one share
   holding; a card is negative when owing; a card paid beyond its charges is
   positive. `CardStatement::owed()` is the opposite sign on purpose — it is a
   period's debt.
+- **Currencies are listed HKD, then USD, then the rest by code** — never plain
+  alphabetical, which puts JPY before USD. Wherever a list of currencies or of things
+  held in them is shown: the phone's Cash card (`simple.vue`'s `leading`) and the phone
+  list's currency filter (`TransactionController::simple()`).
 - **Money is never a float.** BigDecimal server-side, decimal strings over the
   wire. `AMOUNT_SCALE` is 4.
 - **A card states its own amount, so card money never needs a rate.** A charge in

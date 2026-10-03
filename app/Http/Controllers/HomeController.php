@@ -41,10 +41,10 @@ class HomeController extends Controller
     private const ONCE_FOR = 3600;
 
     /**
-     * A choice between the home page and the phone's simple page, made by the links on each and
-     * read here: `simple` or `full`, and with neither a phone's user agent decides. A cookie
-     * rather than storage because the server picks the page on the first request, and listed
-     * in bootstrap/app.php's encryptCookies(except:), since the page writes it.
+     * A choice between the full pages and the phone's simple ones, Home's and Transactions':
+     * `simple` or `full`, and with neither a phone's user agent decides. A cookie rather than
+     * storage because the server picks the page on the first request, and listed in
+     * bootstrap/app.php's encryptCookies(except:), since a page writes it.
      */
     public const VIEW_COOKIE = 'home_view';
 
@@ -84,7 +84,7 @@ class HomeController extends Controller
         $today = today();
         $day = $today->toDateString();
 
-        if ($this->wantsSimple($request)) {
+        if (self::wantsSimple($request)) {
             return $this->simple($today);
         }
 
@@ -159,9 +159,10 @@ class HomeController extends Controller
 
     /**
      * Every phone browser names itself Mobi in its user agent and a tablet's does not, which is
-     * the line wanted: a tablet has room for the home page.
+     * the line wanted: a tablet has room for the home page. Asked by Transactions too, so the
+     * two pages the phone's footer moves between are always both simple or both full.
      */
-    private function wantsSimple(Request $request): bool
+    public static function wantsSimple(Request $request): bool
     {
         return match ($request->cookie(self::VIEW_COOKIE)) {
             'simple' => true,

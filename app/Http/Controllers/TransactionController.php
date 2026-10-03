@@ -17,6 +17,7 @@ use App\Models\Transaction;
 use App\Models\TransactionTemplate;
 use App\Support\CardStatement;
 use App\Support\CashFlow;
+use App\Support\Fx;
 use App\Support\Positions;
 use App\Support\TradeCash;
 use App\Support\Transfer;
@@ -24,11 +25,14 @@ use Brick\Math\BigDecimal;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\ScrollMetadata;
 use Spatie\LaravelData\PaginatedDataCollection;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -41,6 +45,9 @@ class TransactionController extends Controller
     private const DEFAULT_SORT = 'date';
 
     private const SORTABLE = ['date', 'type', 'description', 'amount', 'status'];
+
+    /** A phone screen's worth and more, so the first page fills it before any scroll loads. */
+    private const SIMPLE_PER_PAGE = 30;
 
     private const HINT_YEARS = 2;
 
@@ -72,6 +79,8 @@ class TransactionController extends Controller
         }
 
         $hideTransfers = in_array((string) ($r->query('filter')['hide_transfers'] ?? ''), ['1', 'true'], true);
+
+        $simple = HomeController::wantsSimple($r);
 
         // What the form needs, which the dialog on any other page asks for too: see formProps().
         $form = self::formProps();
@@ -293,7 +302,7 @@ class TransactionController extends Controller
         //
         // Only with the panel open, which the page says in a cookie: closed, it is a grouped
         // query over every matching row for figures nobody is shown.
-        $showTotals = $r->cookie(self::TOTALS_COOKIE) === '1';
+        $showTotals = ! $simple && $r->cookie(self::TOTALS_COOKIE) === '1';
         $totals = $showTotals
             ? $this->totals(clone $transactions->getEloquentBuilder())
             : ['currencies' => [], 'base' => null, 'unconverted' => []];
@@ -309,7 +318,7 @@ class TransactionController extends Controller
             : $transactions->orderBy($sort, $dir))
             // Tiebreak by id, or a row could appear on two pages or none.
             ->orderBy('id', $dir)
-            ->paginate($r->input('per_page', self::PER_PAGE))
+            ->paginate($r->input('per_page', $simple ? self::SIMPLE_PER_PAGE : self::PER_PAGE))
             ->withQueryString();
 
         $page = $transactions->getCollection();
@@ -330,6 +339,10 @@ class TransactionController extends Controller
                     : TransactionType::from($row->type)->movesBalanceOn(AccountType::from($row->account->type)),
             ])
             ->all();
+
+        if ($simple) {
+            return $this->simple($form, $transactions, $directions, $linked, $editLocks, $refusals, $filter, $filterCategories);
+        }
 
         $data = TransactionData::collect($transactions, PaginatedDataCollection::class);
 
@@ -358,22 +371,7 @@ class TransactionController extends Controller
         // a new account unfilterable, and nothing else in the suite would notice. Name breaks
         // a tie, so two accounts with the same number of rows keep the order they had.
         $filterOptions = [
-            'accounts' => Account::query()
-                ->leftJoin('transactions', 'transactions.account_id', '=', 'accounts.id')
-                ->select('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
-                // row_count, not usage: the second is a reserved word and MySQL refuses it
-                // as an alias outright.
-                ->selectRaw('COUNT(transactions.id) AS row_count')
-                ->groupBy('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
-                ->orderByDesc('row_count')
-                ->orderBy('accounts.name')
-                ->get()
-                ->map(fn (Account $account) => [
-                    'label' => $account->name,
-                    'value' => $account->id,
-                    'type' => $account->type,
-                    'ccy' => $account->ccy,
-                ]),
+            'accounts' => self::filterAccounts(),
             // Every month a statement is due in, newest first, for the filter's month picker.
             // Every month a cash account has a row in, newest first, for the month picker.
             'months' => Transaction::query()
@@ -382,14 +380,7 @@ class TransactionController extends Controller
                 ->orderByDesc('month')
                 ->pluck('month')
                 ->values(),
-            'dueMonths' => Meta::query()
-                ->where('model_type', Transaction::class)
-                ->selectRaw("DISTINCT LEFT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.due_date')), 7) AS month")
-                ->whereRaw("JSON_EXTRACT(meta, '$.due_date') IS NOT NULL")
-                ->orderByDesc('month')
-                ->pluck('month')
-                ->filter(fn (?string $month) => $month !== null && preg_match('/^\d{4}-\d{2}$/', $month))
-                ->values(),
+            'dueMonths' => self::dueMonths(),
             'types' => array_column(TransactionType::offeredOrder(), 'value'),
             'accountTypes' => array_column(AccountType::cases(), 'value'),
             'symbols' => $symbols,
@@ -470,6 +461,135 @@ class TransactionController extends Controller
             'base',
             'filterOptions',
         )]);
+    }
+
+    /**
+     * The phone's list: the rows newest first, a page at a time as it is scrolled, and the form
+     * to add, fix or delete one. Each row carries which way it moves its balance, its other half
+     * if it has one, and why it cannot be deleted if it cannot, rather than the page carrying
+     * them keyed by id as the table's does: a page
+     * scrolled in merges into the list, and maps sent beside it would hold only the last page.
+     * The edit locks are the exception, since the form reads them from the page, so they merge
+     * too -- as an object, because an empty PHP array arrives as a list and merges as one.
+     */
+    private function simple(
+        array $form,
+        LengthAwarePaginator $transactions,
+        array $directions,
+        array $linked,
+        array $editLocks,
+        array $refusals,
+        array $filter,
+        array $filterCategories,
+    ) {
+        $models = $transactions->getCollection()->keyBy('id');
+        $fx = Fx::for($models->pluck('ccy')->merge($models->pluck('account.ccy'))->filter()->all());
+
+        $rows = TransactionData::collect($transactions->getCollection())
+            ->map(fn (TransactionData $row) => [
+                ...$row->toArray(),
+                'direction' => $directions[$row->id] ?? 0,
+                'linked' => $linked[$row->id] ?? null,
+                'refusal' => $refusals[$row->id] ?? null,
+                'base' => self::phoneBase($models[$row->id], $fx),
+            ])
+            ->values()
+            ->all();
+
+        return inertia('simple-transaction', [
+            ...$form,
+            'data' => Inertia::scroll(['data' => $rows], metadata: ScrollMetadata::fromPaginator($transactions))
+                ->matchOn('data.id'),
+            'editLocks' => Inertia::merge((object) $editLocks),
+            // The pending row a swipe does not post, as the table's: see index().
+            'settleType' => TransactionType::Payment->value,
+            // As asked for, cookie and all left out, as index() echoes params.filter.
+            'filter' => (object) $filter,
+            // Closed accounts too, and No category: a filter finds old rows, a form makes new.
+            'filterOptions' => fn () => [
+                'accounts' => self::filterAccounts(),
+                'categories' => $filterCategories,
+                'dueMonths' => self::dueMonths(),
+                'types' => array_column(TransactionType::offeredOrder(), 'value'),
+                // The currencies rows are in, not every one the app knows: a filter on a
+                // currency with no rows can only empty the list. HKD and USD first, as the
+                // phone's Home orders its cash, then the rest by code.
+                'currencies' => Transaction::query()->distinct()->pluck('ccy')
+                    ->sortBy(fn (string $ccy) => [
+                        match ($ccy) {
+                            Currency::Hkd->value => 0,
+                            Currency::Usd->value => 1,
+                            default => 2,
+                        },
+                        $ccy,
+                    ])
+                    ->values(),
+            ],
+            'base' => Currency::Hkd->value,
+        ]);
+    }
+
+    /** Every month a statement is due in, newest first, for the statement month picker. */
+    private static function dueMonths(): Collection
+    {
+        return Meta::query()
+            ->where('model_type', Transaction::class)
+            ->selectRaw("DISTINCT LEFT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.due_date')), 7) AS month")
+            ->whereRaw("JSON_EXTRACT(meta, '$.due_date') IS NOT NULL")
+            ->orderByDesc('month')
+            ->pluck('month')
+            ->filter(fn (?string $month) => $month !== null && preg_match('/^\d{4}-\d{2}$/', $month))
+            ->values();
+    }
+
+    /** Every account, as the comment over $filterOptions in index() says. */
+    private static function filterAccounts(): Collection
+    {
+        return Account::query()
+            ->leftJoin('transactions', 'transactions.account_id', '=', 'accounts.id')
+            ->select('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
+            // row_count, not usage: the second is a reserved word and MySQL refuses it
+            // as an alias outright.
+            ->selectRaw('COUNT(transactions.id) AS row_count')
+            ->groupBy('accounts.id', 'accounts.name', 'accounts.type', 'accounts.ccy')
+            ->orderByDesc('row_count')
+            ->orderBy('accounts.name')
+            ->get()
+            ->map(fn (Account $account) => [
+                'label' => $account->name,
+                'value' => $account->id,
+                'type' => $account->type,
+                'ccy' => $account->ccy,
+            ]);
+    }
+
+    /**
+     * A foreign row's figure in the base currency, for reading beside its own and never added
+     * to anything. The card's own figure where it states one, which is what was charged; else
+     * the row's day's rate applied, marked as an estimate, since a pending charge is converted
+     * by the card later at a rate nobody knows yet. Null in the base currency already, and
+     * where there is no rate: none is shown rather than one-for-one.
+     *
+     * @return array{amount: string, estimate: bool}|null
+     */
+    private static function phoneBase(Transaction $row, Fx $fx): ?array
+    {
+        if ($row->ccy === Fx::BASE->value) {
+            return null;
+        }
+
+        $stated = $row->meta?->meta['card_amount'] ?? null;
+        $statedCcy = $row->account?->ccy;
+
+        if ($stated !== null && $statedCcy === Fx::BASE->value) {
+            return ['amount' => (string) BigDecimal::of($stated)->toScale(4), 'estimate' => false];
+        }
+
+        [$amount, $ccy] = $stated !== null && $statedCcy !== null ? [$stated, $statedCcy] : [$row->amount, $row->ccy];
+
+        $converted = $amount === null ? null : $fx->toBase((string) $amount, $ccy, (string) $row->date);
+
+        return $converted === null ? null : ['amount' => (string) $converted, 'estimate' => true];
     }
 
     /**
