@@ -131,6 +131,22 @@
           stroke-width="2"
         />
 
+        <!-- A badge where the net worth line first reaches each whole million, so the
+             crossing reads without tracing the line back to the axis. Stacked where one
+             jump clears two, and hidden with the line itself. -->
+        <template v-if="shows('net_worth')">
+          <g v-for="badge in milestones" :key="`milestone-${badge.level}`">
+            <title>{{ badge.title }}</title>
+            <image
+              :href="milestoneBadge"
+              :x="badge.cx - BADGE / 2"
+              :y="badge.py"
+              :width="BADGE"
+              :height="BADGE"
+            />
+          </g>
+        </template>
+
         <text
           v-for="tick in axis"
           :key="`axis-${tick.i}`"
@@ -172,6 +188,10 @@
 </template>
 
 <script setup>
+// The drawer's emoji are images rather than text, and this is one of them: a machine
+// without an emoji font draws an empty box where a text badge would be.
+import milestoneBadge from '../../images/emoji/badge.svg'
+
 const props = defineProps({
   history: { type: Array, default: () => [] },
   base: { type: String, default: '' },
@@ -441,6 +461,40 @@ const axis = computed(() => {
 
 const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+
+// The first point at or above each whole million of net worth. A jump clearing two at
+// once stacks its badges, so one never hides the other. The icon is kept inside the
+// plot, so the peak's badge at the chart's corner never runs off the side or above
+// the top.
+const MILESTONE = 1000000
+const BADGE = 24
+
+const milestones = computed(() => {
+  if (!points.value.length) return []
+
+  const peak = Math.max(0, ...points.value.map(point => point.numbers.net_worth))
+  const seen = new Map()
+  const badges = []
+
+  for (let level = MILESTONE; level <= peak; level += MILESTONE) {
+    const i = points.value.findIndex(point => point.numbers.net_worth >= level)
+
+    if (i === -1) continue
+
+    const stack = seen.get(i) ?? 0
+    seen.set(i, stack + 1)
+
+    badges.push({
+      level,
+      i,
+      cx: Math.min(Math.max(x(i), BADGE / 2 + 2), width - BADGE / 2 - 2),
+      py: Math.max(2, y(points.value[i].net_worth) - (BADGE + 12) - stack * (BADGE + 2)),
+      title: `Reached ${compact(level)} in ${points.value[i].long}`,
+    })
+  }
+
+  return badges
+})
 
 const label = computed(() => `Net worth, cash, stock value and stock cost, in ${props.base}`)
 
