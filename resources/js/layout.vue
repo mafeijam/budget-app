@@ -1,8 +1,8 @@
 <template>
   <q-layout view="hHh LpR fFf">
-    <q-header bordered class="bg-white text-grey-9">
+    <q-header class="app-header">
       <q-toolbar class="q-px-md">
-        <q-btn dense flat round icon="menu" color="grey-8" @click="show = !show" />
+        <q-btn dense flat round icon="menu" @click="show = !show" />
         <AppLogo :size="32" class="q-ml-sm" />
         <q-toolbar-title class="app-wordmark"
           >Ledger<span class="app-wordmark__stop">.</span></q-toolbar-title
@@ -13,8 +13,8 @@
       </q-toolbar>
     </q-header>
 
-    <q-drawer v-model="show" :width="220" bordered class="bg-white" show-if-above>
-      <q-list padding class="q-px-sm text-grey-8">
+    <q-drawer v-model="show" :width="220" class="app-drawer" show-if-above>
+      <q-list padding class="q-px-sm">
         <template v-for="group in menus" :key="group.heading ?? 'top'">
           <q-item-label v-if="group.heading" header class="app-nav-heading">
             {{ group.heading }}
@@ -30,7 +30,7 @@
             @click="menu.to"
           >
             <q-item-section avatar>
-              <q-icon :name="menu.icon" />
+              <img :src="menu.emoji" class="app-nav-emoji" alt="" />
             </q-item-section>
             <q-item-section>{{ menu.label }}</q-item-section>
           </q-item>
@@ -47,14 +47,28 @@
 </template>
 
 <script setup>
+// Noto's emoji as images rather than text: a machine without an emoji font draws an empty box,
+// and @fontsource's Noto Color Emoji renders nothing even in a browser that has one.
+import bank from '../images/emoji/bank.svg'
+import chartIncreasing from '../images/emoji/chart-increasing.svg'
+import crystalBall from '../images/emoji/crystal-ball.svg'
+import house from '../images/emoji/house.svg'
+import tag from '../images/emoji/tag.svg'
+import moneyBag from '../images/emoji/money-bag.svg'
+import openBook from '../images/emoji/open-book.svg'
+import purse from '../images/emoji/purse.svg'
+import receipt from '../images/emoji/receipt.svg'
+import repeat from '../images/emoji/repeat.svg'
+import waterWave from '../images/emoji/water-wave.svg'
+
 const page = usePage()
 
 const show = ref(false)
 
 const menus = computed(() => {
-  const item = (label, component, icon, path) => ({
+  const item = (label, component, emoji, path) => ({
     label,
-    icon,
+    emoji,
     active: page.component === component,
     to: () => router.visit(path),
   })
@@ -64,31 +78,31 @@ const menus = computed(() => {
   // Positions is a report: it is worked out from trades, and nothing is entered on it.
   return [
     {
-      items: [item('Home', 'index', 'dashboard', '/')],
+      items: [item('Home', 'index', house, '/')],
     },
     {
       heading: 'Records',
       items: [
-        item('Transactions', 'transaction', 'receipt_long', '/transactions'),
-        item('Recurring', 'recurring', 'event_repeat', '/recurring'),
+        item('Transactions', 'transaction', receipt, '/transactions'),
+        item('Recurring', 'recurring', repeat, '/recurring'),
       ],
     },
     {
       heading: 'Reports',
       items: [
-        item('Positions', 'position', 'show_chart', '/positions'),
-        item('Dividends', 'dividend', 'paid', '/dividends'),
-        item('Net worth', 'net-worth', 'account_balance_wallet', '/net-worth'),
-        item('Cash flow', 'cash-flow', 'insights', '/cash-flow'),
-        item('Forecast', 'forecast', 'query_stats', '/forecast'),
-        item('Year in review', 'review', 'auto_stories', '/review'),
+        item('Positions', 'position', chartIncreasing, '/positions'),
+        item('Dividends', 'dividend', moneyBag, '/dividends'),
+        item('Net worth', 'net-worth', purse, '/net-worth'),
+        item('Cash flow', 'cash-flow', waterWave, '/cash-flow'),
+        item('Forecast', 'forecast', crystalBall, '/forecast'),
+        item('Year in review', 'review', openBook, '/review'),
       ],
     },
     {
       heading: 'Settings',
       items: [
-        item('Accounts', 'account', 'account_balance', '/accounts'),
-        item('Categories', 'category', 'sell', '/categories'),
+        item('Accounts', 'account', bank, '/accounts'),
+        item('Categories', 'category', tag, '/categories'),
       ],
     },
   ]

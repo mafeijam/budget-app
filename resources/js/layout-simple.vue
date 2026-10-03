@@ -2,7 +2,7 @@
   <!-- The phone's: no drawer, since the pages it leads to are the ones a phone cannot use, and
        the add button and sign out where a thumb reaches them. -->
   <q-layout view="hHh lpR fFf">
-    <q-header bordered class="bg-white text-grey-9">
+    <q-header class="app-header">
       <q-toolbar class="q-px-md">
         <AppLogo :size="28" />
         <q-space />
@@ -12,7 +12,7 @@
     </q-header>
 
     <q-page-container>
-      <q-page class="app-simple bg-grey-2 q-pa-sm text-grey-9">
+      <q-page class="app-simple q-pa-sm text-grey-9">
         <slot />
       </q-page>
     </q-page-container>

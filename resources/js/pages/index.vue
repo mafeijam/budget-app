@@ -9,6 +9,7 @@
           flat
           bordered
           class="app-home-headline__card column no-wrap"
+          :class="`app-home-headline__card--${figure.key}`"
         >
           <!-- The figure and its line open the net worth page; a row below opens its own. -->
           <q-card-section class="q-pb-none app-home-link" @click="go('/net-worth')">

@@ -194,8 +194,8 @@ const colours = {
   low: '#dc2626',
   in: '#059669',
   out: '#e11d48',
-  grid: '#e2e8f0',
-  zero: '#94a3b8',
+  grid: '#f8e6b6',
+  zero: '#c9a96a',
 }
 
 const width = 960

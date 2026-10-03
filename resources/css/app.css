@@ -36,10 +36,12 @@
 
 /* Plain values only: anything derived from a --q- variable goes on body, below. */
 :root {
-  --app-ground: #f1f5f9;
+  --app-ground: #fffbeb;
   --app-surface: #ffffff;
-  --app-border: #e2e8f0;
-  --app-header-bg: #f8fafc;
+  --app-border: #f3d27a;
+  --app-header-bg: #fff7db;
+  /* Half the header's cream: a box of fields at the band's strength reads as a warning. */
+  --app-panel-bg: #fffcf0;
   --app-muted: #64748b;
   --app-content-max: 1680px;
   --app-muted-tint: #f1f5f9;
@@ -55,24 +57,27 @@
   brand: change a colour in plugins/quasar.js and change its hex here too.
 */
 body {
-  background: var(--app-ground);
+  background-color: var(--app-ground);
+  background-image: radial-gradient(#33415522 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+  font-family: 'Space Grotesk Variable', -apple-system, 'Helvetica Neue', Arial, sans-serif;
 
-  --app-primary-tint: #ebf1fd;
+  --app-primary-tint: #ecf0ff;
   --app-positive-tint: #e1efeb;
   --app-warning-tint: #f4e5da;
-  --app-negative-tint: #fce9e9;
+  --app-negative-tint: #fce8ed;
   --app-info-tint: #e8f4fa;
 
   /* 60% of the brand for every ink: 80% reads thin on a tint at chip size. */
-  --app-primary-ink: #163b8d;
+  --app-primary-ink: #1a3599;
   --app-positive-ink: #024834;
   --app-warning-ink: #6c3205;
-  --app-negative-ink: #841717;
+  --app-negative-ink: #87112b;
   --app-info-ink: #014f77;
 
   /* Mixed onto the surface, not transparency, so a fill is the same on the page as on a card. */
-  --app-btn-tint: #e3ebfc;
-  --app-btn-negative-tint: #fae3e3;
+  --app-btn-tint: #e3e9ff;
+  --app-btn-negative-tint: #fbe2e7;
   --app-btn-positive-tint: #deede9;
 }
 
@@ -173,15 +178,82 @@ body {
   }
 }
 
-.app-nav-active {
-  background: var(--app-primary-tint);
-  color: var(--q-primary);
-  font-weight: 600;
+/* The page's chrome: a yellow bar, a white drawer edged like the cards, and the current page
+   as a pink tab lifted off it. */
+.app-header {
+  background: #ffde59;
+  color: #334155;
+  box-shadow: 0 3px 0 #f0b44f88;
 }
 
+.app-drawer {
+  background: var(--app-surface);
+  box-shadow: 3px 0 0 #f0b44f55;
+}
+
+.app-drawer .q-item {
+  border-radius: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+/* Quasar tints a hovered item and its click ripple with the text colour, which on slate is a
+   grey. */
+.app-drawer .q-item.q-hoverable:hover > .q-focus-helper {
+  background: #ff5ca8;
+  opacity: 0.12;
+}
+
+.app-drawer .q-ripple__inner {
+  background: #ff5ca8;
+}
+
+.app-nav-emoji {
+  width: 24px;
+  height: 24px;
+}
+
+/* Two classes, or .app-drawer .q-item's ink wins and the current page's label stays slate. */
+.app-drawer .app-nav-active {
+  background: #ffd6e8;
+  color: #9d174d;
+  box-shadow: 2px 2px 0 #f9a8d4;
+}
+
+/*
+  A card's edge is an offset shadow in the border's amber, not a line. !important because a
+  flat card carries Quasar's no-shadow, which is !important itself, and a card drawn without
+  it has no edge at all on the dotted ground.
+*/
 .q-card,
 .q-table__container {
+  border-radius: 20px;
+  box-shadow: 3px 3px 0 #f0b44f77 !important;
+}
+
+.q-card .q-card,
+.q-card .q-table__container {
+  box-shadow: 2px 2px 0 #f0b44f55 !important;
+}
+
+/* :where, so this weighs one class: Quasar's .q-btn-group > .q-btn-item then still hands a
+   grouped button its group's corners, where twelve-pixel ones bulge inside a segmented box. */
+.q-btn:where(:not(.q-btn--round)) {
   border-radius: 12px;
+}
+
+.q-btn {
+  font-weight: 700;
+}
+
+/* Pills, and an outlined one filled with its own colour rather than ringed in it. */
+.q-badge {
+  border-radius: 999px;
+}
+
+.q-badge--outline {
+  border-color: transparent;
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .q-table__container {
@@ -204,18 +276,58 @@ body {
 
 .q-card--bordered,
 .q-table--bordered {
-  border-color: var(--app-border);
+  border: 0;
+}
+
+/* The border's amber, faded: a rule on every row at full strength stripes the list. */
+/* The hover is translucent, not a cream hex: q-table draws it as an overlay over the cell,
+   and an opaque one hides the row's text. */
+body {
+  --app-row-rule: color-mix(in srgb, var(--app-border) 55%, transparent);
+  --app-hover: color-mix(in srgb, var(--app-border) 22%, transparent);
+  --app-track: #fbf2d7;
+}
+
+.q-table tbody td,
+.q-list--separator > .q-item-type + .q-item-type {
+  border-color: var(--app-row-rule);
+}
+
+.q-table tbody td:before {
+  background: var(--app-hover);
 }
 
 /* Sentence case, not capitals: "Account type" in capitals wraps in its 110px column.
    app-head-table gives a q-markup-table the same header as the AppTable lists. */
 .sticky-table thead tr th,
 .app-head-table thead tr th {
-  background: var(--app-header-bg);
-  border-bottom: 1px solid var(--app-border);
-  color: var(--app-muted);
+  background: #ffde59;
+  border-bottom: 0;
+  color: #334155;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.q-field--outlined .q-field__control:before {
+  border-color: var(--app-border);
+}
+
+/* Hover and focus in the border's deeper amber rather than Quasar's black and blue. Focus
+   leaves an errored field alone, so its red ring and label still say what is wrong. */
+.q-field--outlined .q-field__control:hover:before {
+  border-color: #e0a23a;
+}
+
+.q-field--outlined.q-field--highlighted:not(.q-field--error) .q-field__control:after {
+  border-color: #e0a23a;
+}
+
+.q-field--highlighted:not(.q-field--error) .q-field__label {
+  color: #b45309;
+}
+
+.q-separator {
+  background: var(--app-row-rule);
 }
 
 /* A proportional 1 is narrower than a 0, so right-aligned money would staircase. */
@@ -335,11 +447,11 @@ body {
 }
 
 .app-peek__row + .app-peek__row {
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--app-row-rule);
 }
 
 .app-peek__row:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-peek__note {
@@ -361,7 +473,7 @@ body {
 
 .app-peek__close:hover {
   color: #0f172a !important;
-  background: #f1f5f9;
+  background: var(--app-hover);
 }
 
 .app-peek__open:hover {
@@ -426,6 +538,81 @@ body {
   overflow: hidden;
 }
 
+/*
+  Each card in its own colour, and the colour's deeper ink for everything drawn on it -- the
+  shadow, the rules between rows, the change pill's shadow -- so no amber from the rest of the
+  page lands on a card. The rows sit on a white wash that runs to the card's foot: a short
+  list beside a long one otherwise ends in a slab of bare colour.
+*/
+.app-home-headline__card--net_worth {
+  --card-fill: #e2dafe;
+  --card-ink: #8b5cf6;
+}
+
+.app-home-headline__card--cash {
+  --card-fill: #c3f7d6;
+  --card-ink: #22a35a;
+}
+
+.app-home-headline__card--value {
+  --card-fill: #bee9fe;
+  --card-ink: #0ea5e9;
+}
+
+.app-home-headline__card--cards {
+  --card-fill: #fed2d7;
+  --card-ink: #f43f5e;
+}
+
+.app-home-headline .app-home-headline__card {
+  background: var(--card-fill);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--card-ink) 70%, transparent) !important;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
+}
+
+.app-home-headline .app-home-headline__card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 color-mix(in srgb, var(--card-ink) 70%, transparent) !important;
+}
+
+.app-home-headline__card .app-home-list {
+  flex: 1 1 auto;
+  background: #ffffffcc;
+}
+
+.app-home-headline__card .app-home-list__group {
+  background: #ffffffcc;
+}
+
+.app-home-headline__card .app-home-list,
+.app-home-headline__card .app-home-list__group,
+.app-home-headline__card .app-home-list__row {
+  border-color: color-mix(in srgb, var(--card-ink) 22%, transparent);
+}
+
+/* One ink for every figure: the card's colour says which it is, and a red figure on the pink
+   card would not read. !important to outrank the text-negative and kin it carries. */
+.app-home-headline .app-home-figure {
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800;
+  color: #334155 !important;
+}
+
+.app-home-headline .app-change {
+  background: #fff;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--card-ink) 55%, transparent);
+}
+
+.app-home-headline .app-change.app-tint--positive {
+  color: var(--q-positive);
+}
+
+.app-home-headline .app-change.app-tint--negative {
+  color: var(--q-negative);
+}
+
 /* Flush to the card's edges and bottom, under its figures. */
 .app-home-spark {
   display: block;
@@ -464,7 +651,7 @@ body {
 
 /* The one rule left in either panel, now that its rows have none between them. */
 .app-panel-head {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--app-border);
   margin-bottom: 4px;
 }
 
@@ -506,7 +693,7 @@ body {
 }
 
 .app-soon__row:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--app-hover);
 }
 
 /* On the title's line, as Needs attention's amounts are. */
@@ -605,13 +792,13 @@ body {
 }
 
 .app-attn:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--app-hover);
 }
 
 .app-attn__rows {
   margin: 6px 0 0 28px;
   padding-left: 10px;
-  border-left: 1px dashed rgba(0, 0, 0, 0.12);
+  border-left: 1px dashed var(--app-border);
 }
 
 .app-attn__amount {
@@ -633,10 +820,10 @@ body {
 .q-item__label.app-nav-heading {
   padding: 20px 16px 6px;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--app-muted);
+  color: #334155;
 }
 
 .app-btn {
@@ -655,12 +842,27 @@ body {
   margin-right: 6px;
 }
 .app-btn--negative {
+  --app-btn-edge: color-mix(in srgb, var(--q-negative) 40%, transparent);
   background: var(--app-btn-negative-tint);
   color: var(--app-negative-ink);
 }
 .app-btn--positive {
+  --app-btn-edge: color-mix(in srgb, var(--q-positive) 40%, transparent);
   background: var(--app-btn-positive-tint);
   color: var(--app-positive-ink);
+}
+
+/* The theme's offset edge in the button's own colour, pressed flat as it is clicked. */
+.app-btn {
+  box-shadow: 2px 2px 0 var(--app-btn-edge, color-mix(in srgb, var(--q-primary) 40%, transparent));
+  transition:
+    transform 0.1s,
+    box-shadow 0.1s;
+}
+
+.app-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
 }
 
 /*
@@ -672,6 +874,7 @@ body {
   opacity: 1 !important;
   background: var(--app-muted-tint);
   color: var(--app-muted-ink);
+  box-shadow: none;
 }
 
 /* Classes rather than color props: Quasar's palette has no shade mixed from the brand. */
@@ -1014,7 +1217,7 @@ body {
 }
 
 .app-account-row:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-account-row--closed .app-account-row__name,
@@ -1071,7 +1274,7 @@ body {
 }
 
 .app-category-row.cursor-pointer:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-category-row__name {
@@ -1205,12 +1408,12 @@ body {
 }
 
 .app-positions__group > td {
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-top: 1px solid var(--app-border);
 }
 
 .app-positions__row:hover > td {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 /* The peek cell fades only into its own hover: fading into the row's tint as well left it a
@@ -1405,7 +1608,7 @@ body {
 }
 
 .app-recurring-row:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-recurring-row--paused .app-recurring-row__name,
@@ -1519,19 +1722,17 @@ body {
   }
 }
 
-/* The name beside the logo, in the logo's ink and its line's green, set in Unbounded, whose
-   round ends are the logo's. Roboto behind it, so a font that has not loaded yet still
-   reads as a wordmark. */
+/* The name beside the logo, in the display face the big figures share. */
 .app-wordmark {
-  font-family: 'Unbounded', Roboto, sans-serif;
-  font-size: 20px;
-  font-weight: 700;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: -0.03em;
-  color: #0f172a;
+  color: #334155;
 }
 
 .app-wordmark__stop {
-  color: #10b981;
+  color: #ff5ca8;
 }
 
 /* Card statements on the transactions page: a tile per statement still owing. */
@@ -1641,7 +1842,7 @@ body {
   margin: 8px 0 0;
   padding: 4px 12px 12px 4px;
   border-radius: 10px;
-  background: #f8fafc;
+  background: var(--app-panel-bg);
   border: 1px solid var(--app-border);
   width: 100%;
 }
@@ -1677,7 +1878,7 @@ body {
 }
 
 .app-home-list__row.cursor-pointer:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-home-list__row--overdue {
@@ -1706,7 +1907,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 7px 16px;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-bottom: 1px solid var(--app-border);
 }
 
@@ -1766,9 +1967,9 @@ body {
    for a count. */
 .app-change {
   gap: 4px;
-  padding: 4px 8px;
+  padding: 4px 10px;
   font-size: 0.8rem;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .app-change-row {
@@ -1778,8 +1979,7 @@ body {
 .app-change__pct {
   margin-left: 4px;
   padding-left: 8px;
-  border-left: 1px solid currentColor;
-  opacity: 0.85;
+  border-left: 1px solid color-mix(in srgb, currentColor 30%, transparent);
 }
 
 /* The net worth page's cards: the split as a bar, and the rows behind each figure. */
@@ -1837,14 +2037,14 @@ body {
    carries the tint, and a hover that changed it would make a label look clickable. */
 .app-worth-row:not([class*='--']):hover,
 .app-worth-stocks:not([class*='--']):hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-worth-loan-bar {
   height: 6px;
   margin-bottom: 4px;
   border-radius: 3px;
-  background: #f1f5f9;
+  background: var(--app-track);
   overflow: hidden;
 }
 
@@ -1856,7 +2056,7 @@ body {
 
 .app-worth-row--total {
   border-bottom: 0;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   margin-top: auto;
 }
 
@@ -1868,7 +2068,7 @@ body {
   align-items: center;
   padding-top: 7px;
   padding-bottom: 7px;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-bottom: 1px solid var(--app-border);
 }
 
@@ -1902,7 +2102,7 @@ body {
   align-items: center;
   padding-top: 7px;
   padding-bottom: 7px;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-bottom: 1px solid var(--app-border);
 }
 
@@ -1914,7 +2114,7 @@ body {
 
 .app-worth-stocks--total {
   border-bottom: 0;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   margin-top: auto;
 }
 
@@ -1925,7 +2125,7 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #64748b;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-top: 1px solid var(--app-border);
 }
 
@@ -1971,7 +2171,7 @@ body {
   display: flex;
   width: 100%;
   height: 56px;
-  border: 1px solid rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   overflow: hidden;
   background: #fff;
@@ -1988,7 +2188,7 @@ body {
   padding: 0 14px;
   font-size: 0.8rem;
   color: #64748b;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-right: 1px solid var(--app-border);
 }
 
@@ -2008,7 +2208,7 @@ body {
 
 /* A type's own fields, a tinted box inside the form so they read as one group. */
 .app-form-panel {
-  background: #f8fafc;
+  background: var(--app-panel-bg);
   border: 1px solid var(--app-border);
   border-radius: 10px;
   padding: 12px 16px 8px;
@@ -2034,7 +2234,7 @@ body {
 }
 
 .app-outlook__tile--total {
-  background: #f8fafc;
+  background: var(--app-panel-bg);
 }
 
 .app-outlook__bar + .app-outlook__bar {
@@ -2051,7 +2251,7 @@ body {
   height: 10px;
   border-radius: 5px;
   overflow: hidden;
-  background: #f1f5f9;
+  background: var(--app-track);
 }
 
 /* Forecast months: the chart at its own width, the months as figures in what is left. */
@@ -2072,7 +2272,7 @@ body {
 }
 
 .app-review-month:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-review-month--best {
@@ -2174,14 +2374,14 @@ body {
 }
 
 .app-review-category--on {
-  background: #f8fafc;
+  background: var(--app-header-bg);
 }
 
 /* A category's share of the year's spending, as a thin bar under its name. */
 .app-review-share {
   height: 8px;
   border-radius: 4px;
-  background: #f1f5f9;
+  background: var(--app-track);
   overflow: hidden;
 }
 
@@ -2191,7 +2391,7 @@ body {
 }
 
 .app-review-category:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 @media (max-width: 599px) {
@@ -2272,7 +2472,7 @@ body {
 }
 
 .app-month-table__row:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-month-table__legend {
@@ -2294,7 +2494,7 @@ body {
   display: flex;
   height: 8px;
   border-radius: 4px;
-  background: #f1f5f9;
+  background: var(--app-track);
   overflow: hidden;
 }
 
@@ -2348,7 +2548,7 @@ body {
 .app-runway-group {
   padding-top: 8px;
   padding-bottom: 8px;
-  background: #f8fafc;
+  background: var(--app-header-bg);
   border-top: 1px solid var(--app-border);
 }
 
@@ -2409,7 +2609,7 @@ body {
 }
 
 .app-dividend-year:hover {
-  background: #f1f5f9;
+  background: var(--app-hover);
 }
 
 /*
@@ -2533,7 +2733,7 @@ body {
 }
 
 .app-dividend-row:hover {
-  background: #f8fafc;
+  background: var(--app-hover);
 }
 
 .app-dividend-row__name {
@@ -2549,7 +2749,7 @@ body {
 .app-dividend-heat__cell {
   height: 22px;
   border-radius: 4px;
-  background: #f1f5f9;
+  background: var(--app-track);
 }
 
 /* A month still to come that last year paid in: outlined, not filled, as an estimate. */
@@ -2689,7 +2889,7 @@ body {
   height: 6px;
   margin-top: 6px;
   border-radius: 3px;
-  background: #e2e8f0;
+  background: var(--app-track);
   overflow: hidden;
 }
 
@@ -2771,19 +2971,24 @@ body {
 }
 
 /* The header's Add: one filled button split in two, the halves joined by a hairline. */
-.app-add__main {
-  border-radius: 8px 0 0 8px;
+.app-add {
+  border-radius: 12px;
+  box-shadow: 2px 2px 0 #1d3fd188;
+}
+
+.q-btn.app-add__main {
+  border-radius: 12px 0 0 12px;
   padding: 0 14px;
   min-height: 36px;
   font-size: 0.85rem;
 }
 
-.app-add__main--alone {
-  border-radius: 8px;
+.q-btn.app-add__main--alone {
+  border-radius: 12px;
 }
 
-.app-add__more {
-  border-radius: 0 8px 8px 0;
+.q-btn.app-add__more {
+  border-radius: 0 12px 12px 0;
   padding: 0 6px;
   min-height: 36px;
   border-left: 1px solid rgb(255 255 255 / 0.28);

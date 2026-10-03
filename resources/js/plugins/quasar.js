@@ -1,12 +1,8 @@
 import { Quasar, Notify, Dialog } from 'quasar'
 
 import '@quasar/extras/material-icons/material-icons.css'
-// Quasar's stylesheet names Roboto as the first family in every font stack it sets
-// (quasar.css), and the whole type scale is measured against it -- the 48px table row,
-// the 14px button, the 12px header. Nothing was loading it, so the app was getting
-// Roboto's metrics with whatever glyphs the machine happened to fall back to, which is
-// why the fallback chain and not the intended face is what the spacing was tuned around.
-import '@quasar/extras/roboto-font/roboto-font.css'
+// No Roboto, though quasar.css names it: app.css sets the body in Space Grotesk, and body is
+// the only place Quasar's stylesheet sets a family.
 import 'quasar/dist/quasar.css'
 
 export default {
@@ -42,12 +38,12 @@ export default {
       */
       config: {
         brand: {
-          primary: '#2563eb',
+          primary: '#2b59ff',
           secondary: '#475569',
           accent: '#7c3aed',
           dark: '#0f172a',
           positive: '#047857',
-          negative: '#dc2626',
+          negative: '#e11d48',
           info: '#0284c7',
           warning: '#b45309',
         },

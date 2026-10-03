@@ -165,9 +165,9 @@ const colours = {
   expectedEdge: '#7dd3fc',
   previous: '#cbd5e1',
   previousFill: '#f8fafc',
-  grid: '#e2e8f0',
-  baseline: '#94a3b8',
-  hover: '#f1f5f9',
+  grid: '#f8e6b6',
+  baseline: '#c9a96a',
+  hover: '#fcf5e2',
 }
 
 const width = 960

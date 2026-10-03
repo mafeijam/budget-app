@@ -1,5 +1,5 @@
 <template>
-  <div class="column no-wrap q-gutter-sm">
+  <div class="column no-wrap q-gutter-md">
     <q-card flat bordered class="overflow-hidden">
       <!-- The heading, and since last month's end as the home page's card has it. -->
       <q-card-section class="app-card-head">

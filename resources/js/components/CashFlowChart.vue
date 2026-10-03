@@ -141,9 +141,9 @@ const colours = {
   card: '#f87171',
   net: '#f59e0b',
   deficit: '#dc2626',
-  grid: '#e2e8f0',
-  baseline: '#94a3b8',
-  hover: '#f1f5f9',
+  grid: '#f8e6b6',
+  baseline: '#c9a96a',
+  hover: '#fcf5e2',
 }
 
 const width = 960

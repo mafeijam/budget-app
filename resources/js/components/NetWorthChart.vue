@@ -201,8 +201,8 @@ const colours = {
   cost: '#e11d48',
   loans: '#d97706',
   overdrawn: '#f43f5e',
-  grid: '#e2e8f0',
-  baseline: '#94a3b8',
+  grid: '#f8e6b6',
+  baseline: '#c9a96a',
 }
 
 const legend = [
