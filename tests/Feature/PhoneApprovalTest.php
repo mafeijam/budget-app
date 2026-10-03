@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Support\PhoneKey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -23,11 +24,14 @@ class PhoneApprovalTest extends TestCase
 
     private User $user;
 
+    private string $key;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->user = User::create(['name' => 'Jo', 'password' => 'random']);
+        $this->key = PhoneKey::issue($this->user);
     }
 
     public function test_with_no_phone_enrolled_there_is_no_code_to_scan(): void
@@ -175,6 +179,44 @@ class PhoneApprovalTest extends TestCase
         $this->assertSame('pending', PhoneKey::pending($token)['status']);
     }
 
+    public function test_a_computer_the_key_signed_in_cannot_approve_another(): void
+    {
+        $this->get('/login');
+        $this->asThePhone()->post("/approve/{$this->computerToken()}", ['approve' => true]);
+        $this->asTheComputer()->post('/login');
+        $this->assertAuthenticatedAs($this->user);
+
+        $token = $this->anotherComputersToken();
+
+        $this->get("/approve/{$token}")->assertInertia(fn (Assert $page) => $page
+            ->where('isKey', false)
+            ->where('request', null));
+        $this->post("/approve/{$token}", ['approve' => true])->assertRedirect("/approve/{$token}");
+
+        $this->assertSame('pending', PhoneKey::pending($token)['status']);
+    }
+
+    public function test_a_key_cookie_the_server_did_not_issue_is_not_a_key(): void
+    {
+        $token = $this->anotherComputersToken();
+
+        $this->actingAs($this->user)->withCookie(PhoneKey::COOKIE, '1')
+            ->post("/approve/{$token}", ['approve' => true]);
+
+        $this->assertSame('pending', PhoneKey::pending($token)['status']);
+    }
+
+    public function test_a_revoked_key_cannot_approve_even_when_signed_in_again(): void
+    {
+        $this->artisan('login:revoke')->assertSuccessful();
+        $token = $this->anotherComputersToken();
+
+        $this->asThePhone()->get("/approve/{$token}")->assertInertia(fn (Assert $page) => $page->where('isKey', false));
+        $this->post("/approve/{$token}", ['approve' => true]);
+
+        $this->assertSame('pending', PhoneKey::pending($token)['status']);
+    }
+
     public function test_the_phone_is_told_which_device_asked(): void
     {
         $agents = [
@@ -202,13 +244,22 @@ class PhoneApprovalTest extends TestCase
 
     private function asThePhone(): static
     {
-        return $this->actingAs($this->user);
+        return $this->actingAs($this->user)->withCookie(PhoneKey::COOKIE, $this->key);
     }
 
     private function asTheComputer(): static
     {
         Auth::forgetGuards();
+        $this->defaultCookies = [];
 
         return $this;
+    }
+
+    /**
+     * A code shown by some other browser, which the test client's session knows nothing of.
+     */
+    private function anotherComputersToken(): string
+    {
+        return PhoneKey::request(Request::create('/login'))[0];
     }
 }

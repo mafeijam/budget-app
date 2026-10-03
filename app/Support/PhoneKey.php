@@ -11,12 +11,13 @@ use BaconQrCode\Writer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
  * A phone is the only key: there is no password anyone knows. A phone becomes one by opening a
- * link `login:enrol` prints on the server, which signs it in with a remember cookie, and that
- * standing sign-in is what lets it approve others.
+ * link `login:enrol` prints on the server, which signs it in with a remember cookie and gives it
+ * the key cookie. The key cookie, not the sign-in, is what lets it approve others.
  *
  * Tokens live in the cache under their hash, so a dump of the cache holds nothing that opens a
  * link, and they expire there on their own.
@@ -28,8 +29,9 @@ class PhoneKey
     public const REQUEST_SECONDS = 120;
 
     /**
-     * Set on the device that enrolled, so signing out there can warn that it ends the key. It
-     * only words the warning: who can sign in is the remember cookie's business, never this.
+     * The key itself, set on the device that enrolled: a secret whose hash is a `phone_keys`
+     * row. Encrypted, so no device can write one, and checked against the table rather than
+     * for being present, so a revoked phone that is signed in again is not a key again.
      */
     public const COOKIE = 'phone_key';
 
@@ -64,6 +66,55 @@ class PhoneKey
         $id = Cache::pull($key);
 
         return $id === null ? null : User::find($id);
+    }
+
+    /**
+     * Makes the device that holds the returned secret a key.
+     */
+    public static function issue(User $user): string
+    {
+        $secret = Str::random(40);
+
+        DB::table('phone_keys')->insert([
+            'user_id' => $user->id,
+            'token_hash' => hash('sha256', $secret),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $secret;
+    }
+
+    /**
+     * Whether this device is a key. Being signed in is not enough: a computer a key approved
+     * is signed in too, and would otherwise approve the next one.
+     */
+    public static function holds(Request $request): bool
+    {
+        $secret = $request->cookie(self::COOKIE);
+
+        if (! is_string($secret) || $secret === '' || $request->user() === null) {
+            return false;
+        }
+
+        return DB::table('phone_keys')
+            ->where('token_hash', hash('sha256', $secret))
+            ->where('user_id', $request->user()->getAuthIdentifier())
+            ->exists();
+    }
+
+    public static function withdraw(Request $request): void
+    {
+        $secret = $request->cookie(self::COOKIE);
+
+        if (is_string($secret) && $secret !== '') {
+            DB::table('phone_keys')->where('token_hash', hash('sha256', $secret))->delete();
+        }
+    }
+
+    public static function withdrawAll(): void
+    {
+        DB::table('phone_keys')->delete();
     }
 
     /**

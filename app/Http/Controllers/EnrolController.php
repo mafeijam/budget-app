@@ -36,7 +36,8 @@ class EnrolController extends Controller
         // Remembered, because a phone that has to sign in again is no longer a key.
         Auth::login($user, remember: true);
         $request->session()->regenerate();
-        Cookie::queue(Cookie::forever(PhoneKey::COOKIE, '1'));
+        PhoneKey::withdraw($request);
+        Cookie::queue(Cookie::forever(PhoneKey::COOKIE, PhoneKey::issue($user)));
 
         return redirect()->intended(route('home'));
     }

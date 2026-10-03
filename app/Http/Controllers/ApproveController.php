@@ -20,11 +20,12 @@ class ApproveController extends Controller
      */
     public function show(Request $request, string $token): Response
     {
-        $entry = $request->user() === null ? null : PhoneKey::pending($token);
+        $isKey = PhoneKey::holds($request);
+        $entry = $isKey ? PhoneKey::pending($token) : null;
 
         return Inertia::render('approve', [
             'token' => $token,
-            'isKey' => $request->user() !== null,
+            'isKey' => $isKey,
             'request' => $entry === null ? null : [
                 'code' => $entry['code'],
                 'device' => $entry['device'],
@@ -37,6 +38,11 @@ class ApproveController extends Controller
     public function update(Request $request, string $token): RedirectResponse
     {
         $approve = $request->validate(['approve' => ['required', 'boolean']])['approve'];
+
+        // Signed in is not enough: the page this returns to tells a device that is not a key so.
+        if (! PhoneKey::holds($request)) {
+            return to_route('approve', $token);
+        }
 
         PhoneKey::answer($token, $request->user(), (bool) $approve);
 

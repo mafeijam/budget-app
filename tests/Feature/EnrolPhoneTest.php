@@ -64,10 +64,19 @@ class EnrolPhoneTest extends TestCase
 
     public function test_enrolling_marks_the_device_as_the_key_phone(): void
     {
-        $this->post('/enrol/'.PhoneKey::enrolment($this->user))->assertCookie(PhoneKey::COOKIE, '1');
+        $key = $this->post('/enrol/'.PhoneKey::enrolment($this->user))->getCookie(PhoneKey::COOKIE)->getValue();
 
-        $this->withCookie(PhoneKey::COOKIE, '1')->get('/')
+        $this->withCookie(PhoneKey::COOKIE, $key)->get('/')
             ->assertInertia(fn (Assert $page) => $page->where('keyPhone', true));
+    }
+
+    public function test_enrolling_again_replaces_the_phones_key(): void
+    {
+        $key = $this->post('/enrol/'.PhoneKey::enrolment($this->user))->getCookie(PhoneKey::COOKIE)->getValue();
+
+        $this->withCookie(PhoneKey::COOKIE, $key)->post('/enrol/'.PhoneKey::enrolment($this->user));
+
+        $this->assertDatabaseCount('phone_keys', 1);
     }
 
     public function test_a_device_that_did_not_enrol_is_not_the_key_phone(): void
@@ -78,8 +87,10 @@ class EnrolPhoneTest extends TestCase
 
     public function test_signing_out_unmarks_the_key_phone(): void
     {
-        $this->actingAs($this->user)->withCookie(PhoneKey::COOKIE, '1')->post('/logout')
+        $this->actingAs($this->user)->withCookie(PhoneKey::COOKIE, PhoneKey::issue($this->user))->post('/logout')
             ->assertCookieExpired(PhoneKey::COOKIE);
+
+        $this->assertDatabaseCount('phone_keys', 0);
     }
 
     public function test_enrolling_returns_to_the_page_that_asked_for_sign_in(): void

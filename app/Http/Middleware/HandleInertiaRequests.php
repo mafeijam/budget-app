@@ -37,7 +37,7 @@ class HandleInertiaRequests extends Middleware
         return array_merge(parent::share($request), [
             'message' => fn () => $request->session()->get('message'),
             'tz' => config('app.timezone'),
-            'keyPhone' => fn () => $request->cookie(PhoneKey::COOKIE) === '1',
+            'keyPhone' => fn () => PhoneKey::holds($request),
         ]);
     }
 }
