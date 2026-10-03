@@ -72,7 +72,7 @@
             :x="centre(i) - barWidth / 2"
             :y="y(segment.to)"
             :width="barWidth"
-            :height="Math.max(y(segment.from) - y(segment.to) - 1, 0)"
+            :height="Math.max(y(segment.from) - y(segment.to) - seam, 0)"
             :fill="segment.colour"
           />
           <!-- Entered and not yet paid: amber and dashed, on top of what has been. Known, so
@@ -82,7 +82,7 @@
             :x="centre(i) - barWidth / 2"
             :y="y(month.paid + month.pending)"
             :width="barWidth"
-            :height="Math.max(y(month.paid) - y(month.paid + month.pending) - 1, 0)"
+            :height="Math.max(y(month.paid) - y(month.paid + month.pending) - seam, 0)"
             :fill="colours.pending"
             :stroke="colours.pendingEdge"
             stroke-dasharray="3 2"
@@ -95,7 +95,9 @@
             :width="barWidth"
             :height="
               Math.max(
-                y(month.paid + month.pending) - y(month.paid + month.pending + month.expected) - 1,
+                y(month.paid + month.pending) -
+                  y(month.paid + month.pending + month.expected) -
+                  seam,
                 0,
               )
             "
@@ -213,7 +215,7 @@ const stacks = computed(() =>
       if (amount <= 0) continue
 
       // The tail is one block, not one block per symbol: they share the neutral already,
-      // and each as its own segment put a 1px gap between them that read as a border, so
+      // and each as its own segment put a seam between them that read as a border, so
       // eleven of them looked like a stack of separate things rather than a single share
       // of the month's money. Added together, and drawn once, on top of the named.
       if (symbol.other) {
@@ -284,6 +286,8 @@ const step = (width - left - right) / 12
 const band = i => left + i * step
 const centre = i => band(i) + step / 2
 const barWidth = Math.min(40, step * 0.55)
+// The surface left showing between stacked parts, in viewBox units.
+const seam = 0.5
 
 const compact = value =>
   new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)

@@ -156,6 +156,7 @@
     "useAsyncQueue": true,
     "useAsyncState": true,
     "useAttrs": true,
+    "useBarHeight": true,
     "useBase64": true,
     "useBattery": true,
     "useBluetooth": true,

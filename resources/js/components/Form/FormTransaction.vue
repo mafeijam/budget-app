@@ -209,8 +209,8 @@
               no-caps
               color="white"
               text-color="grey-8"
-              toggle-color="blue-1"
-              toggle-text-color="primary"
+              toggle-color="amber-3"
+              toggle-text-color="grey-9"
             />
           </div>
         </template>
@@ -414,8 +414,8 @@
               no-caps
               color="white"
               text-color="grey-8"
-              toggle-color="blue-1"
-              toggle-text-color="primary"
+              toggle-color="amber-3"
+              toggle-text-color="grey-9"
             />
           </div>
         </template>

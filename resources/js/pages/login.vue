@@ -7,9 +7,8 @@
     <div class="text-subtitle1 text-weight-medium text-grey-9">Scan with your phone</div>
     <div>Open your phone's camera, scan the code, and approve this sign-in.</div>
     <img :src="qr" alt="Sign-in QR code" width="240" height="240" />
-    <div>
-      Check your phone shows <span class="text-weight-bold text-grey-9 money">{{ code }}</span>
-    </div>
+    <div>Check your phone shows</div>
+    <div class="app-login-code money">{{ code }}</div>
     <div v-if="status === 'approved'" class="text-positive">Approved, signing in…</div>
     <div v-else class="text-caption text-grey-6">A new code in {{ secondsLeft }}s</div>
     <div v-if="denied" class="app-note app-note--negative full-width">

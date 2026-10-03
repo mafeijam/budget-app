@@ -101,7 +101,8 @@
               <div
                 v-for="part in bar.parts"
                 :key="part.kind"
-                :style="{ width: `${part.width}%`, background: part.colour }"
+                :class="{ 'app-estimate': part.estimate }"
+                :style="paint(part.colour, part.estimate, { width: `${part.width}%` })"
               >
                 <q-tooltip :delay="200" :offset="[0, 6]">
                   {{ part.kind }}: {{ money(part.amount) }}
@@ -120,7 +121,11 @@
 
     <q-card-section class="row items-center q-gutter-x-md text-caption text-grey-7 q-pt-sm">
       <div v-for="key in legend" :key="key.label" class="row items-center no-wrap">
-        <span class="app-months__swatch" :style="{ background: key.colour }" />{{ key.label }}
+        <span
+          class="app-months__swatch"
+          :class="{ 'app-estimate': key.kind === 'typical' }"
+          :style="paint(key.colour, key.kind === 'typical')"
+        />{{ key.label }}
       </div>
     </q-card-section>
   </q-card>
@@ -169,6 +174,10 @@ const shades = {
   in: { done: '#059669', known: '#6ee7b7', typical: '#bbf7d0' },
   out: { done: '#dc2626', known: '#f87171', typical: '#fecaca' },
 }
+
+// An estimate's colour is --estimate, not background: see .app-estimate.
+const paint = (colour, estimate, style = {}) =>
+  estimate ? { ...style, '--estimate': colour } : { ...style, background: colour }
 
 // Each key half green and half red, as the shade means the same on either bar.
 const legend = ['done', 'known', 'typical'].map(kind => ({
@@ -242,6 +251,7 @@ const monthCols = computed(() => {
         .filter(kind => !isZero(col.flows[side][kind]))
         .map(kind => ({
           kind: legend.find(key => key.kind === kind)?.label ?? kind,
+          estimate: kind === 'typical',
           amount: col.flows[side][kind],
           width: (Number(col.flows[side][kind]) / scale) * 100,
           colour: shades[side][kind],

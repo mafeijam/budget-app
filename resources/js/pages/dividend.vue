@@ -242,7 +242,10 @@
 
       <q-separator />
 
-      <div class="app-dividend-head text-caption text-grey-7">
+      <div
+        class="app-dividend-head text-caption"
+        :style="{ '--app-sticky-top': `${appBarHeight}px` }"
+      >
         <span>Symbol</span>
         <div class="app-dividend-heat">
           <span v-for="m in monthInitials" :key="m.key" class="text-center">{{ m.label }}</span>
@@ -373,6 +376,9 @@ const props = defineProps({
 
 const money = useMoney()
 const formatDay = useCalendarDay()
+
+// The column labels are pinned just under the app bar.
+const appBarHeight = useBarHeight()
 
 // The symbol the year's bars are read one at a time for, or '' for every symbol. In the
 // browser and not the URL, as the Positions page's brokerage: it narrows one chart of data

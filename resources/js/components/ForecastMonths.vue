@@ -10,7 +10,9 @@
           <span class="cash-flow-chart__swatch" :style="{ background: colours.out }" />Out
         </span>
         <span v-if="typical" class="row items-center no-wrap">
-          <span class="cash-flow-chart__swatch app-month-table__typical-swatch" />Typical
+          <span
+            class="cash-flow-chart__swatch app-month-table__typical-swatch app-estimate"
+          />Typical
         </span>
       </span>
       <span role="columnheader" class="text-right">In</span>
@@ -35,8 +37,8 @@
           />
           <span
             v-if="side.typical"
-            class="app-month-table__bar"
-            :style="{ width: `${side.typical}%`, background: side.pale }"
+            class="app-month-table__bar app-estimate"
+            :style="{ width: `${side.typical}%`, '--estimate': side.pale }"
           />
         </div>
       </div>

@@ -510,19 +510,8 @@ const props = defineProps({
 
 const dayMenu = ref(null)
 
-// The app bar's height, read off the bar rather than written down: the column labels are
-// pinned just under it. The layout is hHh with no reveal, so the bar is fixed and always on
-// screen, and its height is the whole offset -- the earlier attempt assumed it scrolled away.
-const barHeight = ref(0)
-const bar = ref(null)
-
-onMounted(() => {
-  bar.value = document.querySelector('.q-layout .q-header')
-})
-
-useResizeObserver(bar, () => {
-  barHeight.value = bar.value?.offsetHeight ?? 0
-})
+// The column labels are pinned just under the app bar.
+const barHeight = useBarHeight()
 
 const visit = day =>
   router.get('/positions', day ? { at: day } : {}, { preserveScroll: true, replace: true })

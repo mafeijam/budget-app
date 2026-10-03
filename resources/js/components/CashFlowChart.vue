@@ -91,7 +91,7 @@
           :points="netLine"
           fill="none"
           :stroke="colours.net"
-          stroke-width="2"
+          stroke-width="1.5"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
@@ -263,10 +263,11 @@ const barX = (i, side) =>
   centre(i) - barWidth.value - gutter / 2 + (side === 'in' ? 0 : barWidth.value + gutter)
 
 // Capped at 24px, square at the baseline and rounded 4px at the end of the stack, with a
-// 1px surface gap between stacked parts.
+// half-unit seam of surface between stacked parts.
+const seam = 0.5
 const column = (x, from, to, outer) => {
   const w = barWidth.value
-  const base = y(from) - 1
+  const base = y(from) - seam
   const end = y(to)
   const r = outer ? Math.min(4, Math.abs(end - base)) : 0
 

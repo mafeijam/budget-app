@@ -247,8 +247,8 @@
               no-caps
               unelevated
               dense
-              toggle-color="blue-1"
-              toggle-text-color="primary"
+              toggle-color="amber-3"
+              toggle-text-color="grey-9"
               text-color="grey-8"
               padding="xs sm"
               class="app-toolbar__toggle text-weight-bold"
@@ -281,14 +281,13 @@
              tallest, a short one only opened white above its foot. Cash takes Owed's width
              too when there is nothing owed. -->
         <div class="col-12" :class="hasOwed ? 'col-md-6 col-lg-3' : 'col-lg-6'">
-          <q-card flat bordered class="app-worth-card">
-            <q-card-section class="row items-center q-pb-sm">
+          <q-card flat bordered class="app-worth-card app-worth-card--cash">
+            <q-card-section class="row items-center q-pb-sm app-worth-card__head">
               <q-icon name="account_balance" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Cash</div>
               <q-space />
               <div class="money text-weight-bold text-positive">{{ figure(current.cash) }}</div>
             </q-card-section>
-            <q-separator />
             <template v-for="group in cashGroups.groups" :key="group.ccy">
               <div v-if="group.headed" class="app-worth-row app-worth-row--group">
                 <span class="app-home-list__group-label">
@@ -359,8 +358,8 @@
           <!-- Owed apart from the cash, so the Cash card holds only what is held. Its total is the
                loans alone, which net worth subtracts; the cards are listed for what they owe and
                say they are not counted: their debt is paid from the cash above. -->
-          <q-card flat bordered class="app-worth-card">
-            <q-card-section class="row items-center q-pb-sm">
+          <q-card flat bordered class="app-worth-card app-worth-card--owed">
+            <q-card-section class="row items-center q-pb-sm app-worth-card__head">
               <q-icon name="request_quote" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Owed</div>
               <q-space />
@@ -368,7 +367,6 @@
                 {{ figure(current.loans) }}
               </div>
             </q-card-section>
-            <q-separator />
             <div v-for="loan in current.loan_rows" :key="loan.name" class="app-worth-row">
               <div class="col">
                 <div class="row items-center no-wrap">
@@ -400,8 +398,8 @@
         </div>
 
         <div class="col-12 col-lg-6">
-          <q-card flat bordered class="app-worth-card">
-            <q-card-section class="row items-center q-pb-sm">
+          <q-card flat bordered class="app-worth-card app-worth-card--stocks">
+            <q-card-section class="row items-center q-pb-sm app-worth-card__head">
               <q-icon name="show_chart" size="sm" color="grey-7" class="q-mr-sm" />
               <div class="text-subtitle1 text-weight-medium">Stocks</div>
               <q-space />
@@ -430,7 +428,6 @@
               </div>
               <div class="money text-weight-bold text-primary">{{ figure(current.value) }}</div>
             </q-card-section>
-            <q-separator />
             <!-- Value, cost and the gain between them, a row a brokerage and the sum under. -->
             <div class="app-worth-stocks app-worth-stocks--head text-caption text-grey-7">
               <span>Brokerage</span>

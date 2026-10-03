@@ -145,7 +145,7 @@
             role="img"
             :aria-label="`Spending by category in ${year.year}`"
           >
-            <circle cx="60" cy="60" r="44" fill="none" stroke="#fbf2d7" stroke-width="20" />
+            <circle cx="60" cy="60" r="44" fill="none" stroke="#fdf8ea" stroke-width="20" />
             <circle
               v-for="arc in arcs"
               :key="arc.key"

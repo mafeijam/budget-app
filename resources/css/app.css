@@ -246,6 +246,12 @@ body {
   font-weight: 700;
 }
 
+/* Quasar tints a hovered toggle option with its text colour, which on grey text is a grey. */
+.q-btn-toggle .q-btn.q-hoverable:hover > .q-focus-helper {
+  background: #f0b44f;
+  opacity: 0.2;
+}
+
 /* Pills, and an outlined one filled with its own colour rather than ringed in it. */
 .q-badge {
   border-radius: 999px;
@@ -285,7 +291,7 @@ body {
 body {
   --app-row-rule: color-mix(in srgb, var(--app-border) 55%, transparent);
   --app-hover: color-mix(in srgb, var(--app-border) 22%, transparent);
-  --app-track: #fbf2d7;
+  --app-track: #fdf8ea;
 }
 
 .q-table tbody td,
@@ -400,9 +406,10 @@ body {
   transition: background-color 0.15s;
 }
 
-/* !important: the row's own hover tint is set on its cells and would otherwise win. */
+/* A step deeper than the row's hover, which it sits inside. !important: the row's own hover
+   tint is set on its cells and would otherwise win. */
 .app-peek-trigger:hover {
-  background: #eff6ff !important;
+  background: color-mix(in srgb, var(--app-border) 45%, white) !important;
 }
 
 /* The quick view of a breakdown tile's rows: a name and a figure to a line, largest first. */
@@ -421,7 +428,7 @@ body {
   flex: none;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: 999px;
 }
 
 .app-peek__total {
@@ -510,7 +517,7 @@ body {
   width: 8px;
   height: 8px;
   margin-right: 6px;
-  border-radius: 2px;
+  border-radius: 999px;
 }
 
 .app-home-headline .app-home-figure {
@@ -541,7 +548,7 @@ body {
 /*
   Each card in its own colour, and the colour's deeper ink for everything drawn on it -- the
   shadow, the rules between rows, the change pill's shadow -- so no amber from the rest of the
-  page lands on a card. The rows sit on a white wash that runs to the card's foot: a short
+  page lands on a card. The rows sit on white that runs to the card's foot: a short
   list beside a long one otherwise ends in a slab of bare colour.
 */
 .app-home-headline__card--net_worth {
@@ -579,11 +586,11 @@ body {
 
 .app-home-headline__card .app-home-list {
   flex: 1 1 auto;
-  background: #ffffffcc;
+  background: var(--app-surface);
 }
 
 .app-home-headline__card .app-home-list__group {
-  background: #ffffffcc;
+  background: color-mix(in srgb, var(--card-fill) 40%, white);
 }
 
 .app-home-headline__card .app-home-list,
@@ -600,17 +607,26 @@ body {
   color: #334155 !important;
 }
 
-.app-home-headline .app-change {
+/* A change pill on a coloured card, Home's or the net worth page's: a white sticker, so a
+   red or green tint is not laid over the card's own colour. */
+.app-home-headline .app-change,
+.app-worth-card__head .app-change {
   background: #fff;
   box-shadow: 2px 2px 0 color-mix(in srgb, var(--card-ink) 55%, transparent);
 }
 
-.app-home-headline .app-change.app-tint--positive {
+.app-home-headline .app-change.app-tint--positive,
+.app-worth-card__head .app-change.app-tint--positive {
   color: var(--q-positive);
 }
 
-.app-home-headline .app-change.app-tint--negative {
+.app-home-headline .app-change.app-tint--negative,
+.app-worth-card__head .app-change.app-tint--negative {
   color: var(--q-negative);
+}
+
+.app-home-headline__card .app-home-list__row.cursor-pointer:hover {
+  background: color-mix(in srgb, var(--card-fill) 30%, white);
 }
 
 /* Flush to the card's edges and bottom, under its figures. */
@@ -1076,7 +1092,7 @@ body {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 999px;
   margin-right: 6px;
 }
 
@@ -1735,6 +1751,20 @@ body {
   color: #ff5ca8;
 }
 
+/* The sign-in code, the one thing to compare against the phone: large, on a sticker. */
+.app-login-code {
+  padding: 6px 22px;
+  border-radius: 16px;
+  background: #ffde59;
+  box-shadow: 3px 3px 0 #f0b44f;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: #334155;
+}
+
 /* Card statements on the transactions page: a tile per statement still owing. */
 .app-statement-tiles {
   display: grid;
@@ -2012,7 +2042,7 @@ body {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 999px;
 }
 
 /* A card whose foot is a total row. The card is stretched to match the column beside it, and
@@ -2022,6 +2052,55 @@ body {
 .app-worth-card {
   display: flex;
   flex-direction: column;
+}
+
+/*
+  Each card in its own colour, as Home's cards are: the head strip in the fill, the bands and
+  total in paler mixes of it, and the shadow and row rules in its ink, so no amber from the
+  page lands inside. The !important is .q-card's, against no-shadow.
+*/
+.app-worth-card--cash {
+  --card-fill: #c3f7d6;
+  --card-ink: #22a35a;
+}
+
+.app-worth-card--owed {
+  --card-fill: #fed2d7;
+  --card-ink: #f43f5e;
+}
+
+.app-worth-card--stocks {
+  --card-fill: #bee9fe;
+  --card-ink: #0ea5e9;
+}
+
+.q-card.app-worth-card {
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--card-ink) 70%, transparent) !important;
+}
+
+.app-worth-card__head {
+  background: var(--card-fill);
+}
+
+.app-worth-card .app-worth-row,
+.app-worth-card .app-worth-stocks {
+  border-bottom-color: color-mix(in srgb, var(--card-ink) 18%, transparent);
+}
+
+.app-worth-card .app-worth-row--group,
+.app-worth-card .app-worth-stocks--group,
+.app-worth-card .app-worth-stocks--head {
+  background: color-mix(in srgb, var(--card-fill) 40%, white);
+}
+
+.app-worth-card .app-worth-row--total,
+.app-worth-card .app-worth-stocks--total {
+  background: color-mix(in srgb, var(--card-fill) 60%, white);
+}
+
+.app-worth-card .app-worth-row:not([class*='--']):hover,
+.app-worth-card .app-worth-stocks:not([class*='--']):hover {
+  background: color-mix(in srgb, var(--card-fill) 30%, white);
 }
 
 .app-worth-row {
@@ -2481,7 +2560,7 @@ body {
 }
 
 .app-month-table__typical-swatch {
-  background: linear-gradient(90deg, #6ee7b7 50%, #fca5a5 50%);
+  --estimate: linear-gradient(90deg, #6ee7b7 50%, #fca5a5 50%);
 }
 
 .app-month-table__bars {
@@ -2722,14 +2801,21 @@ body {
   padding: 10px 16px;
 }
 
+/* Pinned under the app bar, as the positions table's labels are, and opaque, or the rows
+   scroll by underneath them. */
 .app-dividend-head {
+  position: sticky;
+  top: var(--app-sticky-top, 0);
+  z-index: 2;
   padding-top: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--app-border);
+  background: #ffde59;
+  color: #334155;
+  font-weight: 700;
 }
 
 .app-dividend-row + .app-dividend-row {
-  border-top: 1px solid var(--app-border);
+  border-top: 1px solid var(--app-row-rule);
 }
 
 .app-dividend-row:hover {
@@ -2746,14 +2832,17 @@ body {
   gap: 3px;
 }
 
+/* An empty month is a dot, as the ground is dotted: a filled cell in a cream near the row's
+   hover vanished when the row was pointed at. A paid month's inline background replaces it. */
 .app-dividend-heat__cell {
   height: 22px;
-  border-radius: 4px;
-  background: var(--app-track);
+  border-radius: 8px;
+  background: radial-gradient(circle, #eec66a 2px, transparent 2.5px);
 }
 
 /* A month still to come that last year paid in: outlined, not filled, as an estimate. */
 .app-dividend-heat__cell--expected {
+  background-image: none;
   box-shadow: inset 0 0 0 1.5px #7dd3fc;
 }
 
@@ -2762,6 +2851,7 @@ body {
   outline: 1.5px dashed #f59e0b;
   outline-offset: -2px;
   background-color: #fffbeb;
+  background-image: none;
 }
 
 .app-text-pending {
@@ -3171,8 +3261,28 @@ body {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: 999px;
   margin-right: 6px;
+}
+
+/*
+  A typical-spending estimate, striped so it reads as a guess before its key is found. White
+  stripes laid over --estimate, which may be a colour or a gradient: an inline background
+  instead would replace the stripes, since the shorthand resets the image layer.
+*/
+.app-estimate {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 var(--stripe, 4px),
+      rgb(255 255 255 / 0.6) var(--stripe, 4px) calc(var(--stripe, 4px) * 2)
+    ),
+    var(--estimate);
+}
+
+.cash-flow-chart__swatch.app-estimate,
+.app-months__swatch.app-estimate {
+  --stripe: 2px;
 }
 
 @media (max-width: 767px) {
