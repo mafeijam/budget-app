@@ -21,14 +21,21 @@ npm run build                             # or `npm run dev`
 
 The app is served on **port 9007** in this environment.
 
-**Which of those a change needs.** The full suite is not the default: it
-re-runs unchanged PHP against unchanged expectations, so on a change that
-cannot break it, it costs two minutes and says nothing. What decides it is
+**Which of those a change needs.** Do not run the full suite: it re-runs
+unchanged PHP against unchanged expectations, so it costs a minute and says
+nothing the related tests did not. What decides which tests are related is
 not server versus client — `FormContractTest` reads `resources/js`, and
 `CsrfExpiryTest` reads a `.vue` file, so a template edit can fail a PHP
 test.
 
-- **PHP, or a route, DTO, query, migration or seeder:** the suite, and pint.
+- **PHP, or a route, DTO, query, migration or seeder:** the related tests,
+  in one `--filter`, and pint. Find them by grepping `tests/` for what the
+  change touched — the class, the method, the enum case, the route path,
+  the table or column — and add the test named after the file. A DTO also
+  takes `FormContractTest`; a seeder `DevSeederTest` or `BudgetSeederTest`;
+  `bootstrap/app.php` or `config/` `DatabaseSafetyTest` and
+  `CsrfExpiryTest`. A grep for a model or enum that names many files means
+  the change is wide, and every one of them runs.
 - **A form template that gains or loses a `v-model`, an error binding, a
   `v-if`, a `:disable` or any `form.` reference:** `FormContractTest` alone.
   It counts every `form.` reference in a template and requires each to be a
@@ -42,8 +49,6 @@ test.
   list was wrong five times in an afternoon, in ways every check here
   passed, and each was caught by a person looking at the screen. See
   [Looking at it](#looking-at-it) for doing that without waiting on one.
-- **The last commit before anyone relies on it:** the suite, whatever the
-  change was.
 
 ## Looking at it
 
